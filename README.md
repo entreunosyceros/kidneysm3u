@@ -1,5 +1,7 @@
 # Riñones M3U - Filtrado y reproducción M3U/Youtube
 
+![about-kidneys](https://github.com/user-attachments/assets/2f7e3bf4-5180-4e19-9358-297ab4ea9bf0)
+
 Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar listas M3U/M3U8, vídeos de YouTube y canales, con soporte avanzado para archivos grandes, compatibilidad multiplataforma y manejo de errores.
 
 ## Características principales
@@ -11,7 +13,9 @@ Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar
 - **Gestión de favoritos**: añade, elimina y visualiza canales favoritos.
 - **Descarga de vídeos** de YouTube o enlaces directos.
 - **Controles multimedia completos**: play/pause, stop, avance/retroceso, volumen, mute, pantalla completa.
-- **Barra de progreso visual para YouTube**.
+
+![reproducir-youtube](https://github.com/user-attachments/assets/c40091d3-ab90-4c0f-b942-574dbc563a8d)
+
 - **Scroll vertical en la lista de canales/vídeos**.
 - **Compatibilidad multiplataforma**: Windows, Gnu/Linux.
 - **Manejo de errores y dependencias**.
@@ -61,6 +65,8 @@ python -m pip install -r requirements.txt
 
 ## Uso básico
 
+![reproduccion-m3u](https://github.com/user-attachments/assets/fa30375b-b0bf-4468-857c-07bd939968dd)
+
 - **Cargar lista M3U/M3U8**: desde menú "Reproducir" > "Cargar URL" o "Cargar Archivo Local".
 - **Buscar y reproducir vídeos/canales de YouTube**: menú "YouTube" > "Buscar en YouTube".
 - **Cargar playlist de YouTube**: menú "YouTube" > "Cargar Playlist de YouTube".
@@ -69,6 +75,8 @@ python -m pip install -r requirements.txt
 - **Controles multimedia**: barra inferior y atajos de teclado (espacio, f, m, flechas, etc).
 
 ## Atajos de teclado
+
+![buscar-youtube](https://github.com/user-attachments/assets/5f6f3597-b09e-4574-bb67-afdf5d8b4fe4)
 
 - `Espacio`: Play/Pause
 - `f`: Pantalla completa
@@ -92,6 +100,8 @@ python -m pip install -r requirements.txt
 - Al reproducir canales de IPTV, puede retrasarse un poco el inicio debido a la calidad de la señal del servidor al que se conecta
 
 ## Utilidad extra: Ordenar listas M3U
+
+![ordenar-canales](https://github.com/user-attachments/assets/24d8924d-7b99-42c0-b96a-b0172aeb65c0)
 
 Incluye el script `m3u_sorter.py` para ordenar listas M3U por nombre de canal, facilitando la organización de tus listas IPTV.
 
