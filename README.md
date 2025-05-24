@@ -87,6 +87,7 @@ python -m pip install -r requirements.txt
 
 - `Espacio`: Play/Pause
 - `f`: Pantalla completa
+- `Esc`: Salir de pantalla completa
 - `m`: Mute
 - `Ctrl+S`: Añadir a favoritos
 - `←/→`: Retroceder/Avanzar 2 segundos
