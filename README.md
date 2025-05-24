@@ -96,7 +96,7 @@ python -m pip install -r requirements.txt
 
 - El reproductor usa VLC embebido y fuerza la decodificación por software y salida de audio compatible (alsa/pulse).
 - Para vídeos de YouTube, se selecciona automáticamente el mejor stream compatible (audio+vídeo juntos, sin DASH/HLS, preferentemente MP4/AVC1 ≤720p).
-- El filtrado y carga de listas M3U es eficiente y soporta archivos grandes.
+- El filtrado y carga de listas M3U es eficiente y soporta archivos grandes. Lo he probado con una lista de más de dos millones de líneas con buenos resultados.
 - El sistema de favoritos se guarda en `favoritos.json`.
 - El soporte de cookies para YouTube es opcional, pero recomendable para vídeos restringidos.
 
