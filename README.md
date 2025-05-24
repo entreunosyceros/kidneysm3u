@@ -183,4 +183,4 @@ MIT License
 
 ---
 
-Desarrollado con Python, café y cada vez menos tabaco por entreunosyceros. ¡Disfruta de tu IPTV y YouTube (sin molestias!!) desde el escritorio! 
+Desarrollado con Python, ☕︎ y cada vez menos 🚬 por entreunosyceros. ¡Disfruta de tu IPTV y YouTube (sin molestias!!) desde el escritorio! 
