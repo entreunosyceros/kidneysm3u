@@ -1,0 +1,15 @@
+Pillow
+tkinterdnd2
+ffmpeg-python
+opencv-python>=4.8.0
+numpy>=1.24.0
+psutil
+requests>=2.31.0
+python-vlc>=3.0.18122
+yt-dlp
+pafy
+youtube-dl
+ttkthemes
+pywebview
+tkinterweb
+browser-cookie3
