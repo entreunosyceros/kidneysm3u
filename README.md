@@ -179,8 +179,8 @@ Si tienes instalado el módulo `psutil`, puedes activar el monitor de uso de CPU
 
 ## Licencia
 
-MIT License
+[MIT License](./LICENSE)
 
 ---
 
-Desarrollado con Python, ☕ y cada vez menos 🚬 por entreunosyceros. ¡Disfruta de tu IPTV y YouTube (sin molestias!!) desde el escritorio! 
+Desarrollado con Python, ☕ y cada vez menos 🚬 por entreunosyceros. ¡Disfruta de tu IPTV y YouTube (sin molestias!!) desde el escritorio!
