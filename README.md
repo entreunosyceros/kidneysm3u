@@ -101,6 +101,9 @@ python -m pip install -r requirements.txt
 
 ## Problemas conocidos
 
+> [!IMPORTANT]  
+> Quiero aclarar que esto lo he desarrollado en tu totalidad desde Linux, por lo que he podido probarlo poco en Windows. Así que es posible que puedan aparecer errores que desconozca.
+
 - Algunos vídeos de YouTube pueden no estar disponibles si no hay streams compatibles (por restricciones de YouTube).
 - En Linux, asegúrate de tener los paquetes de VLC y python-vlc correctamente instalados.
 - Si el audio de YouTube no funciona, revisa la salida de audio del sistema y prueba con pulse/alsa.
