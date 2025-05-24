@@ -4,12 +4,19 @@
 
 Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar listas M3U/M3U8, vídeos de YouTube y canales, con soporte avanzado para archivos grandes, compatibilidad multiplataforma y manejo de errores.
 
+> [!WARNING]  
+> Este programa no incluye enlaces a ningún canal. Aun que si incluye enlaces a listas gratuitas y legales que se pueden
+> encontrar en internet.
+
 ## Características principales
 
 - **Carga y filtrado eficiente de listas M3U/M3U8 locales o por URL** (con soporte para archivos grandes y barra de búsqueda).
 - **Reproducción fluida de canales IPTV y vídeos directos** usando VLC embebido.
 - **Reproducción de vídeos de YouTube** (URL directa, búsqueda, playlists, canales) con selección automática del mejor stream compatible (audio+vídeo juntos, sin DASH/HLS).
 - **Búsqueda avanzada en YouTube**: permite buscar vídeos, listas de reproducción o canales, y reproducirlos o cargarlos en la lista.
+
+![gestion-enlaces](https://github.com/user-attachments/assets/404a2382-e528-46fb-b8bc-e3a632daa0ed)
+
 - **Gestión de favoritos**: añade, elimina y visualiza canales favoritos.
 - **Descarga de vídeos** de YouTube o enlaces directos.
 - **Controles multimedia completos**: play/pause, stop, avance/retroceso, volumen, mute, pantalla completa.
