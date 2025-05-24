@@ -10,7 +10,7 @@ Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar
 
 ## Características principales
 
-- **Carga y filtrado eficiente de listas M3U/M3U8 locales o por URL** (con soporte para archivos grandes y barra de búsqueda).
+- **Carga y filtrado eficiente de listas M3U/M3U8 locales o por URL** (con soporte para archivos grandes y barra de búsqueda). Se pueden añadir nuevas búsquedas y sustituir o añadir el filtrado a un archivo. Si se añade la nueva búsqueda, esta se añadirá al final del archivo existente. 
 - **Reproducción fluida de canales IPTV y vídeos directos** usando VLC embebido.
 - **Reproducción de vídeos de YouTube** (URL directa, búsqueda, playlists, canales) con selección automática del mejor stream compatible (audio+vídeo juntos, sin DASH/HLS).
 - **Búsqueda avanzada en YouTube**: permite buscar vídeos, listas de reproducción o canales, y reproducirlos o cargarlos en la lista.
