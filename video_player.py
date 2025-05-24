@@ -125,7 +125,7 @@ class VideoPlayer:
             btn = ttk.Button(controls_buttons_frame, text=text, command=command)
             btn.pack(side=tk.LEFT, padx=5)
         self.add_volume_control()
-        # self.setup_performance_monitoring()
+        #self.setup_performance_monitoring()
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.window.bind('<Escape>', lambda e: self.exit_fullscreen())
 
