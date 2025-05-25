@@ -41,13 +41,18 @@ Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar
 Instala las dependencias con:
 
 ```bash
-python -m pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
 > **Nota:** En Linux, asegúrate de tener instalado VLC y sus bindings para Python:
 > ```bash
 > sudo apt install vlc python3-vlc
 > ```
+
+Para iniciar la aplicación en linux ejecuta:
+```bash
+python3 run_app.py
+```
 
 ## Instalación en Windows
 
