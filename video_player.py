@@ -80,7 +80,7 @@ class VideoPlayer:
     def create_window(self):
         self.window = tk.Toplevel()
         self.window.title('Reproductor Vídeos')
-        self.window.geometry('800x600')
+        self.window.geometry('1100x750')
 
         self.create_menu()
 

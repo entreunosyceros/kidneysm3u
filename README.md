@@ -115,6 +115,7 @@ python3 run_app.py
 - En Linux, asegúrate de tener los paquetes de VLC y python-vlc correctamente instalados.
 - Si el audio de YouTube no funciona, revisa la salida de audio del sistema y prueba con pulse/alsa.
 - Al reproducir canales de IPTV, puede retrasarse un poco el inicio debido a la calidad de la señal del servidor al que se conecta
+- La búsqueda de listas de reproducción en Youtube, no funcionan como deben. Si quieres reproducir listas de reproducción, por el momento debes acceder a Youtube, buscar la lista de reproducción, copiar la URL de la lista y pegarla en el campo destinado a cargar las listas de reproducción en el reproductor.
 
 ## Utilidad extra: Ordenar listas M3U desde la interfaz gráfica
 

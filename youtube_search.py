@@ -164,36 +164,30 @@ class YouTubeSearchDialog:
         if self.type_var.get() == "Vídeos":
             search_query += date_query + duration_query
         elif self.type_var.get() == "Listas de reproducción":
-            search_query += " playlist" + date_query
+            search_query += date_query  # No añadir 'playlist' ni nada extra
         # NO añadir nada para canales, solo buscar el nombre
         try:
             tipo = self.type_var.get()
             max_results = min(max(self.results_count.get(), 1), 100)
-            
-            # Configurar opciones de yt-dlp
             ydl_opts = {
                 'quiet': True,
                 'extract_flat': True,
                 'skip_download': True,
                 'force_generic_extractor': False,
             }
-            
-            # Aplicar ordenación
             sort_option = self.sort_var.get()
+            # Construir la URL de búsqueda según el tipo
+            search_url = f"ytsearch{max_results}:{search_query}{date_query}{duration_query}"
+            # Aplicar ordenación
             if sort_option == "Fecha":
-                search_url = f"ytsearch{max_results}:{search_query}"
                 ydl_opts['dateafter'] = 'today'
             elif sort_option == "Vistas":
-                search_url = f"ytsearch{max_results}:{search_query}"
                 ydl_opts['format'] = 'best'
                 ydl_opts['extractor_args'] = {'youtube': {'sort_by': 'view_count'}}
             elif sort_option == "Valoración":
-                search_url = f"ytsearch{max_results}:{search_query}"
                 ydl_opts['format'] = 'best'
                 ydl_opts['extractor_args'] = {'youtube': {'sort_by': 'rating'}}
-            else:  # Relevancia (por defecto)
-                search_url = f"ytsearch{max_results}:{search_query}"
-            
+            # Realizar la búsqueda
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(search_url, download=False)
                 found_playlist = False
@@ -202,19 +196,29 @@ class YouTubeSearchDialog:
                     duration = entry.get('duration')
                     duration_str = self.format_duration(duration) if duration else ""
                     if tipo == "Listas de reproducción":
-                        # Detectar listas de reproducción reales
-                        if (entry.get('ie_key') == 'YoutubePlaylist') or (entry.get('playlist_id')):
-                            playlist_id = entry.get('playlist_id') or entry.get('id')
-                            url = f"https://www.youtube.com/playlist?list={playlist_id}"
-                            self.result_types.append("playlist")
-                            self.results.append(url)
-                            self.result_details.append({
-                                'title': title,
-                                'id': playlist_id,
-                                'duration': duration
-                            })
-                            self.results_listbox.insert(tk.END, f"📑 {title}")
-                            found_playlist = True
+                        # Filtrar solo playlists con id válido o url válida
+                        is_playlist = (
+                            (entry.get('_type') == 'playlist' and entry.get('url') and entry.get('url').startswith('https://www.youtube.com/playlist?list='))
+                            or (entry.get('ie_key') == 'YoutubePlaylist' and (entry.get('playlist_id') or entry.get('id')))
+                        )
+                        if is_playlist:
+                            # Usar url directa si existe
+                            if entry.get('_type') == 'playlist' and entry.get('url'):
+                                url = entry.get('url')
+                                playlist_id = url.split('list=')[-1]
+                            else:
+                                playlist_id = entry.get('playlist_id') or entry.get('id')
+                                url = f"https://www.youtube.com/playlist?list={playlist_id}"
+                            if playlist_id:
+                                self.result_types.append("playlist")
+                                self.results.append(url)
+                                self.result_details.append({
+                                    'title': title,
+                                    'id': playlist_id,
+                                    'duration': duration
+                                })
+                                self.results_listbox.insert(tk.END, f"📑 {title}")
+                                found_playlist = True
                     elif tipo == "Vídeos":
                         url = f"https://www.youtube.com/watch?v={entry.get('id')}"
                         self.result_types.append("video")
@@ -229,7 +233,6 @@ class YouTubeSearchDialog:
                             display_text += f" [{duration_str}]"
                         self.results_listbox.insert(tk.END, display_text)
                     elif tipo == "Canales":
-                        # Solo mostrar el canal principal, no vídeos del canal
                         channel_id = entry.get('channel_id') or entry.get('uploader_id') or entry.get('id')
                         if channel_id:
                             url = f"https://www.youtube.com/channel/{channel_id}"
@@ -240,7 +243,6 @@ class YouTubeSearchDialog:
                                 'id': channel_id
                             })
                             self.results_listbox.insert(tk.END, f"📺 {title}")
-                        # No mostrar vídeos del canal en este modo
                 if tipo == "Listas de reproducción" and not found_playlist:
                     messagebox.showinfo("Info", "No se encontraron listas de reproducción con ese nombre.")
         except Exception as e:
