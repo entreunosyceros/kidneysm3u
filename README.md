@@ -97,7 +97,8 @@ python -m pip install -r requirements.txt
 - El reproductor usa VLC embebido y fuerza la decodificación por software y salida de audio compatible (alsa/pulse).
 - Para vídeos de YouTube, se selecciona automáticamente el mejor stream compatible (audio+vídeo juntos, sin DASH/HLS, preferentemente MP4/AVC1 ≤720p).
 - El filtrado y carga de listas M3U es eficiente y soporta archivos grandes. Lo he probado con una lista de más de dos millones de líneas con buenos resultados.
-- El sistema de favoritos se guarda en `favoritos.json`.
+- El sistema de favoritos se guarda en `favoritos.json` dentro de la carpeta del programa.
+- Los enlaces que se añadan al programa, también se guardaran en el archivo `enlaces.json` dentro de la carpeta del programa.
 - El soporte de cookies para YouTube es opcional, pero recomendable para vídeos restringidos.
 
 ## Problemas conocidos
@@ -110,50 +111,43 @@ python -m pip install -r requirements.txt
 - Si el audio de YouTube no funciona, revisa la salida de audio del sistema y prueba con pulse/alsa.
 - Al reproducir canales de IPTV, puede retrasarse un poco el inicio debido a la calidad de la señal del servidor al que se conecta
 
-## Utilidad extra: Ordenar listas M3U
+## Utilidad extra: Ordenar listas M3U desde la interfaz gráfica
 
 ![ordenar-canales](https://github.com/user-attachments/assets/24d8924d-7b99-42c0-b96a-b0172aeb65c0)
 
-Incluye el script `m3u_sorter.py` para ordenar listas M3U por nombre de canal, facilitando la organización de tus listas IPTV.
+La aplicación incluye una utilidad gráfica avanzada para ordenar y gestionar listas M3U. Esta herramienta se integra en la interfaz y permite organizar, editar y personalizar tus listas de canales de forma visual e interactiva.
 
-### ¿Para qué sirve?
+### ¿Qué puedes hacer con la utilidad de ordenación?
 
-- Si tienes una lista M3U desordenada (por ejemplo, canales mezclados por país, idioma o temática), puedes ordenarla alfabéticamente por el nombre del canal para encontrar más fácilmente lo que buscas en el reproductor.
-- El script mantiene la estructura original de cada entrada (incluyendo metadatos como logo, grupo, etc.), solo cambia el orden de aparición y permite gestionar grupos, etc...
+- **Ordenar canales manualmente**: arrastra y suelta (drag & drop) para reordenar los canales a tu gusto.
+- **Ordenar alfabéticamente**: selecciona y mueve canales para agruparlos o reordenarlos fácilmente.
+- **Buscar canales**: filtra la lista escribiendo en la barra de búsqueda.
+- **Editar información**: modifica el nombre, metadatos o URL de cualquier canal.
+- **Cortar, copiar, pegar y eliminar**: gestiona canales como en un editor de texto (atajos Ctrl+X, Ctrl+C, Ctrl+V, Supr).
+- **Cambiar grupo**: selecciona uno o varios canales y asígnales un nuevo grupo (útil para organizar por país, temática, etc).
+- **Guardar la lista ordenada**: exporta tu lista personalizada a un nuevo archivo M3U listo para usar en el reproductor.
 
-### Cómo usarlo paso a paso
+### ¿Cómo acceder y usar la utilidad?
 
-1. Coloca tu archivo M3U original (por ejemplo, `mi_lista.m3u`) en la carpeta del proyecto.
-2. Abre una terminal en esa carpeta.
-3. Ejecuta el siguiente comando:
-   ```bash
-   python m3u_sorter.py mi_lista.m3u mi_lista_ordenada.m3u
-   ```
-   - `mi_lista.m3u`: es tu archivo original.
-   - `mi_lista_ordenada.m3u`: será el nuevo archivo generado, con los canales ordenados alfabéticamente.
-4. Abre el archivo ordenado (`mi_lista_ordenada.m3u`) en el reproductor para disfrutar de una navegación más cómoda.
+1. Desde la aplicación principal, busca la opción para ordenar la lista M3U (puede estar en el menú contextual o en el menú principal, según la versión).
+2. Selecciona el archivo M3U que deseas organizar.
+3. Se abrirá la ventana de ordenación, donde podrás:
+   - Buscar canales por nombre.
+   - Seleccionar uno o varios canales y moverlos con drag & drop.
+   - Editar, cortar, copiar, pegar, eliminar o cambiar el grupo de los canales seleccionados.
+   - Guardar la lista ordenada en un nuevo archivo M3U.
 
-### Ejemplo
+> **Nota:** Esta utilidad es completamente visual y no requiere usar la terminal. Es ideal para quienes prefieren gestionar sus listas IPTV de forma cómoda y personalizada.
 
-Supón que tienes una lista así:
-```
-#EXTM3U
-#EXTINF:-1 tvg-name="Canal Zeta",...
-http://ejemplo.com/zeta
-#EXTINF:-1 tvg-name="Canal Alfa",...
-http://ejemplo.com/alfa
-```
+### Ejemplo de uso
 
-Tras ejecutar el script, obtendrás:
-```
-#EXTM3U
-#EXTINF:-1 tvg-name="Canal Alfa",...
-http://ejemplo.com/alfa
-#EXTINF:-1 tvg-name="Canal Zeta",...
-http://ejemplo.com/zeta
-```
+1. Abre la utilidad de ordenación desde la aplicación.
+2. Carga tu archivo M3U original.
+3. Usa la búsqueda, edición y drag & drop para dejar la lista a tu gusto.
+4. Haz clic en "Guardar" y elige el nombre del nuevo archivo M3U ordenado.
+5. Usa ese archivo en el reproductor para una experiencia más organizada.
 
-Así, la lista queda ordenada por nombre de canal. Además tendremos opciones para editar el grupo al que pertenecen un grupo de canales, etc ...
+Así, puedes mantener tus listas siempre ordenadas y personalizadas, sin complicaciones técnicas ni scripts de consola.
 
 ## Monitor de CPU (opcional)
 

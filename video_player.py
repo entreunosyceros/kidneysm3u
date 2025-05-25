@@ -11,7 +11,37 @@ from youtube_search import YouTubeSearchDialog
 import os
 import threading 
 import psutil
- 
+
+# Clase Tooltip para mostrar información al pasar el ratón
+class Tooltip:
+    def __init__(self, widget):
+        self.widget = widget
+        self.tipwindow = None
+        self.id = None
+        self.x = self.y = 0
+
+    def showtip(self, text, x=None, y=None):
+        """Muestra el tooltip con el texto dado, cerca del puntero del ratón"""
+        if self.tipwindow or not text:
+            return
+        # Si no se pasan coordenadas, usar la posición actual del puntero
+        if x is None or y is None:
+            x = self.widget.winfo_pointerx() + 20
+            y = self.widget.winfo_pointery() + 10
+        self.tipwindow = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(1)
+        tw.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(tw, text=text, justify=tk.LEFT,
+                         background="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                         font=("tahoma", "9", "normal"))
+        label.pack(ipadx=4)
+
+    def hidetip(self):
+        tw = self.tipwindow
+        self.tipwindow = None
+        if tw:
+            tw.destroy()
+
 class VideoPlayer:
     def __init__(self):
         self.window = None
@@ -78,6 +108,12 @@ class VideoPlayer:
         self.channels_listbox.pack(side=tk.LEFT, fill=tk.Y)
         self.channels_listbox.bind('<Double-Button-1>', self.play_selected)
         self.channels_listbox.bind('<Button-3>', self.show_channel_context_menu)
+
+        # Tooltip para los elementos de la lista (solo al seleccionar)
+        self.listbox_tooltip = Tooltip(self.channels_listbox)
+        self.channels_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
+        self.channels_listbox.bind('<FocusOut>', lambda e: self.listbox_tooltip.hidetip())
+        # Ya no se usa el tooltip con el ratón
 
         scrollbar = ttk.Scrollbar(self.channels_frame, orient=tk.VERTICAL, command=self.channels_listbox.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -333,6 +369,8 @@ class VideoPlayer:
 
     def play_selected(self, event=None):
         """Reproduce el canal seleccionado de la lista al hacer doble clic."""
+
+
         selection = self.channels_listbox.curselection()
         if selection:
             index = selection[0]
@@ -679,6 +717,8 @@ class VideoPlayer:
 
     def play_youtube_url(self, url):
         """Delega la reproducción de YouTube al manejador centralizado, forzando salida pulse y añade a la lista si no está."""
+
+
         # Obtener título del vídeo antes de reproducir
         try:
             with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
@@ -701,6 +741,8 @@ class VideoPlayer:
 
     def download_channel(self, index):
         """Inicia la descarga del canal seleccionado en un hilo separado."""
+
+
         if 0 <= index < len(self.channels):
             name, url = self.channels[index]
             
@@ -808,3 +850,34 @@ class VideoPlayer:
 
     def hide_progress_bar(self):
         self.progress_frame.pack_forget()
+
+    def on_listbox_motion(self, event):
+        """Muestra un tooltip con el nombre del canal al pasar el ratón"""
+        index = self.channels_listbox.nearest(event.y)
+        if 0 <= index < len(self.channels):
+            name = self.channels[index][0]
+            # Usar coordenadas absolutas del puntero
+            x = self.channels_listbox.winfo_pointerx() + 20
+            y = self.channels_listbox.winfo_pointery() + 10
+            self.listbox_tooltip.showtip(name, x, y)
+        else:
+            self.listbox_tooltip.hidetip()
+
+    def on_listbox_select(self, event):
+        """Muestra un tooltip con el nombre del canal seleccionado justo debajo del ítem seleccionado"""
+        self.listbox_tooltip.hidetip()  # Oculta cualquier tooltip anterior
+        selection = self.channels_listbox.curselection()
+        if selection:
+            index = selection[0]
+            if 0 <= index < len(self.channels):
+                name = self.channels[index][0]
+                bbox = self.channels_listbox.bbox(index)
+                if bbox:
+                    x, y, width, height = bbox
+                    abs_x = self.channels_listbox.winfo_rootx() + x
+                    abs_y = self.channels_listbox.winfo_rooty() + y + height
+                    self.listbox_tooltip.showtip(name, abs_x, abs_y)
+                else:
+                    self.listbox_tooltip.showtip(name)
+        else:
+            self.listbox_tooltip.hidetip()
