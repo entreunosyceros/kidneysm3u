@@ -6,6 +6,7 @@ import subprocess
 import json
 from video_player import VideoPlayer
 from about import show_about
+from keyboard import show_keyboard_shortcuts
 from tkinterdnd2 import DND_FILES, TkinterDnD
 import webbrowser
 
@@ -78,8 +79,9 @@ class M3UProcessor:
         menubar.add_cascade(label="Procesar", menu=procesar_menu)
         menubar.add_cascade(label="Ordenar", menu=ordenar_menu)
         menubar.add_cascade(label="Reproducir", menu=reproducir_menu)
-        menubar.add_cascade(label="Enlaces", menu=enlaces_menu)  # Añadir esta línea
+        menubar.add_cascade(label="Enlaces", menu=enlaces_menu)
         menubar.add_command(label="About", command=lambda: show_about(self.root))
+        menubar.add_command(label="Ayuda", command=lambda: show_keyboard_shortcuts(self.root))
         
         self.root.config(menu=menubar)
 

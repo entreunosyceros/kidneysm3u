@@ -91,11 +91,13 @@ python3 run_app.py
 ![buscar-youtube](https://github.com/user-attachments/assets/5f6f3597-b09e-4574-bb67-afdf5d8b4fe4)
 
 - `Espacio`: Play/Pause
-- `f`: Pantalla completa
+- `F1`: Pantalla completa
 - `Esc`: Salir de pantalla completa
 - `m`: Mute
 - `Ctrl+S`: Añadir a favoritos
 - `←/→`: Retroceder/Avanzar 2 segundos
+
+Todos los atajos de telcado y una explicación básica de los controladores del reproductor, aparecen explicados en la opción de Ayuda que se puede encontrar en la ventana principal de la aplicación.
 
 ## Notas técnicas
 
