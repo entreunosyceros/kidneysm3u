@@ -12,7 +12,7 @@ import webbrowser
 class M3UProcessor:
     def __init__(self, root):
         self.root = root
-        self.root.title('Riñones M3U/M3U8')
+        self.root.title('Kidneys M3U/M3U8')
         self.root.geometry('800x300')
         
         # Configurar el estilo

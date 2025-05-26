@@ -106,6 +106,12 @@ class YouTubeSearchDialog:
         # Configurar el menú contextual para la lista de resultados
         self.results_listbox.bind('<Double-Button-1>', self.play_selected)
         self.results_listbox.bind('<Button-3>', self.show_context_menu)
+
+        # Barra de progreso
+        self.progress_frame = ttk.Frame(main_frame)
+        self.progress_frame.pack(fill=tk.X, pady=(5, 10))
+        self.progress_bar = ttk.Progressbar(self.progress_frame, mode='indeterminate')
+        # La barra de progreso inicialmente está oculta
         
         # Frame de botones
         button_frame = ttk.Frame(main_frame)
@@ -135,6 +141,10 @@ class YouTubeSearchDialog:
         self.result_types = []
         self.result_details = []
         
+        # Mostrar la barra de progreso
+        self.progress_bar.pack(fill=tk.X, expand=True)
+        self.progress_bar.start(10)  # Iniciar la animación
+        
         # Aplicar filtros a la consulta
         search_query = query
         
@@ -160,93 +170,114 @@ class YouTubeSearchDialog:
         elif duration_filter == "Largo (>20 min)":
             duration_query = " long"
         
-        # Aplicar filtros a la consulta
-        if self.type_var.get() == "Vídeos":
+        # Aplicar filtros a la consulta según el tipo
+        tipo = self.type_var.get()
+        if tipo == "Vídeos":
             search_query += date_query + duration_query
-        elif self.type_var.get() == "Listas de reproducción":
-            search_query += date_query  # No añadir 'playlist' ni nada extra
-        # NO añadir nada para canales, solo buscar el nombre
-        try:
-            tipo = self.type_var.get()
-            max_results = min(max(self.results_count.get(), 1), 100)
-            ydl_opts = {
-                'quiet': True,
-                'extract_flat': True,
-                'skip_download': True,
-                'force_generic_extractor': False,
-            }
-            sort_option = self.sort_var.get()
-            # Construir la URL de búsqueda según el tipo
-            search_url = f"ytsearch{max_results}:{search_query}{date_query}{duration_query}"
-            # Aplicar ordenación
-            if sort_option == "Fecha":
-                ydl_opts['dateafter'] = 'today'
-            elif sort_option == "Vistas":
-                ydl_opts['format'] = 'best'
-                ydl_opts['extractor_args'] = {'youtube': {'sort_by': 'view_count'}}
-            elif sort_option == "Valoración":
-                ydl_opts['format'] = 'best'
-                ydl_opts['extractor_args'] = {'youtube': {'sort_by': 'rating'}}
-            # Realizar la búsqueda
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(search_url, download=False)
-                found_playlist = False
-                for entry in info.get('entries', []):
-                    title = entry.get('title', 'Sin título')
-                    duration = entry.get('duration')
-                    duration_str = self.format_duration(duration) if duration else ""
-                    if tipo == "Listas de reproducción":
-                        # Filtrar solo playlists con id válido o url válida
-                        is_playlist = (
-                            (entry.get('_type') == 'playlist' and entry.get('url') and entry.get('url').startswith('https://www.youtube.com/playlist?list='))
-                            or (entry.get('ie_key') == 'YoutubePlaylist' and (entry.get('playlist_id') or entry.get('id')))
-                        )
-                        if is_playlist:
-                            # Usar url directa si existe
-                            if entry.get('_type') == 'playlist' and entry.get('url'):
-                                url = entry.get('url')
-                                playlist_id = url.split('list=')[-1]
-                            else:
-                                playlist_id = entry.get('playlist_id') or entry.get('id')
-                                url = f"https://www.youtube.com/playlist?list={playlist_id}"
-                            if playlist_id:
-                                self.result_types.append("playlist")
-                                self.results.append(url)
-                                self.result_details.append({
-                                    'title': title,
-                                    'id': playlist_id,
-                                    'duration': duration
-                                })
-                                self.results_listbox.insert(tk.END, f"📑 {title}")
-                                found_playlist = True
-                    elif tipo == "Vídeos":
-                        url = f"https://www.youtube.com/watch?v={entry.get('id')}"
-                        self.result_types.append("video")
-                        self.results.append(url)
-                        self.result_details.append({
-                            'title': title,
-                            'id': entry.get('id'),
-                            'duration': duration
-                        })
-                        display_text = f"▶️ {title}"
-                        if duration_str:
-                            display_text += f" [{duration_str}]"
-                        self.results_listbox.insert(tk.END, display_text)
-                    elif tipo == "Canales":
-                        channel_id = entry.get('channel_id') or entry.get('uploader_id') or entry.get('id')
-                        if channel_id:
-                            url = f"https://www.youtube.com/channel/{channel_id}"
-                            self.result_types.append("channel")
-                            self.results.append(url)
-                            self.result_details.append({
-                                'title': title,
-                                'id': channel_id
-                            })
-                            self.results_listbox.insert(tk.END, f"📺 {title}")
-                if tipo == "Listas de reproducción" and not found_playlist:
-                    messagebox.showinfo("Info", "No se encontraron listas de reproducción con ese nombre.")
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo realizar la búsqueda: {e}")
+        elif tipo == "Listas de reproducción":
+            search_query += " playlist" + date_query
+
+        def perform_search():
+            try:
+                max_results = min(max(self.results_count.get(), 1), 100)
+                ydl_opts = {
+                    'quiet': True,  # Silenciar la salida de depuración
+                    'extract_flat': True,
+                    'skip_download': True,
+                    'force_generic_extractor': False,
+                }
+
+                # Construir la URL de búsqueda
+                if tipo == "Listas de reproducción":
+                    search_url = f"https://www.youtube.com/results?search_query={search_query.replace(' ', '+')}&sp=EL"
+                else:
+                    search_url = f"ytsearch{max_results}:{search_query}"
+
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(search_url, download=False)
+                    results_count = 0
+                    found_playlist = False
+                    
+                    def update_ui():
+                        nonlocal results_count, found_playlist
+                        for entry in info.get('entries', []):
+                            # Limitar el número de resultados
+                            if results_count >= max_results:
+                                break
+                                
+                            title = entry.get('title', 'Sin título')
+                            duration = entry.get('duration')
+                            duration_str = self.format_duration(duration) if duration else ""
+                            
+                            if tipo == "Listas de reproducción":
+                                # Para búsquedas directas de playlist, cada entrada debería ser una playlist
+                                playlist_id = None
+                                if entry.get('url') and 'list=' in entry.get('url'):
+                                    playlist_id = re.search(r'list=([^&]+)', entry.get('url'))
+                                    if playlist_id:
+                                        playlist_id = playlist_id.group(1)
+                                        playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
+                                        self.result_types.append("playlist")
+                                        self.results.append(playlist_url)
+                                        self.result_details.append({
+                                            'title': title,
+                                            'id': playlist_id,
+                                            'duration': duration
+                                        })
+                                        self.results_listbox.insert(tk.END, f"📑 {title}")
+                                        found_playlist = True
+                                        results_count += 1
+                            elif tipo == "Vídeos":
+                                if entry.get('id'):  # Solo procesar si tiene ID de video
+                                    url = f"https://www.youtube.com/watch?v={entry.get('id')}"
+                                    self.result_types.append("video")
+                                    self.results.append(url)
+                                    self.result_details.append({
+                                        'title': title,
+                                        'id': entry.get('id'),
+                                        'duration': duration
+                                    })
+                                    display_text = f"▶️ {title}"
+                                    if duration_str:
+                                        display_text += f" [{duration_str}]"
+                                    self.results_listbox.insert(tk.END, display_text)
+                                    results_count += 1
+                            
+                            elif tipo == "Canales":
+                                channel_id = entry.get('channel_id') or entry.get('uploader_id') or entry.get('id')
+                                if channel_id:
+                                    url = f"https://www.youtube.com/channel/{channel_id}"
+                                    self.result_types.append("channel")
+                                    self.results.append(url)
+                                    self.result_details.append({
+                                        'title': title,
+                                        'id': channel_id
+                                    })
+                                    self.results_listbox.insert(tk.END, f"📺 {title}")
+                                    results_count += 1
+                        
+                        if tipo == "Listas de reproducción" and not found_playlist:
+                            messagebox.showinfo("Info", "No se encontraron listas de reproducción con ese nombre.")
+
+                        # Ocultar y detener la barra de progreso
+                        self.progress_bar.stop()
+                        self.progress_bar.pack_forget()
+                        
+                    # Actualizar la UI en el hilo principal
+                    self.window.after(0, update_ui)
+                    
+            except Exception as e:
+                def show_error():
+                    messagebox.showerror("Error", f"No se pudo realizar la búsqueda: {e}")
+                    # Ocultar y detener la barra de progreso
+                    self.progress_bar.stop()
+                    self.progress_bar.pack_forget()
+                
+                # Mostrar el error en el hilo principal
+                self.window.after(0, show_error)
+
+        # Iniciar la búsqueda en un hilo separado
+        threading.Thread(target=perform_search, daemon=True).start()
 
     def format_duration(self, seconds):
         """Formatea la duración en segundos a formato HH:MM:SS o MM:SS"""

@@ -1,8 +1,8 @@
-# Riñones M3U - Filtrado y reproducción M3U/Youtube
+# Kidneysm3u - Filtrado y reproducción M3U/Youtube
 
 ![about-kidneys](https://github.com/user-attachments/assets/2f7e3bf4-5180-4e19-9358-297ab4ea9bf0)
 
-Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar listas M3U/M3U8, vídeos de YouTube y canales, con soporte avanzado para archivos grandes, compatibilidad multiplataforma y manejo de errores.
+Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, reproducir y gestionar listas M3U/M3U8, vídeos de YouTube y canales, con soporte avanzado para archivos grandes, compatibilidad multiplataforma y manejo de errores.
 
 > [!WARNING]  
 > Este programa no incluye enlaces a ningún canal. Aun que si incluye enlaces a listas gratuitas y legales que se pueden
@@ -13,7 +13,7 @@ Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar
 - **Carga y filtrado eficiente de listas M3U/M3U8 locales o por URL** (con soporte para archivos grandes y barra de búsqueda). Se pueden añadir nuevas búsquedas y sustituir o añadir el filtrado a un archivo. Si se añade la nueva búsqueda, esta se añadirá al final del archivo existente. 
 - **Reproducción fluida de canales IPTV y vídeos directos** usando VLC embebido.
 - **Reproducción de vídeos de YouTube** (URL directa, búsqueda, playlists, canales) con selección automática del mejor stream compatible (audio+vídeo juntos, sin DASH/HLS).
-- **Búsqueda avanzada en YouTube**: permite buscar vídeos, listas de reproducción o canales, y reproducirlos o cargarlos en la lista.
+- **Búsqueda avanzada en YouTube**: permite buscar vídeos, listas de reproducción o canales, y reproducirlos o cargarlos en la lista. Barra de progreso de búsqueda.
 
 ![gestion-enlaces](https://github.com/user-attachments/assets/404a2382-e528-46fb-b8bc-e3a632daa0ed)
 
@@ -81,7 +81,7 @@ python3 run_app.py
 
 - **Cargar lista M3U/M3U8**: desde menú "Reproducir" > "Cargar URL" o "Cargar Archivo Local".
 - **Buscar y reproducir vídeos/canales de YouTube**: menú "YouTube" > "Buscar en YouTube".
-- **Cargar playlist de YouTube**: menú "YouTube" > "Cargar Playlist de YouTube".
+- **Cargar playlist de YouTube**: menú "YouTube" > "Cargar URL Playlist de YouTube".
 - **Añadir/eliminar favoritos**: clic derecho sobre un canal/vídeo.
 - **Descargar vídeo**: clic derecho > "Descargar".
 - **Controles multimedia**: barra inferior y atajos de teclado (espacio, f, m, flechas, etc).
@@ -115,7 +115,7 @@ python3 run_app.py
 - En Linux, asegúrate de tener los paquetes de VLC y python-vlc correctamente instalados.
 - Si el audio de YouTube no funciona, revisa la salida de audio del sistema y prueba con pulse/alsa.
 - Al reproducir canales de IPTV, puede retrasarse un poco el inicio debido a la calidad de la señal del servidor al que se conecta
-- La búsqueda de listas de reproducción en Youtube, no funcionan como deben. Si quieres reproducir listas de reproducción, por el momento debes acceder a Youtube, buscar la lista de reproducción, copiar la URL de la lista y pegarla en el campo destinado a cargar las listas de reproducción en el reproductor.
+- La barra de reproducción de los vídeos de youtube, por el momento está deshabilitada, por lo que no hace nada más que estar.
 
 ## Utilidad extra: Ordenar listas M3U desde la interfaz gráfica
 

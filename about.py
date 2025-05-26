@@ -25,7 +25,7 @@ def show_about(root):
     main_frame.pack(fill=tk.BOTH, expand=True)
 
     # Título
-    title_label = ttk.Label(main_frame, text='Riñones M3U/M3U8', 
+    title_label = ttk.Label(main_frame, text='Kidneys M3U/M3U8', 
                           font=('Helvetica', 16, 'bold'))
     title_label.pack(pady=(0, 10))
 
