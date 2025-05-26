@@ -97,6 +97,8 @@ python3 run_app.py
 - `Ctrl+S`: Añadir a favoritos
 - `←/→`: Retroceder/Avanzar 2 segundos
 
+![kidneys-help](https://github.com/user-attachments/assets/8d40f720-c424-4e1b-a965-d0796f1a93af)
+
 Todos los atajos de telcado y una explicación básica de los controladores del reproductor, aparecen explicados en la opción de Ayuda que se puede encontrar en la ventana principal de la aplicación.
 
 ## Notas técnicas
