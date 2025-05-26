@@ -1,6 +1,6 @@
 # Kidneysm3u - Filtrado y reproducción M3U/Youtube
 
-![about-kidneys](https://github.com/user-attachments/assets/2f7e3bf4-5180-4e19-9358-297ab4ea9bf0)
+![about-kidneys](https://github.com/user-attachments/assets/2a90ab24-4402-42cb-8c85-5c98be00c1b2)
 
 Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, reproducir y gestionar listas M3U/M3U8, vídeos de YouTube y canales, con soporte avanzado para archivos grandes, compatibilidad multiplataforma y manejo de errores.
 
