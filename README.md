@@ -164,7 +164,7 @@ Si tienes instalado el módulo `psutil`, puedes activar el monitor de uso de CPU
 
 ### Cómo activarlo
 
-1. Asegúrate de tener instalado `psutil`:
+1. Asegúrate de tener instalado `psutil` (se va a instalar automáticamente al ejecutar `run_app.py`):
    ```bash
    python -m pip install psutil
    ```
