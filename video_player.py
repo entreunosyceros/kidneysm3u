@@ -484,11 +484,18 @@ class VideoPlayer:
             self.update_time_job = None
 
     def update_time(self):
-        """Actualiza el tiempo de reproducción internamente para mantener el stream activo."""
+        """Actualiza el tiempo de reproducción y la barra de progreso."""
         if self.player and self.player.is_playing():
-            # Solo consulta el tiempo, no actualiza ninguna barra
-            _ = self.player.get_time()
-            _ = self.player.get_length()
+            try:
+                length = self.player.get_length()
+                if length > 0:  # Asegurarse de que el video tiene duración
+                    # Solo actualizar la barra si no se está arrastrando
+                    if not self.is_seeking and self.progress_frame.winfo_ismapped():
+                        time = self.player.get_time()
+                        position = (time / length) * 100
+                        self.progress_bar.set(position)
+            except Exception as e:
+                print(f"Error actualizando tiempo: {e}")
         self.update_time_job = self.window.after(1000, self.update_time)
 
     def close(self):
@@ -839,14 +846,23 @@ class VideoPlayer:
             try:
                 if self.player.is_playing():
                     self.player.stop()
+                # Ocultar la barra de progreso
+                self.hide_progress_bar()
             except Exception:
                 pass
         self.stop_update_time()
 
     def show_youtube_progress_bar(self):
+        """Muestra y configura la barra de progreso para videos de YouTube."""
         self.progress_frame.pack(fill=tk.X, padx=5, pady=2)
         self.progress_bar.set(0)
-        self.progress_bar.state(['disabled'])
+        # Habilitamos la barra y permitimos búsqueda
+        self.progress_bar.state(['!disabled'])
+        # Configura el comando para el seek
+        self.progress_bar.configure(command=self.seek_to_position)
+        # Bindings para el arrastre
+        self.progress_bar.bind('<Button-1>', self.start_seek)
+        self.progress_bar.bind('<ButtonRelease-1>', self.end_seek)
 
     def hide_progress_bar(self):
         self.progress_frame.pack_forget()
@@ -881,3 +897,24 @@ class VideoPlayer:
                     self.listbox_tooltip.showtip(name)
         else:
             self.listbox_tooltip.hidetip()
+
+    def start_seek(self, event):
+        """Inicia el proceso de seek manual."""
+        self.is_seeking = True
+
+    def end_seek(self, event):
+        """Finaliza el proceso de seek manual."""
+        self.is_seeking = False
+
+    def seek_to_position(self, value):
+        """Realiza el seek a una posición específica."""
+        if not self.is_seeking or not self.player:
+            return
+        try:
+            position = float(value) / 100.0
+            length = self.player.get_length()
+            if length > 0:
+                target_time = int(position * length)
+                self.player.set_time(target_time)
+        except Exception as e:
+            print(f"Error en seek: {e}")
