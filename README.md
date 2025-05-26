@@ -21,7 +21,7 @@ Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, re
 - **Descarga de vídeos** de YouTube o enlaces directos.
 - **Controles multimedia completos**: play/pause, stop, avance/retroceso, volumen, mute, pantalla completa.
 
-![reproducir-youtube](https://github.com/user-attachments/assets/c40091d3-ab90-4c0f-b942-574dbc563a8d)
+![reproduccion-youtube](https://github.com/user-attachments/assets/bc84bf95-b03a-4959-a8cc-ccbfeb04df32)
 
 - **Scroll vertical en la lista de canales/vídeos**.
 - **Compatibilidad multiplataforma**: Windows, Gnu/Linux.
