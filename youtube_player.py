@@ -16,7 +16,7 @@ class YouTubeHandler:
         if url:
             self.play_youtube_url(url)
 
-    def play_youtube_url(self, url, force_pulse=False, show_progress=False):
+    def play_youtube_url(self, url, force_pulse=False, show_progress=False, is_sequential=False):
         """Reproduce un vídeo de YouTube usando VLC si es posible. Permite forzar salida de audio pulse."""
         try:
             # Exportar cookies automáticamente antes de reproducir (ignorar error si falta browser_cookie3)

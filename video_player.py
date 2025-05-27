@@ -82,6 +82,10 @@ class VideoPlayer:
         self.setup_mouse_tracking()
         self.setup_keyboard_shortcuts()
 
+        # Nuevas variables para reproducción secuencial
+        self.is_sequential_playback = False
+        self.current_playlist_index = None
+
     def create_window(self):
         self.window = tk.Toplevel()
         self.window.title('Reproductor Vídeos')
@@ -417,11 +421,38 @@ class VideoPlayer:
                     "--sout-mux-caching=3000",
                     "--no-ts-trust-pcr"
                 )
-            if self.player is None:
-                self.player = self.instance.media_player_new()
+            # Si el reproductor está reproduciendo, detenerlo y liberarlo
+            if self.player:
+                try:
+                    if self.player.is_playing():
+                        self.player.stop()
+                    # Desconectar eventos anteriores antes de liberar el reproductor
+                    try:
+                        event_manager = self.player.event_manager()
+                        event_manager.event_detach(vlc.EventType.MediaPlayerEndReached)
+                    except:
+                        pass
+                    self.player.release()
+                except:
+                    pass
+                self.player = None
+
+            # Crear un nuevo reproductor
+            self.player = self.instance.media_player_new()
+            
+            # Configurar el administrador de eventos si es una reproducción secuencial
+            if self.is_sequential_playback:
+                self.setup_event_manager()
+                
             self.show_controls_and_menu()
             if "youtube.com" in url or "youtu.be" in url:
-                self.youtube_handler.play_youtube_url(url)
+                # Pasar el flag de reproducción secuencial al youtube_handler
+                self.youtube_handler.play_youtube_url(
+                    url, 
+                    force_pulse=True, 
+                    show_progress=True,
+                    is_sequential=self.is_sequential_playback
+                )
                 return
             try:
                 if self.player.is_playing():
@@ -452,7 +483,7 @@ class VideoPlayer:
                 print(traceback.format_exc())
                 messagebox.showerror("Error de reproducción", f"No se pudo reproducir el canal '{name}'.\n\nError: {e}")
 
-    def play_video_url(self, url, force_pulse=False, show_progress=False):
+    def play_video_url(self, url, force_pulse=False, show_progress=False, is_sequential=False):
         try:
             if self.player is None:
                 self.player = self.instance.media_player_new()
@@ -463,10 +494,12 @@ class VideoPlayer:
                 self.show_youtube_progress_bar()
             else:
                 self.hide_progress_bar()
-            media = self.instance.media_new(
-                url,
-                "input-repeat=1"
-            )
+            
+            # Configurar event manager si es reproducción secuencial
+            if is_sequential and not hasattr(self, '_current_event_manager'):
+                self.setup_event_manager()
+            
+            media = self.instance.media_new(url)
             media.add_option('network-caching=3000')
             media.add_option('live-caching=3000')
             media.add_option('file-caching=3000')
@@ -734,6 +767,13 @@ class VideoPlayer:
                 context_menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
             
             context_menu.add_command(label="Reproducir", command=self.play_selected)
+            # Añadir opción "Reproducir desde aquí" solo si es una lista de YouTube
+            name, url = channel
+            if 'youtube.com' in url or 'youtu.be' in url:
+                context_menu.add_command(
+                    label="Reproducir desde aquí",
+                    command=lambda idx=index: self.play_from_here(idx)
+                )
             # Añadir opción de descarga
             context_menu.add_command(label="Descargar", command=lambda idx=index: self.download_channel(idx)) 
             context_menu.tk_popup(event.x_root, event.y_root)
@@ -885,11 +925,17 @@ class VideoPlayer:
             try:
                 if self.player.is_playing():
                     self.player.stop()
+                self.player.release()
+                self.player = None
                 # Ocultar la barra de progreso
                 self.hide_progress_bar()
-            except Exception:
+            except Exception as e:
+                print(f"Error al detener la reproducción: {e}")
                 pass
         self.stop_update_time()
+        # Resetear el estado de reproducción secuencial
+        self.is_sequential_playback = False
+        self.current_playlist_index = None
 
     def show_youtube_progress_bar(self):
         """Muestra y configura la barra de progreso para videos de YouTube."""
@@ -967,3 +1013,158 @@ class VideoPlayer:
         """Manejador para el atajo de teclado Ctrl+D"""
         self.remove_from_favorites()
         return "break"  # Evita que el evento se propague
+
+    def play_from_here(self, start_index):
+        """Reproduce todos los videos de la lista desde el índice especificado."""
+        print(f"Iniciando reproducción secuencial desde índice {start_index}")
+        
+        # Detener cualquier reproducción actual y limpiar el estado
+        self.stop()
+        
+        # Esperar un momento antes de iniciar la nueva reproducción
+        def start_playback():
+            print("Configurando reproducción secuencial")
+            self.is_sequential_playback = True
+            self.current_playlist_index = start_index
+            self.select_and_play_channel(start_index)
+            
+        # Usar delay para asegurar que todo se detuvo correctamente
+        self.window.after(500, start_playback)
+
+    def select_and_play_channel(self, index):
+        """Selecciona y reproduce un canal del listado."""
+        try:
+            print(f"\n=== Seleccionando y reproduciendo canal {index} ===")
+            if 0 <= index < len(self.channels):
+                # Detener cualquier reproducción actual
+                if self.player:
+                    if self.player.is_playing():
+                        print("Deteniendo reproducción actual")
+                        self.player.stop()
+                    print("Liberando reproductor actual")
+                    self.player.release()
+                    self.player = None
+                
+                # Actualizar selección visual
+                print("Actualizando selección visual")
+                self.channels_listbox.selection_clear(0, tk.END)
+                self.channels_listbox.selection_set(index)
+                self.channels_listbox.activate(index)
+                self.channels_listbox.see(index)
+                
+                # Crear nuevo reproductor y reproducir
+                print("Iniciando reproducción")
+                self.play_channel(index)
+            else:
+                print(f"Índice {index} fuera de rango (max: {len(self.channels)-1})")
+        except Exception as e:
+            print(f"Error en select_and_play_channel: {e}")
+            import traceback
+            print(traceback.format_exc())
+
+    def _safe_on_media_end(self, event):
+        """Cuando termina un vídeo, reproduce el siguiente si estamos en modo secuencial."""
+        try:
+            print("\n=== MediaPlayerEndReached ===")
+            print(f"Estado actual: {self.player.get_state() if self.player else 'No hay reproductor'}")
+            print(f"Reproducción secuencial: {self.is_sequential_playback}")
+            print(f"Índice actual: {self.current_playlist_index}")
+            
+            if not self.player:
+                print("No hay reproductor activo")
+                return
+                
+            if not self.is_sequential_playback:
+                print("Reproducción secuencial desactivada")
+                return
+                
+            if self.current_playlist_index is None:
+                print("Índice actual es None")
+                return
+                
+            # Obtener el índice actual y el siguiente
+            current_index = self.current_playlist_index
+            next_index = current_index + 1
+            
+            print(f"\nProcesando transición de vídeo {current_index} -> {next_index}")
+            
+            # Verificar si hay más videos por reproducir
+            if next_index < len(self.channels):
+                print(f"Preparando reproducción del vídeo {next_index}")
+                
+                def play_next():
+                    try:
+                        print("\n=== Iniciando reproducción del siguiente vídeo ===")
+                        # Detener reproducción actual
+                        if self.player and self.player.is_playing():
+                            self.player.stop()
+                            print("Reproducción anterior detenida")
+                            
+                        # Limpiar event manager
+                        if hasattr(self, '_current_event_manager') and self._current_event_manager:
+                            try:
+                                self._current_event_manager.event_detach(vlc.EventType.MediaPlayerEndReached)
+                                self._current_event_manager = None
+                                print("Event manager limpiado")
+                            except Exception as e:
+                                print(f"Error al limpiar event manager: {e}")
+                        
+                        # Actualizar índice
+                        self.current_playlist_index = next_index
+                        print(f"Índice actualizado a {next_index}")
+                        
+                        # Reproducir siguiente vídeo
+                        self.select_and_play_channel(next_index)
+                        print("Reproducción iniciada")
+                    except Exception as e:
+                        print(f"Error al reproducir siguiente vídeo: {e}")
+                
+                # Usar delay más largo para asegurar que el vídeo anterior se ha detenido
+                self.window.after(500, play_next)
+                print("Reproducción programada con delay de 500ms")
+            else:
+                print("\nFin de la playlist alcanzado")
+                self.is_sequential_playback = False
+                self.current_playlist_index = None
+                self._current_event_manager = None
+                
+        except Exception as e:
+            print(f"Error en _safe_on_media_end: {e}")
+            import traceback
+            print(traceback.format_exc())
+
+    def setup_event_manager(self):
+        """Configura el event manager de VLC para manejar el fin de reproducción."""
+        if not self.player:
+            print("No hay reproductor disponible para configurar eventos")
+            return
+
+        print("Configurando event manager")
+
+        # Limpiar cualquier event manager existente
+        if hasattr(self, '_current_event_manager') and self._current_event_manager:
+            try:
+                self._current_event_manager.event_detach(vlc.EventType.MediaPlayerEndReached)
+                self._current_event_manager = None
+                print("Event manager anterior limpiado")
+            except Exception as e:
+                print(f"Error al limpiar event manager anterior: {e}")
+
+        try:
+            # Crear un nuevo event manager
+            event_manager = self.player.event_manager()
+            
+            # Configurar el callback para el fin de reproducción
+            event_manager.event_attach(vlc.EventType.MediaPlayerEndReached, self._safe_on_media_end)
+            
+            # Guardar la referencia al event manager actual
+            self._current_event_manager = event_manager
+            
+            print(f"Event manager configurado exitosamente para índice {self.current_playlist_index}")
+
+        except Exception as e:
+            print(f"Error al configurar event manager: {e}")
+            self.is_sequential_playback = False
+            self.current_playlist_index = None
+            self._current_event_manager = None
+
