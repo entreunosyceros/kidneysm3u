@@ -28,6 +28,7 @@ Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, re
 - **Manejo de errores y dependencias**.
 - **Soporte para cookies de navegador en YouTube** (para vídeos restringidos).
 - **Monitor de uso de CPU** (opcional).
+- **Opción Descargas**: Pequeño programa para descargar paquetes desde URL. Compatible con formatos multimedia, de imagen, de texto, etc ...
 
 ## Requisitos
 

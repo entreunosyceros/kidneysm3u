@@ -20,6 +20,10 @@ class M3UProcessor:
         self.style = ThemedStyle(self.root)
         self.style.set_theme("arc")
         
+        # Importar el gestor de descargas
+        from descargas import DownloadManager
+        self.download_manager = None
+        
         # Variables
         self.input_file = tk.StringVar()
         self.output_file = tk.StringVar()
@@ -43,6 +47,7 @@ class M3UProcessor:
         # Menú Archivo
         archivo_menu = tk.Menu(menubar, tearoff=0)
         archivo_menu.add_command(label="Cambiar Tema", command=self.toggle_tema)
+        archivo_menu.add_command(label="Descargar", command=self.open_download_manager)
         archivo_menu.add_separator()
         archivo_menu.add_command(label="Salir", command=self.root.quit)
         
@@ -370,6 +375,15 @@ class M3UProcessor:
                     menu.add_command(label=nombre, command=lambda u=url: webbrowser.open(u))
         except:
             pass
+
+    def open_download_manager(self):
+        """Abre la ventana del gestor de descargas"""
+        from descargas import DownloadManager
+        self.download_manager = DownloadManager(self.root)
+        self.download_manager.window.transient(self.root)
+        self.download_manager.window.grab_set()
+        self.root.wait_window(self.download_manager.window)
+        self.download_manager = None
 
 if __name__ == '__main__':
     root = TkinterDnD.Tk() 
