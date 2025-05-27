@@ -12,6 +12,9 @@ Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, re
 
 - **Carga y filtrado eficiente de listas M3U/M3U8 locales o por URL** (con soporte para archivos grandes y barra de búsqueda). Se pueden añadir nuevas búsquedas y sustituir o añadir el filtrado a un archivo. Si se añade la nueva búsqueda, esta se añadirá al final del archivo existente. 
 - **Reproducción fluida de canales IPTV y vídeos directos** usando VLC embebido.
+
+  ![busqueda-listas-youtube](https://github.com/user-attachments/assets/b52c86a2-499a-430f-b14d-41f478ec55c6)
+
 - **Reproducción de vídeos de YouTube** (URL directa, búsqueda, playlists, canales) con selección automática del mejor stream compatible (audio+vídeo juntos, sin DASH/HLS).
 - **Búsqueda avanzada en YouTube**: permite buscar vídeos, listas de reproducción o canales, y reproducirlos o cargarlos en la lista. Barra de progreso de búsqueda.
 
