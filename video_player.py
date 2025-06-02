@@ -277,11 +277,34 @@ class VideoPlayer:
 
     def on_mouse_leave(self, event=None):
         """Cuando el ratón sale de la zona de video o controles"""
-        if self.is_fullscreen:
+        # Verificar que la ventana y los widgets aún existen
+        if not self.window or not self.is_fullscreen:
+            return
+            
+        try:
             # Solo ocultar si el ratón no está sobre los controles o el video
-            if not (self.video_frame.winfo_containing(event.x_root, event.y_root) or 
-                   self.controls_frame.winfo_containing(event.x_root, event.y_root)):
-                self.hide_controls_and_menu()
+            if self.video_frame.winfo_exists() and self.controls_frame.winfo_exists():
+                mouse_over_video = False
+                mouse_over_controls = False
+                
+                try:
+                    containing_widget = self.video_frame.winfo_containing(event.x_root, event.y_root)
+                    if containing_widget:
+                        mouse_over_video = True
+                except (tk.TclError, KeyError):
+                    pass
+                    
+                try:
+                    containing_widget = self.controls_frame.winfo_containing(event.x_root, event.y_root)
+                    if containing_widget:
+                        mouse_over_controls = True
+                except (tk.TclError, KeyError):
+                    pass
+                    
+                if not (mouse_over_video or mouse_over_controls):
+                    self.hide_controls_and_menu()
+        except Exception as e:
+            print(f"Error en on_mouse_leave: {e}")
         
     def _update_controls(self):
         """Actualiza los controles con un retraso para evitar actualizaciones frecuentes"""
@@ -618,8 +641,26 @@ class VideoPlayer:
     def close(self):
         """Cierra la ventana y libera recursos."""
         try:
+            # Desactivar los manejadores de eventos
+            if hasattr(self, 'video_frame') and self.video_frame:
+                try:
+                    self.video_frame.unbind('<Enter>')
+                    self.video_frame.unbind('<Leave>')
+                except tk.TclError:
+                    pass
+                    
+            if hasattr(self, 'controls_frame') and self.controls_frame:
+                try:
+                    self.controls_frame.unbind('<Enter>')
+                    self.controls_frame.unbind('<Leave>')
+                except tk.TclError:
+                    pass
+
+            # Guardar datos y limpiar temporizadores
             self.save_favorites()
             self.stop_update_time()  # Detener temporizador de actualización
+
+            # Liberar recursos de VLC
             if self.player:
                 try:
                     if self.player.is_playing():
@@ -629,6 +670,7 @@ class VideoPlayer:
                     pass
                 finally:
                     self.player = None
+
             if self.instance:
                 try:
                     self.instance.release()
@@ -636,6 +678,8 @@ class VideoPlayer:
                     pass
                 finally:
                     self.instance = None
+
+            # Destruir la ventana y limpiar referencias
             if self.window:
                 try:
                     self.window.destroy()
@@ -643,6 +687,11 @@ class VideoPlayer:
                     pass
                 finally:
                     self.window = None
+                    self.video_frame = None
+                    self.controls_frame = None
+                    self.channels_frame = None
+                    self.sizer = None
+                    
         except Exception as e:
             print(f"Error durante el cierre del reproductor: {e}")
 
