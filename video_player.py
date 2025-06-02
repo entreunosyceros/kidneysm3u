@@ -97,9 +97,18 @@ class VideoPlayer:
         self.main_frame = ttk.Frame(self.window)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Frame de canales
-        self.channels_frame = ttk.Frame(self.main_frame)
+        # Frame de canales con ancho inicial
+        self.channels_frame = ttk.Frame(self.main_frame, width=300)  # Ancho inicial de 300 píxeles
+        self.channels_frame.pack_propagate(False)  # Evita que el frame se ajuste automáticamente
         self.channels_frame.pack(side=tk.LEFT, fill=tk.Y)
+        
+        # Estilo para el sizer
+        style = ttk.Style()
+        style.configure('Sizer.TFrame', background='gray75')
+        
+        # Frame separador (sizer)
+        self.sizer = ttk.Frame(self.main_frame, width=5, cursor='sb_h_double_arrow', style='Sizer.TFrame')
+        self.sizer.pack(side=tk.LEFT, fill=tk.Y)
 
         # Botones de favoritos
         favorites_buttons_frame = ttk.Frame(self.channels_frame)
@@ -227,13 +236,58 @@ class VideoPlayer:
         self.channels_listbox.bind('<Control-d>', self.handle_remove_favorite)
 
     def setup_mouse_tracking(self):
-        for widget in [self.window, self.video_frame, self.controls_frame, self.player_frame]:
-            widget.bind('<Motion>', self.on_mouse_move)
+        # Eventos para mostrar/ocultar controles
+        self.video_frame.bind('<Enter>', self.on_mouse_enter)
+        self.video_frame.bind('<Leave>', self.on_mouse_leave)
+        self.controls_frame.bind('<Enter>', self.on_mouse_enter)
+        self.controls_frame.bind('<Leave>', self.on_mouse_leave)
+        
+        # Eventos para el sizer
+        self.sizer = ttk.Frame(self.main_frame, width=5, cursor='sb_h_double_arrow')
+        self.sizer.pack(side=tk.LEFT, fill=tk.Y)
+        self.sizer.bind('<Button-1>', self.start_resize)
+        self.sizer.bind('<B1-Motion>', self.do_resize)
+        self.sizer.bind('<ButtonRelease-1>', self.stop_resize)
+        self.resize_active = False
+        self.last_x = 0
 
-    def on_mouse_move(self, event=None):
+    def start_resize(self, event):
+        self.resize_active = True
+        self.last_x = event.x_root
+        
+    def do_resize(self, event):
+        if not self.resize_active:
+            return
+        delta = event.x_root - self.last_x
+        new_width = self.channels_frame.winfo_width() + delta
+        
+        # Limitar el ancho mínimo y máximo
+        if 200 <= new_width <= 600:
+            self.channels_frame.configure(width=new_width)
+        self.last_x = event.x_root
+
+    def stop_resize(self, event):
+        self.resize_active = False
+
+    def on_mouse_enter(self, event=None):
+        """Cuando el ratón entra en la zona de video o controles"""
         if self.is_fullscreen:
             self.show_controls()
             self.reset_hide_controls_timer()
+
+    def on_mouse_leave(self, event=None):
+        """Cuando el ratón sale de la zona de video o controles"""
+        if self.is_fullscreen:
+            # Solo ocultar si el ratón no está sobre los controles o el video
+            if not (self.video_frame.winfo_containing(event.x_root, event.y_root) or 
+                   self.controls_frame.winfo_containing(event.x_root, event.y_root)):
+                self.hide_controls_and_menu()
+        
+    def _update_controls(self):
+        """Actualiza los controles con un retraso para evitar actualizaciones frecuentes"""
+        self.show_controls()
+        self.reset_hide_controls_timer()
+        self.mouse_move_timer = None
 
     def show_controls(self):
         if not self.controls_visible:
@@ -265,8 +319,10 @@ class VideoPlayer:
     def toggle_playlist(self):
         if self.channels_frame_visible:
             self.channels_frame.pack_forget()
+            self.sizer.pack_forget()  # Ocultar también el sizer
         else:
             self.channels_frame.pack(side=tk.LEFT, fill=tk.Y)
+            self.sizer.pack(side=tk.LEFT, fill=tk.Y)  # Mostrar también el sizer
         self.channels_frame_visible = not self.channels_frame_visible
         self.window.update_idletasks()
 
@@ -625,14 +681,16 @@ class VideoPlayer:
         self.window.config(menu="")  # Cambiado de None a ""
         if self.channels_frame_visible:
             self.channels_frame.pack_forget()
+            self.sizer.pack_forget()  # Ocultar también el sizer
         self.reset_hide_controls_timer()
 
     def exit_fullscreen(self):
         self.window.attributes('-fullscreen', False)
         self.is_fullscreen = False
         self.window.config(menu=self.menubar)
-        if not self.channels_frame_visible:
+        if self.channels_frame_visible:
             self.channels_frame.pack(side=tk.LEFT, fill=tk.Y)
+            self.sizer.pack(side=tk.LEFT, fill=tk.Y)  # Mostrar también el sizer
         if self.hide_controls_timer:
             self.window.after_cancel(self.hide_controls_timer)
             self.hide_controls_timer = None

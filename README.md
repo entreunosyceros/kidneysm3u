@@ -190,7 +190,7 @@ Si tienes instalado el módulo `psutil`, puedes activar el monitor de uso de CPU
 - En Linux, asegúrate de tener los paquetes de VLC y python-vlc correctamente instalados.
 - Si el audio de YouTube no funciona, revisa la salida de audio del sistema y prueba con pulse/alsa.
 - Al reproducir canales de IPTV, puede retrasarse un poco el inicio debido a la calidad de la señal del servidor al que se conecta.
-- Si se está reproduciendo un vídeo, y se mueve el ratón por encima de la pantalla, por el momento parpadea. Esto deja de suceder si no mueves el ratón por encima de la pantalla del reproductor.
+
 
 ## Licencia
 
