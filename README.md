@@ -22,6 +22,7 @@ Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, re
 
 - **Gestión de favoritos**: añade, elimina y visualiza canales favoritos.
 - **Descarga de vídeos** de YouTube o enlaces directos.
+- **Opciones para descargar** de YouTube vídeos con audio o solo el audio de los vídeos. Para ello es necesario tener instalado ffmpeg en el equipo y añadido al PATH correctamente para que se pueda extraer el audio de los vídeos.
 - **Controles multimedia completos**: play/pause, stop, avance/retroceso, volumen, mute, pantalla completa.
 
 ![reproduccion-youtube](https://github.com/user-attachments/assets/bc84bf95-b03a-4959-a8cc-ccbfeb04df32)
@@ -41,6 +42,7 @@ Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, re
 - [tkinter](https://docs.python.org/3/library/tkinter.html) (incluido en la mayoría de instalaciones de Python)
 - [psutil](https://pypi.org/project/psutil/) (opcional, para monitor de CPU)
 - [browser-cookie3](https://pypi.org/project/browser-cookie3/) (opcional, para cookies de YouTube)
+- [ffmpeg](https://ffmpeg.org/download.html) (opcional, para descargar solo el audio de los vídeos de YouTube)
 
 Instala las dependencias con:
 

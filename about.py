@@ -45,7 +45,7 @@ def show_about(root):
     description = """Esta aplicación permite procesar y filtrar archivos M3U, 
     comúnmente utilizados para listas de reproducción de medios. 
     Permite filtrar canales específicos y reproducirlos 
-    directamente desde la interfaz. También permite reproducir y buscar vídeos además de listas de Youtube."""
+    directamente desde la interfaz. También permite descargar, reproducir y buscar vídeos además de listas y canales de Youtube."""
     
     desc_label = ttk.Label(main_frame, text=description, wraplength=400, 
                          justify='center')

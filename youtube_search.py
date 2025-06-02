@@ -6,6 +6,7 @@ import webbrowser
 import threading
 import os
 import re
+import subprocess
 from datetime import datetime, timedelta
 
 class YouTubeSearchDialog:
@@ -78,8 +79,8 @@ class YouTubeSearchDialog:
             width=15, state="readonly"
         )
         sort_combobox.pack(side=tk.LEFT)
-        
-        # Spinbox para seleccionar el número de resultados
+
+        # Frame para la lista de resultados
         results_frame = ttk.Frame(main_frame)
         results_frame.pack(fill=tk.X, pady=(0, 10))
         
@@ -98,12 +99,12 @@ class YouTubeSearchDialog:
         scrollbar = ttk.Scrollbar(results_list_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Listbox con resultados
+        # Listbox
         self.results_listbox = tk.Listbox(results_list_frame, yscrollcommand=scrollbar.set, font=("Arial", 10))
         self.results_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=self.results_listbox.yview)
         
-        # Configurar el menú contextual para la lista de resultados
+        # Configurar el menú contextual
         self.results_listbox.bind('<Double-Button-1>', self.play_selected)
         self.results_listbox.bind('<Button-3>', self.show_context_menu)
 
@@ -111,7 +112,6 @@ class YouTubeSearchDialog:
         self.progress_frame = ttk.Frame(main_frame)
         self.progress_frame.pack(fill=tk.X, pady=(5, 10))
         self.progress_bar = ttk.Progressbar(self.progress_frame, mode='indeterminate')
-        # La barra de progreso inicialmente está oculta
         
         # Frame de botones
         button_frame = ttk.Frame(main_frame)
@@ -120,15 +120,42 @@ class YouTubeSearchDialog:
         play_btn = ttk.Button(button_frame, text="Reproducir", command=self.play_selected)
         play_btn.pack(side=tk.LEFT, padx=(0, 5))
         
-        download_btn = ttk.Button(button_frame, text="Descargar", command=self.download_selected)
-        download_btn.pack(side=tk.LEFT, padx=5)
+        download_video_btn = ttk.Button(button_frame, text="Descargar Vídeo+Audio", 
+                                      command=lambda: self.download_selected(False))
+        download_video_btn.pack(side=tk.LEFT, padx=5)
+        
+        download_audio_btn = ttk.Button(button_frame, text="Descargar SOLO Audio", 
+                                      command=lambda: self.download_selected(True))
+        download_audio_btn.pack(side=tk.LEFT, padx=5)
         
         close_btn = ttk.Button(button_frame, text="Cerrar", command=self.window.destroy)
         close_btn.pack(side=tk.RIGHT)
         
         self.results = []
         self.result_types = []
-        self.result_details = []  # Para almacenar detalles adicionales como duración
+        self.result_details = []
+
+    def format_duration(self, seconds):
+        """Formatea la duración en segundos a formato HH:MM:SS o MM:SS"""
+        if not seconds:
+            return ""
+        
+        try:
+            seconds = int(seconds)
+            if seconds < 3600:  # Menos de una hora
+                return f"{seconds // 60}:{seconds % 60:02d}"
+            else:
+                return f"{seconds // 3600}:{(seconds % 3600) // 60:02d}:{seconds % 60:02d}"
+        except:
+            return ""
+
+    def check_ffmpeg(self):
+        """Verifica si FFmpeg está instalado en el sistema."""
+        try:
+            result = subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return result.returncode == 0
+        except FileNotFoundError:
+            return False
 
     def search(self):
         query = self.search_var.get().strip()
@@ -141,11 +168,9 @@ class YouTubeSearchDialog:
         self.result_types = []
         self.result_details = []
         
-        # Mostrar la barra de progreso
         self.progress_bar.pack(fill=tk.X, expand=True)
-        self.progress_bar.start(10)  # Iniciar la animación
+        self.progress_bar.start(10)
         
-        # Aplicar filtros a la consulta
         search_query = query
         
         # Filtro de fecha
@@ -170,7 +195,7 @@ class YouTubeSearchDialog:
         elif duration_filter == "Largo (>20 min)":
             duration_query = " long"
         
-        # Aplicar filtros a la consulta según el tipo
+        # Aplicar filtros según el tipo
         tipo = self.type_var.get()
         if tipo == "Vídeos":
             search_query += date_query + duration_query
@@ -181,13 +206,12 @@ class YouTubeSearchDialog:
             try:
                 max_results = min(max(self.results_count.get(), 1), 100)
                 ydl_opts = {
-                    'quiet': True,  # Silenciar la salida de depuración
+                    'quiet': True,
                     'extract_flat': True,
                     'skip_download': True,
                     'force_generic_extractor': False,
                 }
 
-                # Construir la URL de búsqueda
                 if tipo == "Listas de reproducción":
                     search_url = f"https://www.youtube.com/results?search_query={search_query.replace(' ', '+')}&sp=EL"
                 else:
@@ -201,7 +225,6 @@ class YouTubeSearchDialog:
                     def update_ui():
                         nonlocal results_count, found_playlist
                         for entry in info.get('entries', []):
-                            # Limitar el número de resultados
                             if results_count >= max_results:
                                 break
                                 
@@ -210,7 +233,6 @@ class YouTubeSearchDialog:
                             duration_str = self.format_duration(duration) if duration else ""
                             
                             if tipo == "Listas de reproducción":
-                                # Para búsquedas directas de playlist, cada entrada debería ser una playlist
                                 playlist_id = None
                                 if entry.get('url') and 'list=' in entry.get('url'):
                                     playlist_id = re.search(r'list=([^&]+)', entry.get('url'))
@@ -228,7 +250,7 @@ class YouTubeSearchDialog:
                                         found_playlist = True
                                         results_count += 1
                             elif tipo == "Vídeos":
-                                if entry.get('id'):  # Solo procesar si tiene ID de video
+                                if entry.get('id'):
                                     url = f"https://www.youtube.com/watch?v={entry.get('id')}"
                                     self.result_types.append("video")
                                     self.results.append(url)
@@ -259,39 +281,20 @@ class YouTubeSearchDialog:
                         if tipo == "Listas de reproducción" and not found_playlist:
                             messagebox.showinfo("Info", "No se encontraron listas de reproducción con ese nombre.")
 
-                        # Ocultar y detener la barra de progreso
                         self.progress_bar.stop()
                         self.progress_bar.pack_forget()
-                        
-                    # Actualizar la UI en el hilo principal
+                    
                     self.window.after(0, update_ui)
                     
             except Exception as e:
                 def show_error():
                     messagebox.showerror("Error", f"No se pudo realizar la búsqueda: {e}")
-                    # Ocultar y detener la barra de progreso
                     self.progress_bar.stop()
                     self.progress_bar.pack_forget()
                 
-                # Mostrar el error en el hilo principal
                 self.window.after(0, show_error)
 
-        # Iniciar la búsqueda en un hilo separado
         threading.Thread(target=perform_search, daemon=True).start()
-
-    def format_duration(self, seconds):
-        """Formatea la duración en segundos a formato HH:MM:SS o MM:SS"""
-        if not seconds:
-            return ""
-        
-        try:
-            seconds = int(seconds)
-            if seconds < 3600:  # Menos de una hora
-                return f"{seconds // 60}:{seconds % 60:02d}"
-            else:
-                return f"{seconds // 3600}:{(seconds % 3600) // 60:02d}:{seconds % 60:02d}"
-        except:
-            return ""
 
     def show_context_menu(self, event):
         """Muestra el menú contextual al hacer clic derecho en un elemento"""
@@ -306,18 +309,19 @@ class YouTubeSearchDialog:
             
             if tipo == "video":
                 context_menu.add_command(label="Reproducir", command=self.play_selected)
-                context_menu.add_command(label="Descargar", command=self.download_selected)
+                context_menu.add_command(label="Descargar vídeo", command=lambda: self.download_selected(False))
+                context_menu.add_command(label="Descargar audio", command=lambda: self.download_selected(True))
                 context_menu.add_separator()
                 context_menu.add_command(label="Abrir en navegador", 
-                                        command=lambda: webbrowser.open_new(self.results[selection]))
+                                       command=lambda: webbrowser.open_new(self.results[selection]))
             elif tipo == "playlist":
                 context_menu.add_command(label="Cargar lista", command=self.play_selected)
                 context_menu.add_separator()
                 context_menu.add_command(label="Abrir en navegador", 
-                                        command=lambda: webbrowser.open_new(self.results[selection]))
+                                       command=lambda: webbrowser.open_new(self.results[selection]))
             elif tipo == "channel":
                 context_menu.add_command(label="Abrir en navegador", 
-                                        command=lambda: webbrowser.open_new(self.results[selection]))
+                                       command=lambda: webbrowser.open_new(self.results[selection]))
             
             context_menu.tk_popup(event.x_root, event.y_root)
 
@@ -337,8 +341,12 @@ class YouTubeSearchDialog:
                 webbrowser.open_new(url)
                 self.window.destroy()
 
-    def download_selected(self):
-        """Descarga el vídeo seleccionado"""
+    def download_selected(self, audio_only=False):
+        """Descarga el vídeo seleccionado o solo su audio"""
+        if audio_only and not self.check_ffmpeg():
+            messagebox.showerror("Error", "FFmpeg no está instalado. Para descargar audio necesitas instalar FFmpeg:\n\nEn Ubuntu/Debian: sudo apt install ffmpeg\nEn Fedora: sudo dnf install ffmpeg")
+            return
+
         selection = self.results_listbox.curselection()
         if not selection:
             messagebox.showinfo("Info", "Selecciona un vídeo para descargar.")
@@ -352,40 +360,41 @@ class YouTubeSearchDialog:
             messagebox.showinfo("Info", "Solo se pueden descargar vídeos individuales.")
             return
         
-        # Obtener información del vídeo
         try:
             title = self.result_details[index]['title']
-            # Limpiar el título para usarlo como nombre de archivo
             safe_title = re.sub(r'[\\/*?:"<>|]', "", title)
             
-            # Pedir al usuario dónde guardar el archivo
+            file_types = [("Archivos MP3", "*.mp3")] if audio_only else [("Archivos MP4", "*.mp4")]
+            default_ext = ".mp3" if audio_only else ".mp4"
+            
             filepath = filedialog.asksaveasfilename(
-                title="Guardar vídeo",
-                initialfile=safe_title,
-                filetypes=[("Todos los archivos", "*.*")]
+                title="Guardar " + ("audio" if audio_only else "vídeo"),
+                initialfile=safe_title + default_ext,
+                defaultextension=default_ext,
+                filetypes=file_types + [("Todos los archivos", "*.*")]
             )
             
             if not filepath:
-                return  # Usuario canceló
+                return
                 
-            # Iniciar la descarga en un hilo separado
             download_thread = threading.Thread(
                 target=self._execute_download, 
-                args=(url, filepath, title)
+                args=(url, filepath, title, audio_only)
             )
             download_thread.start()
             
+            tipo_descarga = "audio" if audio_only else "vídeo"
             messagebox.showinfo("Descarga iniciada", 
-                               f"Iniciando descarga de '{title}'. Se te notificará cuando termine.")
+                              f"Iniciando descarga del {tipo_descarga} de '{title}'. Se te notificará cuando termine.")
                 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo iniciar la descarga: {str(e)}")
 
-    def _execute_download(self, url, filepath, title):
+    def _execute_download(self, url, filepath, title, audio_only=False):
         """Ejecuta la descarga del vídeo de YouTube."""
         try:
             ydl_opts = {
-                'format': 'best',  # Mejor formato disponible
+                'format': 'bestaudio/best' if audio_only else 'best',
                 'outtmpl': filepath,
                 'quiet': False,
                 'noplaylist': True,
@@ -395,17 +404,24 @@ class YouTubeSearchDialog:
                 }
             }
             
+            if audio_only:
+                ydl_opts.update({
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                })
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
                 
-            # Notificar al usuario en el hilo principal
             self.window.after(0, lambda: messagebox.showinfo(
                 "Descarga completada", 
                 f"'{title}' descargado en:\n{filepath}"
             ))
             
         except Exception as e:
-            # Capturar el error y mostrarlo
             error_message = str(e)
             self.window.after(0, lambda msg=error_message: messagebox.showerror(
                 "Error de descarga", 
@@ -415,12 +431,11 @@ class YouTubeSearchDialog:
                 f"3. Comprueba tu conexión a internet"
             ))
             
-            # Intentar eliminar archivo parcial si existe
             if os.path.exists(filepath):
                 try:
                     os.remove(filepath)
                 except OSError:
-                    pass  # No hacer nada si no se puede borrar
+                    pass
 
     def load_playlist_videos(self, playlist_url):
         try:
@@ -436,14 +451,14 @@ class YouTubeSearchDialog:
                 if not videos:
                     messagebox.showinfo("Info", "No se encontraron vídeos en la playlist.")
                     return
-                # Prepara la lista de canales (nombre, url)
                 channels = []
                 for video in videos:
                     title = video.get('title', 'Sin título')
                     video_url = f"https://www.youtube.com/watch?v={video.get('id')}"
                     channels.append((title, video_url))
-                # Llama al callback del reproductor para cargar los vídeos como canales
                 if self.load_playlist_callback:
                     self.load_playlist_callback(channels)
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo obtener la playlist: {e}")
+
+
