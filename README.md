@@ -13,7 +13,7 @@ Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, re
 - **Carga y filtrado eficiente de listas M3U/M3U8 locales o por URL** (con soporte para archivos grandes y barra de búsqueda). Se pueden añadir nuevas búsquedas y sustituir o añadir el filtrado a un archivo. Si se añade la nueva búsqueda, esta se añadirá al final del archivo existente. 
 - **Reproducción fluida de canales IPTV y vídeos directos** usando VLC embebido.
 
-  ![busqueda-listas-youtube](https://github.com/user-attachments/assets/b52c86a2-499a-430f-b14d-41f478ec55c6)
+![descarga-youtube](https://github.com/user-attachments/assets/5a3592f5-3ef4-46a1-a996-be542638515e)
 
 - **Reproducción de vídeos de YouTube** (URL directa, búsqueda, playlists, canales) con selección automática del mejor stream compatible (audio+vídeo juntos, sin DASH/HLS).
 - **Búsqueda avanzada en YouTube**: permite buscar vídeos, listas de reproducción o canales, y reproducirlos o cargarlos en la lista. Barra de progreso de búsqueda.
@@ -116,6 +116,9 @@ Todos los atajos de telcado y una explicación básica de los controladores del 
 - El sistema de favoritos se guarda en `favoritos.json` dentro de la carpeta del programa.
 - Los enlaces que se añadan al programa, también se guardaran en el archivo `enlaces.json` dentro de la carpeta del programa.
 - El soporte de cookies para YouTube es opcional, pero recomendable para vídeos restringidos.
+
+![icono_bandeja_sistema](https://github.com/user-attachments/assets/b18d710f-3f96-42ef-9032-2012f87216a3)
+
 - El icono de la bandeja del sistema sirve para saber que el programa está abierto. Pulsar la X en la ventana principal del programa, los minimiza a la bandeja del sistema. Para cerrar el programa hay que utilizar la opción `Salir` del menú principal.
 
 ## Ordenar listas M3U desde la interfaz gráfica
