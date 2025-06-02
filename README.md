@@ -74,7 +74,8 @@ python3 run_app.py
    ```bash
    python main.py
    ```
-   o
+   o si quieres que se cree el entorno virtual, se instalen las dependencias automáticamente y se ejecute el programa en el entorno virtual, basta con ejecutar: 
+
    ```bash
    python run_app.py
    ```
@@ -115,6 +116,7 @@ Todos los atajos de telcado y una explicación básica de los controladores del 
 - El sistema de favoritos se guarda en `favoritos.json` dentro de la carpeta del programa.
 - Los enlaces que se añadan al programa, también se guardaran en el archivo `enlaces.json` dentro de la carpeta del programa.
 - El soporte de cookies para YouTube es opcional, pero recomendable para vídeos restringidos.
+- El icono de la bandeja del sistema sirve para saber que el programa está abierto. Pulsar la X en la ventana principal del programa, los minimiza a la bandeja del sistema. Para cerrar el programa hay que utilizar la opción `Salir` del menú principal.
 
 ## Ordenar listas M3U desde la interfaz gráfica
 

@@ -13,3 +13,4 @@ ttkthemes
 pywebview
 tkinterweb
 browser-cookie3
+pystray

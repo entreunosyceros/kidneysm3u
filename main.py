@@ -9,6 +9,7 @@ from about import show_about
 from keyboard import show_keyboard_shortcuts
 from tkinterdnd2 import DND_FILES, TkinterDnD
 import webbrowser
+from bandejaSistema import IconoBandeja
 
 class M3UProcessor:
     def __init__(self, root):
@@ -40,6 +41,9 @@ class M3UProcessor:
         self.create_widgets()
         self.load_config()
         self.setup_drag_drop()
+        
+        # Inicializar el icono de la bandeja del sistema
+        self.icono_bandeja = IconoBandeja(self.root)
     
     def create_menu(self):
         menubar = tk.Menu(self.root)
