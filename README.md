@@ -30,7 +30,7 @@ Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, re
 - **Scroll vertical en la lista de canales/vídeos**.
 - **Compatibilidad multiplataforma**: Windows, Gnu/Linux.
 - **Manejo de errores y dependencias**.
-- **Soporte para cookies de navegador en YouTube** (para vídeos restringidos).
+- **Soporte para cookies de navegador en YouTube** (para vídeos). Es necesario estar logueado con tu cuenta de Youtube. Por el momento solo funciona con Firefox.
 - **Monitor de uso de CPU** (opcional).
 - **Opción Descargas**: Pequeño programa para descargar paquetes desde URL. Compatible con formatos multimedia, de imagen, de texto, etc ...
 
@@ -41,7 +41,7 @@ Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, re
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [tkinter](https://docs.python.org/3/library/tkinter.html) (incluido en la mayoría de instalaciones de Python)
 - [psutil](https://pypi.org/project/psutil/) (opcional, para monitor de CPU)
-- [browser-cookie3](https://pypi.org/project/browser-cookie3/) (opcional, para cookies de YouTube)
+- [browser-cookie3](https://pypi.org/project/browser-cookie3/) (para cookies de YouTube)
 - [ffmpeg](https://ffmpeg.org/download.html) (opcional, para descargar solo el audio de los vídeos de YouTube)
 
 Instala las dependencias con:
@@ -115,7 +115,7 @@ Todos los atajos de telcado y una explicación básica de los controladores del 
 - El filtrado y carga de listas M3U es eficiente y soporta archivos grandes. Lo he probado con una lista de más de dos millones de líneas con buenos resultados.
 - El sistema de favoritos se guarda en `favoritos.json` dentro de la carpeta del programa.
 - Los enlaces que se añadan al programa, también se guardaran en el archivo `enlaces.json` dentro de la carpeta del programa.
-- El soporte de cookies para YouTube es opcional, pero recomendable para vídeos restringidos.
+- El soporte de cookies para YouTube es necesario para los vídeos, ya que debes estar logueado con tu cuenta de YouTube para poder ver, buscar y descargar vídeos en esta plataforma.
 
 ![icono_bandeja_sistema](https://github.com/user-attachments/assets/b18d710f-3f96-42ef-9032-2012f87216a3)
 
