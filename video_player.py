@@ -767,15 +767,12 @@ class VideoPlayer:
                 context_menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
             
             context_menu.add_command(label="Reproducir", command=self.play_selected)
-            # Añadir opción "Reproducir desde aquí" solo si es una lista de YouTube
-            name, url = channel
-            if 'youtube.com' in url or 'youtu.be' in url:
-                context_menu.add_command(
-                    label="Reproducir desde aquí",
-                    command=lambda idx=index: self.play_from_here(idx)
-                )
             # Añadir opción de descarga
-            context_menu.add_command(label="Descargar", command=lambda idx=index: self.download_channel(idx)) 
+            context_menu.add_command(label="Descargar", command=lambda idx=index: self.download_channel(idx))
+            # Añadir opción de eliminar vídeo
+            context_menu.add_command(label="Eliminar vídeo", command=lambda idx=index: self.remove_channel(idx))
+            # Añadir opción de limpiar lista
+            context_menu.add_command(label="Limpiar lista", command=self.clear_channel_list)
             context_menu.tk_popup(event.x_root, event.y_root)
         except Exception as e:
              print(f"Error al mostrar menú contextual: {e}") # Mejor depuración
@@ -1167,4 +1164,23 @@ class VideoPlayer:
             self.is_sequential_playback = False
             self.current_playlist_index = None
             self._current_event_manager = None
+
+    def remove_channel(self, index):
+        """Elimina un canal específico de la lista."""
+        try:
+            if 0 <= index < len(self.channels):
+                del self.channels[index]
+                del self.all_channels[index]
+                self.channels_listbox.delete(index)
+        except Exception as e:
+            print(f"Error al eliminar canal: {e}")
+
+    def clear_channel_list(self):
+        """Limpia toda la lista de canales."""
+        try:
+            self.channels.clear()
+            self.all_channels.clear()
+            self.channels_listbox.delete(0, tk.END)
+        except Exception as e:
+            print(f"Error al limpiar la lista: {e}")
 
