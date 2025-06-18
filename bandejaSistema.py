@@ -36,8 +36,10 @@ class IconoBandeja:
             title="Kidneys M3U/M3U8"  # Tooltip al pasar el mouse
         )
         
-        # Agregar manejador de clic
-        self.icon.on_click = self.on_icon_click
+        # Agregar manejador de doble clic para restaurar ventana
+        self.icon.on_double_click = self.restaurar_ventana
+        # No asignar self.icon.on_click para no interferir con el menú contextual
+        # self.icon.on_click = self.on_icon_click  # ¡NO USAR!
         
         # Iniciar el icono en un hilo separado
         import threading
@@ -84,19 +86,6 @@ class IconoBandeja:
         imagen.putdata(nuevos_datos)
         return imagen
 
-    def on_icon_click(self, icon, button):
-        """Maneja los clics en el icono de la bandeja"""
-        # En Linux/GNOME, un clic izquierdo muestra el menú
-        # En Windows, un clic derecho muestra el menú
-        from time import time
-        
-        if button == pystray.mouse.Button.left:
-            current_time = time()
-            # Detectar doble clic (intervalo de 500ms)
-            if current_time - self._last_click_time < 0.5:
-                self.restaurar_ventana(icon, None)
-            self._last_click_time = current_time
-        
     def crear_menu(self):
         return pystray.Menu(
             pystray.MenuItem(

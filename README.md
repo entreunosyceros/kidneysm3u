@@ -24,6 +24,7 @@ Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, re
 - **Descarga de vídeos** de YouTube o enlaces directos.
 - **Opciones para descargar** de YouTube vídeos con audio o solo el audio de los vídeos. Para ello es necesario tener instalado ffmpeg en el equipo y añadido al PATH correctamente para que se pueda extraer el audio de los vídeos.
 - **Controles multimedia completos**: play/pause, stop, avance/retroceso, volumen, mute, pantalla completa.
+- **Modo pantalla completa optimizado**: El menú y controles se ocultan automáticamente después de 3 segundos sin interacción, mejorando la experiencia de visualización.
 
 ![reproduccion-youtube](https://github.com/user-attachments/assets/bc84bf95-b03a-4959-a8cc-ccbfeb04df32)
 
@@ -33,6 +34,7 @@ Esta es una aplicación de escritorio creada con Python/Tkinter para filtrar, re
 - **Soporte para cookies de navegador en YouTube** (para vídeos). Es necesario estar logueado con tu cuenta de Youtube. Por el momento solo funciona con Firefox.
 - **Monitor de uso de CPU** (opcional).
 - **Opción Descargas**: Pequeño programa para descargar paquetes desde URL. Compatible con formatos multimedia, de imagen, de texto, etc ...
+- **Reproducir desde aquí**: en la lista de reproducción, haz clic derecho sobre cualquier vídeo y selecciona "Reproducir desde aquí" para reproducir todos los vídeos desde ese punto hasta el final de la lista, de forma continua y sin repeticiones.
 
 ## Requisitos
 
@@ -120,6 +122,18 @@ Todos los atajos de telcado y una explicación básica de los controladores del 
 ![icono_bandeja_sistema](https://github.com/user-attachments/assets/b18d710f-3f96-42ef-9032-2012f87216a3)
 
 - El icono de la bandeja del sistema sirve para saber que el programa está abierto. Pulsar la X en la ventana principal del programa, los minimiza a la bandeja del sistema. Para cerrar el programa hay que utilizar la opción `Salir` del menú principal.
+
+> **Nota importante para usuarios de Ubuntu/GNOME:**
+> 
+> Si usas Ubuntu (o cualquier entorno GNOME Shell), los iconos de la bandeja del sistema y sus menús contextuales pueden no funcionar por defecto, ya que GNOME deshabilita esta funcionalidad desde hace años. Para que el icono y el menú de la bandeja funcionen correctamente, instala la extensión oficial de GNOME:
+> 
+> ```bash
+> sudo apt install gnome-shell-extension-appindicator
+> ```
+> 
+> Después, cierra sesión y vuelve a entrar (o reinicia GNOME Shell con `Alt+F2`, escribe `r` y pulsa Enter). Ahora el menú de la bandeja funcionará correctamente.
+> 
+> En otros entornos de escritorio (XFCE, MATE, Cinnamon, KDE, etc.) no suele haber este problema.
 
 ## Ordenar listas M3U desde la interfaz gráfica
 

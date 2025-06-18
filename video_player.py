@@ -65,6 +65,7 @@ class VideoPlayer:
         self.is_fullscreen = False
         self.controls_visible = True
         self.hide_controls_timer = None
+        self.empty_menu = None  # Menú vacío para ocultar en fullscreen
         self.volume = 50
         self.favorites = []
         self.all_channels = []
@@ -147,6 +148,9 @@ class VideoPlayer:
         # Controles
         self.controls_frame = ttk.Frame(self.player_frame)
         self.controls_frame.pack(fill=tk.X, pady=5)
+        
+        # NO agregar eventos de movimiento de mouse que reinician constantemente el timer
+        # Solo usar eventos de clic intencionales
 
         # Barra de progreso (solo visible para YouTube)
         self.progress_frame = ttk.Frame(self.controls_frame)
@@ -178,6 +182,9 @@ class VideoPlayer:
         for text, command in buttons_info:
             btn = ttk.Button(controls_buttons_frame, text=text, command=command)
             btn.pack(side=tk.LEFT, padx=5)
+            # SOLUCIÓN TIMEOUT: Solo eventos de clic intencionales, no <Enter> ni <Motion>
+            # que causaban reinicio constante del timer de 3 segundos
+            btn.bind('<Button-1>', self.on_control_interact)
         self.add_volume_control()
         #self.setup_performance_monitoring()
         self.window.protocol("WM_DELETE_WINDOW", self.close)
@@ -236,12 +243,18 @@ class VideoPlayer:
         self.channels_listbox.bind('<Control-d>', self.handle_remove_favorite)
 
     def setup_mouse_tracking(self):
-        # Eventos para mostrar/ocultar controles
-        self.video_frame.bind('<Enter>', self.on_mouse_enter)
-        self.video_frame.bind('<Leave>', self.on_mouse_leave)
-        self.controls_frame.bind('<Enter>', self.on_mouse_enter)
-        self.controls_frame.bind('<Leave>', self.on_mouse_leave)
-        
+        # Eliminar eventos de hover para mostrar/ocultar controles
+        # self.video_frame.bind('<Enter>', self.on_mouse_enter)
+        # self.video_frame.bind('<Leave>', self.on_mouse_leave)
+        # self.controls_frame.bind('<Enter>', self.on_mouse_enter)
+        # self.controls_frame.bind('<Leave>', self.on_mouse_leave)
+
+        # Nuevo: mostrar controles solo al hacer clic en pantalla completa
+        def on_video_click(event=None):
+            if self.is_fullscreen:
+                self.show_controls_and_menu()
+        self.video_frame.bind('<Button-1>', on_video_click)
+
         # Eventos para el sizer
         self.sizer = ttk.Frame(self.main_frame, width=5, cursor='sb_h_double_arrow')
         self.sizer.pack(side=tk.LEFT, fill=tk.Y)
@@ -251,76 +264,223 @@ class VideoPlayer:
         self.resize_active = False
         self.last_x = 0
 
-    def start_resize(self, event):
-        self.resize_active = True
-        self.last_x = event.x_root
-        
-    def do_resize(self, event):
-        if not self.resize_active:
-            return
-        delta = event.x_root - self.last_x
-        new_width = self.channels_frame.winfo_width() + delta
-        
-        # Limitar el ancho mínimo y máximo
-        if 200 <= new_width <= 600:
-            self.channels_frame.configure(width=new_width)
-        self.last_x = event.x_root
-
-    def stop_resize(self, event):
-        self.resize_active = False
-
+    # Eliminar la lógica de hover de controles
     def on_mouse_enter(self, event=None):
-        """Cuando el ratón entra en la zona de video o controles"""
-        if self.is_fullscreen:
-            self.show_controls()
-            self.reset_hide_controls_timer()
+        pass  # Ya no se usa para mostrar controles
 
     def on_mouse_leave(self, event=None):
-        """Cuando el ratón sale de la zona de video o controles"""
-        # Verificar que la ventana y los widgets aún existen
-        if not self.window or not self.is_fullscreen:
-            return
-            
-        try:
-            # Solo ocultar si el ratón no está sobre los controles o el video
-            if self.video_frame.winfo_exists() and self.controls_frame.winfo_exists():
-                mouse_over_video = False
-                mouse_over_controls = False
-                
-                try:
-                    containing_widget = self.video_frame.winfo_containing(event.x_root, event.y_root)
-                    if containing_widget:
-                        mouse_over_video = True
-                except (tk.TclError, KeyError):
-                    pass
-                    
-                try:
-                    containing_widget = self.controls_frame.winfo_containing(event.x_root, event.y_root)
-                    if containing_widget:
-                        mouse_over_controls = True
-                except (tk.TclError, KeyError):
-                    pass
-                    
-                if not (mouse_over_video or mouse_over_controls):
-                    self.hide_controls_and_menu()
-        except Exception as e:
-            print(f"Error en on_mouse_leave: {e}")
-        
-    def _update_controls(self):
-        """Actualiza los controles con un retraso para evitar actualizaciones frecuentes"""
-        self.show_controls()
-        self.reset_hide_controls_timer()
-        self.mouse_move_timer = None
+        pass  # Ya no se usa para ocultar controles
 
-    def show_controls(self):
-        if not self.controls_visible:
-            self.controls_frame.pack(side=tk.BOTTOM, fill=tk.X)
-            self.controls_visible = True
-
-    def hide_controls(self):
-        if self.controls_visible and self.is_fullscreen:
+    def hide_controls_and_menu(self):
+        """Oculta controles y menú superior juntos (solo en fullscreen el menú)."""
+        if self.controls_visible:
             self.controls_frame.pack_forget()
             self.controls_visible = False
+        # Ocultar menú superior solo si estamos en fullscreen
+        if self.is_fullscreen:
+            self.window.config(menu="")
+        # Cancelar temporizador si existe
+        if self.hide_controls_timer:
+            self.window.after_cancel(self.hide_controls_timer)
+            self.hide_controls_timer = None
+
+    def show_controls_and_menu(self):
+        """Muestra controles y menú superior juntos."""
+        if not self.controls_visible:
+            self.controls_frame.pack(fill=tk.X, pady=5)
+            self.controls_visible = True
+        
+        # Mostrar menú solo si estamos en fullscreen
+        if self.is_fullscreen:
+            self.window.config(menu=self.menubar)
+            # Siempre reiniciar el timeout cuando se muestran controles en fullscreen
+            self.reset_hide_controls_timer()
+        else:
+            self.window.config(menu=self.menubar)
+            # No activar timeout fuera de fullscreen
+
+    def enter_fullscreen(self):
+        self.window.attributes('-fullscreen', True)
+        self.is_fullscreen = True
+        self.window.config(menu="")  # Ocultar menú superior
+        if self.channels_frame_visible:
+            self.channels_frame.pack_forget()
+            self.sizer.pack_forget()  # Ocultar también el sizer
+        else:
+            # Por si acaso el sizer quedó visible
+            self.sizer.pack_forget()
+        self.hide_controls_and_menu()  # Ocultar controles y menú al entrar en fullscreen
+
+    def exit_fullscreen(self):
+        self.window.attributes('-fullscreen', False)
+        self.is_fullscreen = False
+        self.window.config(menu=self.menubar)
+        if self.channels_frame_visible:
+            self.channels_frame.pack(side=tk.LEFT, fill=tk.Y)
+            self.sizer.pack(side=tk.LEFT, fill=tk.Y)
+        if self.hide_controls_timer:
+            self.window.after_cancel(self.hide_controls_timer)
+            self.hide_controls_timer = None
+        self.show_controls_and_menu()
+
+    def reset_hide_controls_timer(self):
+        """
+        Reinicia el temporizador para ocultar controles y menú en pantalla completa.
+        
+        SOLUCIÓN AL TIMEOUT: Este método implementa el timeout de 3 segundos que
+        oculta automáticamente el menú y controles en fullscreen. Solo se activa
+        con interacciones intencionales (clics), no con movimientos de mouse.
+        """
+        if self.hide_controls_timer:
+            self.window.after_cancel(self.hide_controls_timer)
+            self.hide_controls_timer = None
+        if self.is_fullscreen:
+            self.hide_controls_timer = self.window.after(3000, self.hide_controls_and_menu)
+
+    def on_control_interact(self, event=None):
+        """
+        Manejador para cualquier interacción con los controles en fullscreen.
+        
+        SOLUCIÓN AL TIMEOUT: Solo se activa con clics intencionales, no con
+        movimientos de mouse, permitiendo que el timeout de 3 segundos funcione.
+        """
+        if self.is_fullscreen:
+            self.reset_hide_controls_timer()
+
+    # Frame de configuración de audio
+    def add_volume_control(self):
+        self.volume_scale = ttk.Scale(
+            self.controls_frame, from_=0, to=100,
+            orient='horizontal', command=self.set_volume
+        )
+        self.volume_scale.set(self.volume)
+        self.volume_scale.pack(side=tk.LEFT, padx=5)
+        
+        # SOLUCIÓN TIMEOUT: Solo clics en control de volumen, no <Motion>
+        # que causaba reinicio constante del timer
+        self.volume_scale.bind('<Button-1>', self.on_control_interact)
+        self.volume_scale.bind('<ButtonRelease-1>', self.on_control_interact)
+
+    def set_volume(self, value):
+        """Establece el volumen del reproductor"""
+        try:
+            if self.player:
+                self.volume = int(float(value))
+                self.player.audio_set_volume(self.volume)
+            # Reiniciar timer si estamos en fullscreen
+            if self.is_fullscreen:
+                self.reset_hide_controls_timer()
+        except Exception as e:
+            print(f"Error al ajustar el volumen: {e}")
+
+    def toggle_mute(self):
+        self.player.audio_toggle_mute()
+
+    def toggle_fullscreen(self, event=None):
+        if not self.is_fullscreen:
+            self.enter_fullscreen()
+        else:
+            self.exit_fullscreen()
+
+    def close(self):
+        """Cierra la ventana y libera recursos."""
+        try:
+            # Desactivar los manejadores de eventos
+            if hasattr(self, 'video_frame') and self.video_frame:
+                try:
+                    self.video_frame.unbind('<Enter>')
+                    self.video_frame.unbind('<Leave>')
+                except tk.TclError:
+                    pass
+                    
+            if hasattr(self, 'controls_frame') and self.controls_frame:
+                try:
+                    self.controls_frame.unbind('<Enter>')
+                    self.controls_frame.unbind('<Leave>')
+                except tk.TclError:
+                    pass
+
+            # Guardar datos y limpiar temporizadores
+            self.save_favorites()
+            self.stop_update_time()  # Detener temporizador de actualización
+
+            # Liberar recursos de VLC
+            self._cleanup_vlc_player()
+
+            # Destruir la ventana y limpiar referencias
+            if self.window:
+                try:
+                    self.window.destroy()
+                except tk.TclError:
+                    pass
+                finally:
+                    self.window = None
+                    self.video_frame = None
+                    self.controls_frame = None
+                    self.channels_frame = None
+                    self.sizer = None
+                    
+        except Exception as e:
+            print(f"Error durante el cierre del reproductor: {e}")
+
+    def _cleanup_vlc_player(self):
+        """Limpia de forma segura el reproductor VLC y sus event managers."""
+        try:
+            # Limpiar event manager antes de liberar el reproductor
+            if hasattr(self, '_current_event_manager') and self._current_event_manager:
+                try:
+                    self._current_event_manager.event_detach(vlc.EventType.MediaPlayerEndReached)
+                    self._current_event_manager = None
+                except Exception as e:
+                    print(f"Error al limpiar event manager: {e}")
+            
+            # Detener y liberar reproductor
+            if self.player:
+                try:
+                    if self.player.is_playing():
+                        self.player.stop()
+                    # Esperar un poco para que VLC termine completamente
+                    import time
+                    time.sleep(0.1)
+                    self.player.release()
+                except Exception as e:
+                    print(f"Error al liberar reproductor: {e}")
+                finally:
+                    self.player = None
+        except Exception as e:
+            print(f"Error en limpieza VLC: {e}")
+
+    def run(self):
+        if not self.window:
+            # Reinicializar el reproductor VLC si es necesario
+            if not self.player or not self.instance:
+                self.instance = vlc.Instance(
+                    "--no-xlib",
+                    "--avcodec-hw=any",
+                    "--network-caching=3000",
+                    "--live-caching=3000",
+                    "--file-caching=3000",
+                    "--sout-mux-caching=3000",
+                    "--clock-jitter=0",
+                    "--clock-synchro=0",
+                    "--no-drop-late-frames",
+                    "--no-skip-frames",
+                    "--vout=any"
+                )
+                self.player = self.instance.media_player_new()
+                self.volume = 50
+            self.create_window()
+        else:
+            try:
+                self.window.deiconify()
+                self.window.lift()
+                self.window.focus_force()
+            except tk.TclError:
+                # Si la ventana fue destruida, reinicializar todo
+                self.window = None
+                self.player = None
+                self.instance = None
+                self.run()
 
     def save_favorites(self):
         try:
@@ -338,97 +498,24 @@ class VideoPlayer:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron cargar los favoritos: {e}")
 
-
-    def toggle_playlist(self):
-        if self.channels_frame_visible:
-            self.channels_frame.pack_forget()
-            self.sizer.pack_forget()  # Ocultar también el sizer
-        else:
-            self.channels_frame.pack(side=tk.LEFT, fill=tk.Y)
-            self.sizer.pack(side=tk.LEFT, fill=tk.Y)  # Mostrar también el sizer
-        self.channels_frame_visible = not self.channels_frame_visible
-        self.window.update_idletasks()
-
-    def load_m3u_file(self, filename):
-        """Carga un archivo M3U local."""
-        try:
-            # Asegurarse de que la ventana existe
-            if not self.window:
-                self.create_window()
-            
-            # Limpiar la lista actual
-            self.channels.clear()
-            self.channels_listbox.delete(0, tk.END)
-            
-            with open(filename, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-            
-            name = ""
-            self.all_channels.clear()
-            for line in lines:
-                line = line.strip()
-                if line.startswith('#EXTINF:'):
-                    name = line.split(',')[-1]
-                elif line and not line.startswith('#'):
-                    self.channels.append((name, line))
-                    self.all_channels.append((name, line))
-                    self.channels_listbox.insert(tk.END, name)
-                    
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al cargar el archivo: {str(e)}")
-
-    def load_m3u_url(self, url):
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            self.channels.clear()
-            self.channels_listbox.delete(0, tk.END)
-            self._parse_m3u(response.text.splitlines())
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al cargar la URL: {e}")
-
-    def _parse_m3u(self, lines):
-        name = ""
-        self.all_channels.clear()
-        for line in lines:
-            line = line.strip()
-            if line.startswith('#EXTINF:'):
-                name = line.split(',')[-1]
-            elif line and not line.startswith('#'):
-                self.channels.append((name, line))
-                self.all_channels.append((name, line))
-                self.channels_listbox.insert(tk.END, name)
-
-    def filter_channels(self, *args):
-        search_term = self.search_var.get().lower()
+    def show_favorites(self):
+        if not self.favorites:
+            messagebox.showinfo("Favoritos", "Por el momento no hay favoritos añadidos.")
+            return
+        self.temp_channels = self.channels.copy()
         self.channels.clear()
         self.channels_listbox.delete(0, tk.END)
         
-        for name, url in self.all_channels:
-            if search_term in name.lower():
-                self.channels.append((name, url))
-                self.channels_listbox.insert(tk.END, name)
+        for channel in self.favorites:
+            self.channels.append(channel)
+            self.channels_listbox.insert(tk.END, channel[0])
 
-    def seek_relative(self, seconds):
-        """Avanza o retrocede el video en segundos"""
-        if self.player and self.player.is_playing():
-            current_time = self.player.get_time()
-            new_time = current_time + (seconds * 1000)  # Convertir a milisegundos
-            
-            # Asegurarse de que no vamos más allá de los límites del video
-            if new_time < 0:
-                new_time = 0
-            elif new_time > self.player.get_length():
-                new_time = self.player.get_length()
-                
-            self.player.set_time(int(new_time))
-
-    def adjust_video_settings(self):
-        """Ajusta la configuración del video para optimizar la reproducción"""
-        if self.player:
-            # Cambiamos True por una cadena vacía "" para desactivar o "yadif" para activar
-            self.player.video_set_deinterlace("") 
-            self.player.audio_set_volume(self.volume)
+    
+    def restore_all_channels(self):
+        self.channels = self.all_channels.copy()
+        self.channels_listbox.delete(0, tk.END)
+        for channel in self.channels:
+            self.channels_listbox.insert(tk.END, channel[0])
 
     def prompt_url(self):
         url = simpledialog.askstring("Cargar URL", "Introduce la URL de la lista M3U:")
@@ -444,16 +531,68 @@ class VideoPlayer:
         if filename:
             self.load_m3u_file(filename)
 
+    def load_m3u_file(self, filename):
+        """Carga un archivo M3U local y procesa sus canales."""
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                content = f.read()
+            self._process_m3u_content(content)
+            messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo cargar el archivo M3U: {e}")
+
+    def load_m3u_url(self, url):
+        """Carga una lista M3U desde una URL y procesa sus canales."""
+        try:
+            import urllib.request
+            with urllib.request.urlopen(url) as response:
+                content = response.read().decode('utf-8')
+            self._process_m3u_content(content)
+            messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo cargar la URL M3U: {e}")
+
+    def _process_m3u_content(self, content):
+        """Procesa el contenido de un archivo M3U y carga los canales."""
+        lines = content.strip().split('\n')
+        self.channels.clear()
+        self.all_channels.clear()
+        self.channels_listbox.delete(0, tk.END)
+        
+        i = 0
+        while i < len(lines):
+            if lines[i].startswith('#EXTINF:'):
+                if i + 1 < len(lines) and not lines[i + 1].startswith('#'):
+                    # Extraer nombre del canal de la línea EXTINF
+                    extinf_line = lines[i]
+                    url_line = lines[i + 1].strip()
+                    
+                    # Extraer el nombre del canal
+                    if ',' in extinf_line:
+                        name = extinf_line.split(',', 1)[1].strip()
+                    else:
+                        name = url_line
+                    
+                    # Añadir canal a las listas
+                    self.channels.append((name, url_line))
+                    self.all_channels.append((name, url_line))
+                    self.channels_listbox.insert(tk.END, name)
+                    i += 2
+                else:
+                    i += 1
+            else:
+                i += 1
+
     def prompt_youtube_playlist(self):
+        """Solicita URL de playlist de YouTube y la carga."""
         playlist_url = simpledialog.askstring("Cargar Playlist de YouTube", "Introduce la URL de la playlist de YouTube:")
         if playlist_url:
             self.load_youtube_playlist(playlist_url)
 
     def load_youtube_playlist(self, playlist_url):
-        """
-        Carga todos los vídeos de una playlist de YouTube y los muestra en la lista de canales.
-        """
+        """Carga todos los vídeos de una playlist de YouTube y los muestra en la lista de canales."""
         try:
+            import yt_dlp
             ydl_opts = {
                 'quiet': True,
                 'extract_flat': True,
@@ -476,8 +615,10 @@ class VideoPlayer:
                     self.channels.append((title, video_url))
                     self.all_channels.append((title, video_url))
                     self.channels_listbox.insert(tk.END, title)
+                
+                messagebox.showinfo("Éxito", f"Playlist cargada: {len(videos)} vídeos")
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo obtener la playlist: {e}")
+            messagebox.showerror("Error", f"No se pudo cargar la playlist: {e}")
 
     def play_selected(self, event=None):
         """Reproduce el canal seleccionado de la lista al hacer doble clic."""
@@ -500,21 +641,8 @@ class VideoPlayer:
                     "--sout-mux-caching=3000",
                     "--no-ts-trust-pcr"
                 )
-            # Si el reproductor está reproduciendo, detenerlo y liberarlo
-            if self.player:
-                try:
-                    if self.player.is_playing():
-                        self.player.stop()
-                    # Desconectar eventos anteriores antes de liberar el reproductor
-                    try:
-                        event_manager = self.player.event_manager()
-                        event_manager.event_detach(vlc.EventType.MediaPlayerEndReached)
-                    except:
-                        pass
-                    self.player.release()
-                except:
-                    pass
-                self.player = None
+            # Limpiar reproductor anterior de forma segura
+            self._cleanup_vlc_player()
 
             # Crear un nuevo reproductor
             self.player = self.instance.media_player_new()
@@ -638,262 +766,36 @@ class VideoPlayer:
                 print(f"Error actualizando tiempo: {e}")
         self.update_time_job = self.window.after(1000, self.update_time)
 
-    def close(self):
-        """Cierra la ventana y libera recursos."""
-        try:
-            # Desactivar los manejadores de eventos
-            if hasattr(self, 'video_frame') and self.video_frame:
-                try:
-                    self.video_frame.unbind('<Enter>')
-                    self.video_frame.unbind('<Leave>')
-                except tk.TclError:
-                    pass
-                    
-            if hasattr(self, 'controls_frame') and self.controls_frame:
-                try:
-                    self.controls_frame.unbind('<Enter>')
-                    self.controls_frame.unbind('<Leave>')
-                except tk.TclError:
-                    pass
+    def adjust_video_settings(self):
+        """Ajusta la configuración del video para optimizar la reproducción"""
+        if self.player:
+            # Cambiamos True por una cadena vacía "" para desactivar o "yadif" para activar
+            self.player.video_set_deinterlace("") 
+            self.player.audio_set_volume(self.volume)
 
-            # Guardar datos y limpiar temporizadores
-            self.save_favorites()
-            self.stop_update_time()  # Detener temporizador de actualización
-
-            # Liberar recursos de VLC
-            if self.player:
-                try:
-                    if self.player.is_playing():
-                        self.player.stop()
-                    self.player.release()
-                except Exception:
-                    pass
-                finally:
-                    self.player = None
-
-            if self.instance:
-                try:
-                    self.instance.release()
-                except Exception:
-                    pass
-                finally:
-                    self.instance = None
-
-            # Destruir la ventana y limpiar referencias
-            if self.window:
-                try:
-                    self.window.destroy()
-                except tk.TclError:
-                    pass
-                finally:
-                    self.window = None
-                    self.video_frame = None
-                    self.controls_frame = None
-                    self.channels_frame = None
-                    self.sizer = None
-                    
-        except Exception as e:
-            print(f"Error durante el cierre del reproductor: {e}")
-
-    def toggle_mute(self):
-        self.player.audio_toggle_mute()
-
-    def toggle_fullscreen(self, event=None):
-        if not self.is_fullscreen:
-            self.enter_fullscreen()
-        else:
-            self.exit_fullscreen()
-
-    def reset_hide_controls_timer(self):
-        """Reinicia el temporizador para ocultar controles y menú en pantalla completa."""
-        if self.hide_controls_timer:
-            self.window.after_cancel(self.hide_controls_timer)
-            self.hide_controls_timer = None
-        self.show_controls_and_menu()
-        # Oculta controles y menú tras 3 segundos de inactividad
-        self.hide_controls_timer = self.window.after(3000, self.hide_controls_and_menu)
-
-    def hide_controls_and_menu(self):
-        """Oculta controles y menú superior en pantalla completa."""
-        if self.is_fullscreen:
-            self.hide_controls()
-            self.window.config(menu="")  # Cambiado de None a ""
-
-    def show_controls_and_menu(self):
-        """Muestra controles y menú superior."""
-        self.show_controls()
-        self.window.config(menu=self.menubar)
-
-    def enter_fullscreen(self):
-        self.window.attributes('-fullscreen', True)
-        self.is_fullscreen = True
-        self.window.config(menu="")  # Cambiado de None a ""
-        if self.channels_frame_visible:
-            self.channels_frame.pack_forget()
-            self.sizer.pack_forget()  # Ocultar también el sizer
-        self.reset_hide_controls_timer()
-
-    def exit_fullscreen(self):
-        self.window.attributes('-fullscreen', False)
-        self.is_fullscreen = False
-        self.window.config(menu=self.menubar)
-        if self.channels_frame_visible:
-            self.channels_frame.pack(side=tk.LEFT, fill=tk.Y)
-            self.sizer.pack(side=tk.LEFT, fill=tk.Y)  # Mostrar también el sizer
-        if self.hide_controls_timer:
-            self.window.after_cancel(self.hide_controls_timer)
-            self.hide_controls_timer = None
-        self.show_controls_and_menu()
-
-    def add_volume_control(self):
-        self.volume_scale = ttk.Scale(
-            self.controls_frame, from_=0, to=100,
-            orient='horizontal', command=self.set_volume
-        )
-        self.volume_scale.set(self.volume)
-        self.volume_scale.pack(side=tk.LEFT, padx=5)
-
-    def add_to_favorites(self):
-        """Añade el canal seleccionado a favoritos"""
-        selection = self.channels_listbox.curselection()
-        if not selection:
-            messagebox.showinfo("Información", "Por favor, selecciona un canal primero")
-            return
-            
-        selected_index = selection[0]
-        channel = self.channels_listbox.get(selected_index)
-        
-        if self.favorites_manager.add_favorite(channel):
-            messagebox.showinfo("Éxito", f"Canal '{channel}' añadido a favoritos")
-        else:
-            messagebox.showinfo("Información", f"El canal '{channel}' ya está en favoritos")
-
-    def remove_from_favorites(self):
-        """Elimina el canal seleccionado de favoritos"""
-        selection = self.channels_listbox.curselection()
-        if not selection:
-            messagebox.showinfo("Información", "Por favor, selecciona un canal primero")
-            return
-            
-        selected_index = selection[0]
-        channel = self.channels_listbox.get(selected_index)
-        
-        if self.favorites_manager.remove_favorite(channel):
-            messagebox.showinfo("Éxito", f"Canal '{channel}' eliminado de favoritos")
-        else:
-            messagebox.showinfo("Información", f"El canal '{channel}' no estaba en favoritos")
-    def save_favorites(self):
-        try:
-            with open('favoritos.json', 'w', encoding='utf-8') as f:
-                json.dump(self.favorites, f, ensure_ascii=False, indent=4)
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudieron guardar los favoritos: {e}")
-
-    def load_favorites(self):
-        try:
-            with open('favoritos.json', 'r', encoding='utf-8') as f:
-                self.favorites = json.load(f)
-        except FileNotFoundError:
-            self.favorites = []
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudieron cargar los favoritos: {e}")
-
-    def run(self):
-        if not self.window:
-            # Reinicializar el reproductor VLC si es necesario
-            if not self.player or not self.instance:
-                self.instance = vlc.Instance(
-                    "--no-xlib",
-                    "--avcodec-hw=any",
-                    "--network-caching=3000",
-                    "--live-caching=3000",
-                    "--file-caching=3000",
-                    "--sout-mux-caching=3000",
-                    "--clock-jitter=0",
-                    "--clock-synchro=0",
-                    "--no-drop-late-frames",
-                    "--no-skip-frames",
-                    "--vout=any"
-                )
-                self.player = self.instance.media_player_new()
-                self.volume = 50
-            self.create_window()
-        else:
-            try:
-                self.window.deiconify()
-                self.window.lift()
-                self.window.focus_force()
-            except tk.TclError:
-                # Si la ventana fue destruida, reinicializar todo
-                self.window = None
-                self.player = None
-                self.instance = None
-                self.run()
-
-    def set_volume(self, value):
-        """Establece el volumen del reproductor"""
-        try:
-            if self.player:
-                self.volume = int(float(value))
-                self.player.audio_set_volume(self.volume)
-        except Exception as e:
-            print(f"Error al ajustar el volumen: {e}")
-
-    def show_favorites(self):
-        if not self.favorites:
-            messagebox.showinfo("Favoritos", "Por el momento no hay favoritos añadidos.")
-            return
-        self.temp_channels = self.channels.copy()
+    def filter_channels(self, *args):
+        search_term = self.search_var.get().lower()
         self.channels.clear()
         self.channels_listbox.delete(0, tk.END)
         
-        for channel in self.favorites:
-            self.channels.append(channel)
-            self.channels_listbox.insert(tk.END, channel[0])
+        for name, url in self.all_channels:
+            if search_term in name.lower():
+                self.channels.append((name, url))
+                self.channels_listbox.insert(tk.END, name)
 
-    
-    def restore_all_channels(self):
-        self.channels = self.all_channels.copy()
-        self.channels_listbox.delete(0, tk.END)
-        for channel in self.channels:
-            self.channels_listbox.insert(tk.END, channel[0])
-
-    def show_channel_context_menu(self, event):
-        context_menu = tk.Menu(self.window, tearoff=0)
-        try: # Añadir manejo de errores por si el índice no es válido
-            index = self.channels_listbox.nearest(event.y)
-            if index < 0 or index >= len(self.channels): # Verificar índice válido
-                 return 
-            self.channels_listbox.selection_clear(0, tk.END)
-            self.channels_listbox.selection_set(index)
-            channel = self.channels[index]
+    def seek_relative(self, seconds):
+        """Avanza o retrocede el video en segundos"""
+        if self.player and self.player.is_playing():
+            current_time = self.player.get_time()
+            new_time = current_time + (seconds * 1000)  # Convertir a milisegundos
             
-            if channel in self.favorites:
-                context_menu.add_command(label="Eliminar de Favoritos", command=self.remove_from_favorites)
-            else:
-                context_menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
-            
-            context_menu.add_command(label="Reproducir", command=self.play_selected)
-            # Añadir opción de descarga
-            context_menu.add_command(label="Descargar", command=lambda idx=index: self.download_channel(idx))
-            # Añadir opción de eliminar vídeo
-            context_menu.add_command(label="Eliminar vídeo", command=lambda idx=index: self.remove_channel(idx))
-            # Añadir opción de limpiar lista
-            context_menu.add_command(label="Limpiar lista", command=self.clear_channel_list)
-            context_menu.tk_popup(event.x_root, event.y_root)
-        except Exception as e:
-             print(f"Error al mostrar menú contextual: {e}") # Mejor depuración
-
-    def check_available_formats(self, url):
-        try:
-            with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-                info = ydl.extract_info(url, download=False)
-                formats = info.get('formats', [])
-                print("Formatos disponibles:")
-                for f in formats:
-                    print(f"Format ID: {f['format_id']}, Ext: {f['ext']}, Codec: {f.get('vcodec', '?')}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al verificar formatos: {str(e)}")
+            # Asegurarse de que no vamos más allá de los límites del video
+            if new_time < 0:
+                new_time = 0
+            elif new_time > self.player.get_length():
+                new_time = self.player.get_length()
+                
+            self.player.set_time(int(new_time))
 
     def prompt_youtube_url(self):
         """Delega la solicitud de URL de YouTube al manejador centralizado"""
@@ -1025,17 +927,14 @@ class VideoPlayer:
 
     def stop(self):
         """Detiene la reproducción del vídeo actual y reinicia el estado del reproductor."""
-        if self.player:
-            try:
-                if self.player.is_playing():
-                    self.player.stop()
-                self.player.release()
-                self.player = None
-                # Ocultar la barra de progreso
-                self.hide_progress_bar()
-            except Exception as e:
-                print(f"Error al detener la reproducción: {e}")
-                pass
+        try:
+            # Usar método de limpieza segura
+            self._cleanup_vlc_player()
+            # Ocultar la barra de progreso
+            self.hide_progress_bar()
+        except Exception as e:
+            print(f"Error al detener la reproducción: {e}")
+        
         self.stop_update_time()
         # Resetear el estado de reproducción secuencial
         self.is_sequential_playback = False
@@ -1049,7 +948,7 @@ class VideoPlayer:
         self.progress_bar.state(['!disabled'])
         # Configura el comando para el seek
         self.progress_bar.configure(command=self.seek_to_position)
-        # Bindings para el arrastre
+        # Bindings para el arrastre - solo eventos de clic, no movimiento
         self.progress_bar.bind('<Button-1>', self.start_seek)
         self.progress_bar.bind('<ButtonRelease-1>', self.end_seek)
 
@@ -1090,10 +989,16 @@ class VideoPlayer:
     def start_seek(self, event):
         """Inicia el proceso de seek manual."""
         self.is_seeking = True
+        # Reiniciar el timer del menú si estamos en fullscreen
+        if self.is_fullscreen:
+            self.reset_hide_controls_timer()
 
     def end_seek(self, event):
         """Finaliza el proceso de seek manual."""
         self.is_seeking = False
+        # Reiniciar el timer del menú si estamos en fullscreen
+        if self.is_fullscreen:
+            self.reset_hide_controls_timer()
 
     def seek_to_position(self, value):
         """Realiza el seek a una posición específica."""
@@ -1255,6 +1160,11 @@ class VideoPlayer:
                 print(f"Error al limpiar event manager anterior: {e}")
 
         try:
+            # Verificar que el reproductor sigue válido
+            if not self.player:
+                print("No hay reproductor válido para configurar eventos")
+                return
+                
             # Crear un nuevo event manager
             event_manager = self.player.event_manager()
             
@@ -1290,4 +1200,82 @@ class VideoPlayer:
             self.channels_listbox.delete(0, tk.END)
         except Exception as e:
             print(f"Error al limpiar la lista: {e}")
+
+    def add_to_favorites(self):
+        """Añade el canal seleccionado a favoritos"""
+        selection = self.channels_listbox.curselection()
+        if not selection:
+            messagebox.showinfo("Información", "Por favor, selecciona un canal primero")
+            return
+        selected_index = selection[0]
+        channel = self.channels[selected_index]
+        if channel not in self.favorites:
+            self.favorites.append(channel)
+            self.save_favorites()
+            messagebox.showinfo("Éxito", f"Canal '{channel[0]}' añadido a favoritos")
+        else:
+            messagebox.showinfo("Información", f"El canal '{channel[0]}' ya está en favoritos")
+
+    def remove_from_favorites(self):
+        """Elimina el canal seleccionado de favoritos"""
+        selection = self.channels_listbox.curselection()
+        if not selection:
+            messagebox.showinfo("Información", "Por favor, selecciona un canal primero")
+            return
+        selected_index = selection[0]
+        channel = self.channels[selected_index]
+        if channel in self.favorites:
+            self.favorites.remove(channel)
+            self.save_favorites()
+            messagebox.showinfo("Éxito", f"Canal '{channel[0]}' eliminado de favoritos")
+        else:
+            messagebox.showinfo("Información", f"El canal '{channel[0]}' no estaba en favoritos")
+
+    def show_channel_context_menu(self, event):
+        selection = self.channels_listbox.nearest(event.y)
+        if selection < 0 or selection >= len(self.channels):
+            return
+        self.channels_listbox.selection_clear(0, tk.END)
+        self.channels_listbox.selection_set(selection)
+        self.channels_listbox.activate(selection)
+        menu = tk.Menu(self.window, tearoff=0)
+        menu.add_command(label="Reproducir desde aquí", command=lambda: self.play_from_here(selection))
+        menu.add_separator()
+        menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
+        menu.add_command(label="Eliminar de Favoritos", command=self.remove_from_favorites)
+        menu.add_separator()
+        menu.add_command(label="Descargar", command=lambda: self.download_channel(selection))
+        menu.add_command(label="Eliminar canal", command=lambda: self.remove_channel(selection))
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def toggle_playlist(self):
+        """Muestra u oculta la lista de canales y el sizer"""
+        if self.channels_frame_visible:
+            self.channels_frame.pack_forget()
+            self.sizer.pack_forget()
+        else:
+            self.channels_frame.pack(side=tk.LEFT, fill=tk.Y)
+            self.sizer.pack(side=tk.LEFT, fill=tk.Y)
+        self.channels_frame_visible = not self.channels_frame_visible
+        self.window.update_idletasks()
+
+    def start_resize(self, event):
+        self.resize_active = True
+        self.last_x = event.x_root
+
+    def do_resize(self, event):
+        if not self.resize_active:
+            return
+        delta = event.x_root - self.last_x
+        new_width = self.channels_frame.winfo_width() + delta
+        # Limitar el ancho mínimo y máximo
+        if 200 <= new_width <= 600:
+            self.channels_frame.configure(width=new_width)
+        self.last_x = event.x_root
+
+    def stop_resize(self, event):
+        self.resize_active = False
 
