@@ -389,7 +389,17 @@ class M3UProcessor:
         self.root.wait_window(self.download_manager.window)
         self.download_manager = None
 
+def main():
+    """Función principal para iniciar la aplicación"""
+    try:
+        root = TkinterDnD.Tk() 
+        app = M3UProcessor(root)
+        root.mainloop()
+        return 0
+    except Exception as e:
+        print(f"Error al iniciar la aplicación: {e}")
+        return 1
+
 if __name__ == '__main__':
-    root = TkinterDnD.Tk() 
-    app = M3UProcessor(root)
-    root.mainloop()
+    import sys
+    sys.exit(main())

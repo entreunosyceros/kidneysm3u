@@ -61,6 +61,24 @@ Para iniciar la aplicación en linux ejecuta:
 ```bash
 python3 run_app.py
 ```
+## Instalación en Ubuntu
+Para instalar este programa en Ubuntu, solo hay que dirigirse a la página de lanzamientos y descargar desde allí el paquete .deb del programa.
+Tras tenerlo en nuestro equipo, basta con abrir una terminal (Ctrl+Alt+T) y escribir en ella:
+```bash
+sudo dpkg -i kidneysm3u_1.0.0_all.deb
+sudo apt-get install -f  # Si es necesario
+```
+Tras finalizar la instalación, ya podemos ejecutar el programa con el comando:
+```bash
+kidneysm3u
+```
+o buscando el lanzador en nuestro equipo.
+
+> [!NOTE]  
+> Al ejecutarlo la primera vez, tardará un poco más de lo normal debido a que se estará creando el entorno virtual sobre el que se ejecuta el
+> programa e instalando las dependencias necesarias que no estén ya instaladas en el equipo. Tras el segundo arranque del programa, el tiempo
+> de inicio debe ser mucho menor.
+
 
 ## Instalación en Windows
 
