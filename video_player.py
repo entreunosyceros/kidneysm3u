@@ -103,9 +103,15 @@ class VideoPlayer:
         self.volume = app_config.get_volume()
         self.favorites = []
         self.all_channels = []
-        self.is_seeking = False 
+        self.is_seeking = False
+        self._progress_internal = False
+        self._seek_hint_ms = None
+        self._seek_hint_until = 0
         self.update_time_job = None  # Inicializar para evitar errores al cerrar
         self._known_duration_ms = 0
+        self._yt_via_pipe = False
+        self._yt_start_offset_ms = 0
+        self._pipe_ready = False
         self._playlist_source = ''
         self._playlist_kind = ''
         self._geometry_save_job = None
@@ -215,10 +221,14 @@ class VideoPlayer:
             from_=0,
             to=100,
             orient='horizontal',
+            command=self._on_progress_scale,
         )
         self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         self.progress_time_label = ttk.Label(self.progress_frame, text='00:00 / 00:00', style='Muted.TLabel')
         self.progress_time_label.pack(side=tk.RIGHT)
+        self.progress_bar.bind('<Button-1>', self.start_seek)
+        self.progress_bar.bind('<B1-Motion>', self._drag_seek)
+        self.progress_bar.bind('<ButtonRelease-1>', self.end_seek)
         self.progress_frame.pack_forget()  # Oculta por defecto
 
         # Botones de control (iconos dibujados, no dependen de glifos Unicode de la fuente)
@@ -599,18 +609,56 @@ class VideoPlayer:
         self._volume_save_job = self.window.after(400, lambda: app_config.set_volume(self.volume))
 
     def restore_session(self):
-        """Carga la última lista y selecciona el último canal, sin reproducir."""
+        """Restaura la última lista lateral. Si se limpió, queda vacía. No reproduce."""
         session = app_config.load().get('session') or {}
         playlist = session.get('playlist') or ''
         kind = session.get('playlist_kind') or ''
-        if not playlist:
+        sidebar = session.get('sidebar') or []
+        items = []
+        for entry in sidebar:
+            if isinstance(entry, dict) and entry.get('url'):
+                items.append((entry.get('name') or entry.get('url'), entry['url']))
+        if kind == 'items' or (items and kind not in ('file', 'url')):
+            self._apply_sidebar_items(items)
+            self._playlist_source = playlist
+            self._playlist_kind = kind or 'items'
             self.restore_last_channel()
             return
-        if kind == 'url' or playlist.lower().startswith('http'):
+        if not playlist:
+            return
+        if kind == 'youtube_playlist':
+            if items:
+                self._apply_sidebar_items(items)
+                self._playlist_source = playlist
+                self._playlist_kind = 'youtube_playlist'
+            else:
+                self.load_youtube_playlist(playlist, notify=False)
+        elif kind == 'url' or playlist.lower().startswith('http'):
             self.load_m3u_url(playlist, notify=False)
         elif os.path.isfile(playlist):
             self.load_m3u_file(playlist, notify=False)
         self.restore_last_channel()
+
+    def _apply_sidebar_items(self, items):
+        self.channels = list(items)
+        self.all_channels = list(items)
+        self._fill_channel_listbox([name for name, _url in items])
+
+    def _persist_sidebar(self):
+        items = list(self.all_channels)
+        source = self._playlist_source or ''
+        kind = self._playlist_kind or ''
+        if not items:
+            app_config.clear_session_list()
+            return
+        if kind in ('file', 'url') and source:
+            app_config.remember_playlist(source, kind)
+            return
+        if len(items) > 1500:
+            if source:
+                app_config.remember_playlist(source, kind or 'file')
+            return
+        app_config.remember_sidebar(items, source, kind or 'items')
 
     def restore_last_channel(self):
         if not self.channels or not self._widget_exists(self.channels_listbox):
@@ -695,7 +743,7 @@ class VideoPlayer:
             self._process_m3u_content(content)
             self._playlist_source = filename
             self._playlist_kind = 'file'
-            app_config.remember_playlist(filename, 'file')
+            self._persist_sidebar()
             if notify:
                 messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
         except Exception as e:
@@ -711,7 +759,7 @@ class VideoPlayer:
             self._process_m3u_content(content)
             self._playlist_source = url
             self._playlist_kind = 'url'
-            app_config.remember_playlist(url, 'url')
+            self._persist_sidebar()
             if notify:
                 messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
         except Exception as e:
@@ -741,7 +789,7 @@ class VideoPlayer:
         if playlist_url:
             self.load_youtube_playlist(playlist_url)
 
-    def load_youtube_playlist(self, playlist_url):
+    def load_youtube_playlist(self, playlist_url, notify=True):
         """Carga todos los vídeos de una playlist de YouTube y los muestra en la lista de canales."""
         try:
             import yt_dlp
@@ -765,9 +813,12 @@ class VideoPlayer:
                     parsed.append((title, video_url))
                 self.channels = parsed
                 self.all_channels = list(parsed)
+                self._playlist_source = playlist_url
+                self._playlist_kind = 'youtube_playlist'
                 self._fill_channel_listbox([title for title, _ in parsed])
-                
-                messagebox.showinfo("Éxito", f"Playlist cargada: {len(videos)} vídeos")
+                self._persist_sidebar()
+                if notify:
+                    messagebox.showinfo("Éxito", f"Playlist cargada: {len(videos)} vídeos")
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo cargar la playlist: {e}")
 
@@ -1165,6 +1216,19 @@ class VideoPlayer:
             if is_sequential and not hasattr(self, '_current_event_manager'):
                 self.setup_event_manager()
             
+            if not (local_file and '127.0.0.1' in str(url)):
+                self._yt_via_pipe = False
+                self._yt_start_offset_ms = 0
+                self._pipe_ready = False
+            else:
+                self._pipe_ready = False
+                self._pipe_gen = getattr(self, '_pipe_gen', 0) + 1
+                gen = self._pipe_gen
+                self.window.after(
+                    1500,
+                    lambda g=gen: setattr(self, '_pipe_ready', True)
+                    if getattr(self, '_pipe_gen', 0) == g else None,
+                )
             media = self.instance.media_new(url)
             options = [
                 ':network-caching=3000',
@@ -1261,15 +1325,76 @@ class VideoPlayer:
             self.update_time_job = None
 
     def _media_length_ms(self):
-        length = 0
+        vlc_len = 0
         try:
             if self.player:
-                length = int(self.player.get_length() or 0)
+                vlc_len = int(self.player.get_length() or 0)
         except Exception:
-            length = 0
-        if length <= 0:
-            length = int(getattr(self, '_known_duration_ms', 0) or 0)
-        return length
+            vlc_len = 0
+        known = int(getattr(self, '_known_duration_ms', 0) or 0)
+        # En YouTube por MPEG-TS local, VLC solo conoce lo ya descargado.
+        if known > 0 and (vlc_len <= 0 or known > vlc_len + 1500):
+            return known
+        return vlc_len if vlc_len > 0 else known
+
+    def _playback_elapsed_ms(self):
+        raw = 0
+        try:
+            if self.player:
+                raw = int(self.player.get_time() or 0)
+        except Exception:
+            raw = 0
+        if raw < 0:
+            raw = 0
+        return raw + int(getattr(self, '_yt_start_offset_ms', 0) or 0)
+
+    def _set_progress_ui(self, elapsed_ms, length_ms=None):
+        if length_ms is None:
+            length_ms = self._media_length_ms()
+        elapsed_ms = max(0, int(elapsed_ms or 0))
+        self._progress_internal = True
+        try:
+            if hasattr(self, 'progress_bar') and length_ms > 0:
+                self.progress_bar.set(min(100.0, max(0.0, (elapsed_ms / length_ms) * 100)))
+            if hasattr(self, 'progress_time_label'):
+                total_txt = self._format_clock(length_ms) if length_ms > 0 else '--:--'
+                self.progress_time_label.configure(
+                    text=f'{self._format_clock(elapsed_ms)} / {total_txt}'
+                )
+        finally:
+            self._progress_internal = False
+
+    def _apply_seek(self, target_ms):
+        length = self._media_length_ms()
+        target_ms = max(0, int(target_ms))
+        if length > 0:
+            target_ms = min(target_ms, max(0, length - 250))
+        if not self.player:
+            return target_ms
+        offset = int(getattr(self, '_yt_start_offset_ms', 0) or 0)
+        local_ms = target_ms - offset
+        vlc_len = 0
+        try:
+            vlc_len = int(self.player.get_length() or 0)
+        except Exception:
+            vlc_len = 0
+        used_pipe = getattr(self, '_yt_via_pipe', False)
+        beyond_buffer = used_pipe and vlc_len > 0 and local_ms > max(0, vlc_len - 400)
+        can_restart = used_pipe and getattr(self, '_pipe_ready', False) and beyond_buffer
+        if can_restart:
+            last = getattr(self, '_pipe_seek_at', 0)
+            if time.time() - last > 0.8:
+                self._pipe_seek_at = time.time()
+                self.youtube_handler.replay_from(target_ms / 1000.0)
+        else:
+            try:
+                self.player.set_time(max(0, local_ms))
+            except Exception:
+                pass
+        self._seek_hint_ms = target_ms
+        self._seek_hint_until = time.time() + 1.2
+        self._set_progress_ui(target_ms, length)
+        return target_ms
 
     def _format_clock(self, milliseconds):
         total = max(0, int(milliseconds) // 1000)
@@ -1288,17 +1413,17 @@ class VideoPlayer:
                 if active:
                     self._media_started = True
                 if active and not self.is_seeking and self.progress_frame.winfo_ismapped():
-                    elapsed = int(self.player.get_time() or 0)
-                    if elapsed < 0:
-                        elapsed = 0
-                    length = self._media_length_ms()
-                    if length > 0:
-                        self.progress_bar.set(min(100.0, max(0.0, (elapsed / length) * 100)))
-                    if hasattr(self, 'progress_time_label'):
-                        total_txt = self._format_clock(length) if length > 0 else '--:--'
-                        self.progress_time_label.configure(
-                            text=f'{self._format_clock(elapsed)} / {total_txt}'
-                        )
+                    elapsed = self._playback_elapsed_ms()
+                    hint = getattr(self, '_seek_hint_ms', None)
+                    until = getattr(self, '_seek_hint_until', 0)
+                    if hint is not None and time.time() < until:
+                        if abs(elapsed - hint) > 1500:
+                            elapsed = hint
+                        else:
+                            self._seek_hint_ms = None
+                    elif hint is not None and time.time() >= until:
+                        self._seek_hint_ms = None
+                    self._set_progress_ui(elapsed)
         except Exception as e:
             print(f"Error actualizando tiempo: {e}")
         self.update_time_job = self.window.after(250, self.update_time)
@@ -1323,17 +1448,24 @@ class VideoPlayer:
 
     def seek_relative(self, seconds):
         """Avanza o retrocede el video en segundos"""
-        if self.player and self.player.is_playing():
-            current_time = self.player.get_time()
-            new_time = current_time + (seconds * 1000)  # Convertir a milisegundos
-            
-            # Asegurarse de que no vamos más allá de los límites del video
-            if new_time < 0:
-                new_time = 0
-            elif new_time > self.player.get_length():
-                new_time = self.player.get_length()
-                
-            self.player.set_time(int(new_time))
+        if not self.player:
+            return
+        now = time.time()
+        last_at, last_delta = getattr(self, '_seek_relative_at', (0, None))
+        if last_delta == seconds and (now - last_at) < 0.12:
+            return
+        self._seek_relative_at = (now, seconds)
+        try:
+            state = self.player.get_state()
+        except Exception:
+            return
+        if state not in (vlc.State.Playing, vlc.State.Paused, vlc.State.Buffering):
+            return
+        current = self._playback_elapsed_ms()
+        hint = getattr(self, '_seek_hint_ms', None)
+        if hint is not None and now < getattr(self, '_seek_hint_until', 0):
+            current = hint
+        self._apply_seek(current + int(seconds * 1000))
 
     def prompt_youtube_url(self):
         """Delega la solicitud de URL de YouTube al manejador centralizado"""
@@ -1344,6 +1476,11 @@ class VideoPlayer:
         self.channels.append((name, url))
         self.all_channels.append((name, url))
         self.channels_listbox.insert(tk.END, name)
+        if self._playlist_kind in ('file', 'url') and len(self.all_channels) <= 1500:
+            self._playlist_kind = 'items'
+        elif not self._playlist_kind:
+            self._playlist_kind = 'items'
+        self._persist_sidebar()
 
     def play_youtube_url(self, url):
         """Delega la reproducción de YouTube al manejador centralizado, forzando salida pulse y añade a la lista si no está."""
@@ -1365,7 +1502,9 @@ class VideoPlayer:
         """Carga los vídeos de una playlist de YouTube como canales en el listado."""
         self.channels = canales
         self.all_channels = canales.copy()
+        self._playlist_kind = self._playlist_kind or 'items'
         self._fill_channel_listbox([nombre for nombre, _url in canales])
+        self._persist_sidebar()
 
     def download_channel(self, index):
         """Inicia la descarga del canal seleccionado en un hilo separado."""
@@ -1444,7 +1583,9 @@ class VideoPlayer:
              self.ensure_window()
              self.channels = list(channels_list)
              self.all_channels = list(channels_list)
+             self._playlist_kind = self._playlist_kind or 'youtube_playlist'
              self._fill_channel_listbox([name for name, _url in channels_list])
+             self._persist_sidebar()
              messagebox.showinfo("Playlist cargada", f"Se cargaron {len(channels_list)} vídeos de la playlist.")
 
     def toggle_play(self):
@@ -1477,14 +1618,15 @@ class VideoPlayer:
             self.progress_frame.pack(before=self.controls_buttons_frame, **pack_opts)
         else:
             self.progress_frame.pack(**pack_opts)
-        self.progress_bar.set(0)
+        self._progress_internal = True
+        try:
+            self.progress_bar.set(0)
+        finally:
+            self._progress_internal = False
         if hasattr(self, 'progress_time_label'):
             total = self._format_clock(self._known_duration_ms) if self._known_duration_ms else '--:--'
             self.progress_time_label.configure(text=f'00:00 / {total}')
         self.progress_bar.state(['!disabled'])
-        self.progress_bar.configure(command=self.seek_to_position)
-        self.progress_bar.bind('<Button-1>', self.start_seek)
-        self.progress_bar.bind('<ButtonRelease-1>', self.end_seek)
 
     def hide_progress_bar(self):
         self.progress_frame.pack_forget()
@@ -1520,32 +1662,58 @@ class VideoPlayer:
         else:
             self.listbox_tooltip.hidetip()
 
+    def _progress_ms_from_x(self, x):
+        width = max(1, self.progress_bar.winfo_width())
+        percent = max(0.0, min(100.0, (float(x) / width) * 100.0))
+        length = self._media_length_ms()
+        target = int(percent / 100.0 * length) if length > 0 else 0
+        self._progress_internal = True
+        try:
+            self.progress_bar.set(percent)
+        finally:
+            self._progress_internal = False
+        if hasattr(self, 'progress_time_label'):
+            total_txt = self._format_clock(length) if length > 0 else '--:--'
+            self.progress_time_label.configure(
+                text=f'{self._format_clock(target)} / {total_txt}'
+            )
+        self._seek_hint_ms = target
+        self._seek_hint_until = time.time() + 1.2
+        return target
+
     def start_seek(self, event):
-        """Inicia el proceso de seek manual."""
         self.is_seeking = True
-        # Reiniciar el timer del menú si estamos en fullscreen
+        self._progress_ms_from_x(event.x)
         if self.is_fullscreen:
             self.reset_hide_controls_timer()
+
+    def _drag_seek(self, event):
+        if self.is_seeking:
+            self._progress_ms_from_x(event.x)
 
     def end_seek(self, event):
-        """Finaliza el proceso de seek manual."""
+        if self.is_seeking:
+            target = self._progress_ms_from_x(event.x)
+            self._apply_seek(target)
         self.is_seeking = False
-        # Reiniciar el timer del menú si estamos en fullscreen
         if self.is_fullscreen:
             self.reset_hide_controls_timer()
 
-    def seek_to_position(self, value):
-        """Realiza el seek a una posición específica."""
-        if not self.is_seeking or not self.player:
+    def _on_progress_scale(self, value):
+        if getattr(self, '_progress_internal', False) or self.is_seeking or not self.player:
+            return
+        if getattr(self, '_yt_via_pipe', False) and not getattr(self, '_pipe_ready', False):
             return
         try:
-            position = float(value) / 100.0
             length = self._media_length_ms()
-            if length > 0:
-                target_time = int(position * length)
-                self.player.set_time(target_time)
+            if length <= 0:
+                return
+            self._apply_seek(int(float(value) / 100.0 * length))
         except Exception as e:
             print(f"Error en seek: {e}")
+
+    def seek_to_position(self, value):
+        self._on_progress_scale(value)
 
     def handle_add_favorite(self, event=None):
         """Manejador para el atajo de teclado Ctrl+S"""
@@ -1725,8 +1893,10 @@ class VideoPlayer:
         try:
             if 0 <= index < len(self.channels):
                 del self.channels[index]
-                del self.all_channels[index]
+                if 0 <= index < len(self.all_channels):
+                    del self.all_channels[index]
                 self.channels_listbox.delete(index)
+                self._persist_sidebar()
         except Exception as e:
             print(f"Error al eliminar canal: {e}")
 

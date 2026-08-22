@@ -40,6 +40,7 @@ class M3UProcessor:
         
         # Configuración inicial
         self.load_config()
+        self._ensure_local_files()
         apply_theme(self.root, self.tema_oscuro)
         set_window_icon(self.root)
         if not app_config.apply_geometry(self.root, 'main', '900x620'):
@@ -557,6 +558,16 @@ class M3UProcessor:
         else:
             self.status_var.set('Solo se aceptan archivos .m3u / .m3u8')
     
+    def _ensure_local_files(self):
+        """Crea los JSON locales vacíos si otro usuario clona el repo sin ellos."""
+        app_config.load()
+        if not os.path.exists('enlaces.json'):
+            try:
+                with open('enlaces.json', 'w', encoding='utf-8') as handle:
+                    json.dump({}, handle, ensure_ascii=False, indent=4)
+            except OSError:
+                pass
+
     def load_config(self):
         self.config = app_config.load()
         theme = self.config.get('theme', 'dark')

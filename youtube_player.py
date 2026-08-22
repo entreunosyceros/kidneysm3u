@@ -140,20 +140,31 @@ class _GrowingTSHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
 
+    def _range_start(self):
+        header = self.headers.get('Range') or ''
+        match = re.match(r'bytes=(\d+)-', header)
+        return int(match.group(1)) if match else 0
+
     def do_HEAD(self):
         self.send_response(200)
         self.send_header('Content-Type', 'video/MP2T')
+        self.send_header('Accept-Ranges', 'bytes')
         self.send_header('Cache-Control', 'no-cache')
         self.end_headers()
 
     def do_GET(self):
         path = self.server.ts_path
-        self.send_response(200)
+        pos = self._range_start()
+        if pos > 0:
+            self.send_response(206)
+            self.send_header('Content-Range', f'bytes {pos}-/*')
+        else:
+            self.send_response(200)
         self.send_header('Content-Type', 'video/MP2T')
+        self.send_header('Accept-Ranges', 'bytes')
         self.send_header('Cache-Control', 'no-cache')
         self.send_header('Connection', 'close')
         self.end_headers()
-        pos = 0
         idle = 0.0
         try:
             while idle < 45:
@@ -186,6 +197,8 @@ class YouTubeHandler:
         self._yt_procs = []
         self._yt_tmpdir = None
         self._yt_server = None
+        self._current_url = ''
+        self._play_kwargs = {}
         cleanup_youtube_temp_dirs()
 
     def stop_pipeline(self):
@@ -239,6 +252,12 @@ class YouTubeHandler:
                 messagebox.showerror("Error", "No se pudo extraer el ID del vídeo de YouTube")
                 return
 
+            self._current_url = url
+            self._play_kwargs = {
+                'force_pulse': force_pulse,
+                'show_progress': show_progress,
+                'is_sequential': is_sequential,
+            }
             self._show_status("Obteniendo vídeo de YouTube…")
             self.stop_pipeline()
             stream = self.get_best_vlc_url(url)
@@ -336,22 +355,53 @@ class YouTubeHandler:
             return False
         return bool(url)
 
-    def _play_via_pipe(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None):
+    def replay_from(self, start_s):
+        """Reinicia la retransmisión local desde un instante (el MPEG-TS no admite seek)."""
+        url = self._current_url
+        if not url:
+            return False
+        kwargs = dict(self._play_kwargs)
+        duration = None
+        try:
+            known = int(getattr(self.video_player, '_known_duration_ms', 0) or 0)
+            if known > 0:
+                duration = known / 1000.0
+        except (TypeError, ValueError):
+            duration = None
+        if float(start_s or 0) < 0.5 and int(getattr(self.video_player, '_yt_start_offset_ms', 0) or 0) < 500:
+            return False
+        self.video_player._yt_via_pipe = True
+        return self._play_via_pipe(
+            url,
+            kwargs.get('force_pulse', True),
+            kwargs.get('show_progress', True),
+            kwargs.get('is_sequential', False),
+            duration=duration,
+            start_s=max(0.0, float(start_s or 0)),
+        )
+
+    def _play_via_pipe(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None, start_s=0):
         """Retransmite el vídeo con yt-dlp (+ ffmpeg) a un MPEG-TS y lo abre en VLC."""
         ffmpeg = shutil.which('ffmpeg')
         if not ffmpeg:
             return self._play_via_download(youtube_url, force_pulse, show_progress, is_sequential, duration=duration)
 
+        self._current_url = youtube_url
+        self._play_kwargs = {
+            'force_pulse': force_pulse,
+            'show_progress': show_progress,
+            'is_sequential': is_sequential,
+        }
         self.stop_pipeline()
-        self._show_status("Preparando vídeo…")
+        self._show_status("Preparando vídeo…" if start_s < 0.5 else "Saltando al punto elegido…")
         tmpdir = tempfile.mkdtemp(prefix='kidneys_yt_')
         ts_path = os.path.join(tmpdir, 'stream.ts')
         self._yt_tmpdir = tmpdir
 
-        ytdlp_cmd = self._ytdlp_argv(youtube_url)
+        ytdlp_cmd = self._ytdlp_argv(youtube_url, start_s=start_s)
         ffmpeg_cmd = [
             ffmpeg, '-hide_banner', '-loglevel', 'error',
-            '-fflags', '+genpts',
+            '-fflags', '+genpts+discardcorrupt',
             '-i', 'pipe:0',
             '-c', 'copy', '-bsf:v', 'h264_mp4toannexb',
             '-f', 'mpegts', ts_path,
@@ -383,7 +433,7 @@ class YouTubeHandler:
         threading.Thread(target=producer, daemon=True).start()
 
         def wait_and_play():
-            min_bytes = 64 * 1024
+            min_bytes = 256 * 1024
             deadline = time.time() + 75
             while time.time() < deadline:
                 try:
@@ -409,6 +459,8 @@ class YouTubeHandler:
                 size = os.path.getsize(ts_path)
                 print(f"[YouTubeHandler] Reproduciendo stream local ({size} bytes) {stream_url}")
                 self._clear_video_surface()
+                self.video_player._yt_via_pipe = True
+                self.video_player._yt_start_offset_ms = int(max(0.0, float(start_s or 0)) * 1000)
                 self.video_player.play_video_url(
                     stream_url,
                     force_pulse=force_pulse,
@@ -463,7 +515,7 @@ class YouTubeHandler:
         threading.Thread(target=work, daemon=True).start()
         return True
 
-    def _ytdlp_argv(self, youtube_url):
+    def _ytdlp_argv(self, youtube_url, start_s=0):
         cmd = [
             sys.executable, '-m', 'yt_dlp', youtube_url,
             '-o', '-',
@@ -476,6 +528,12 @@ class YouTubeHandler:
             '--geo-bypass-country', 'ES',
             '--remote-components', 'ejs:github',
         ]
+        try:
+            start_s = float(start_s or 0)
+        except (TypeError, ValueError):
+            start_s = 0
+        if start_s >= 0.5:
+            cmd.extend(['--download-sections', f'*{start_s:.1f}-inf'])
         cookies_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
         if os.path.exists(cookies_path):
             cmd.extend(['--cookies', cookies_path])

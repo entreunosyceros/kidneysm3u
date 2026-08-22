@@ -57,10 +57,11 @@ class EnlacesManager:
         try:
             if os.path.exists('enlaces.json'):
                 with open('enlaces.json', 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            return {}
-        except:
-            return {}
+                    data = json.load(f)
+                    return data if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            pass
+        return {}
             
     def guardar_enlaces(self):
         with open('enlaces.json', 'w', encoding='utf-8') as f:

@@ -24,6 +24,7 @@ _DEFAULTS = {
     'session': {
         'playlist': '',
         'playlist_kind': '',
+        'sidebar': [],
         'channel_index': None,
         'channel_name': '',
         'channel_url': '',
@@ -48,14 +49,19 @@ def load():
     if _cache is not None:
         return _cache
     data = dict(_DEFAULTS)
+    exists = os.path.isfile(CONFIG_PATH)
     try:
         with open(CONFIG_PATH, encoding='utf-8') as handle:
             stored = json.load(handle)
         if isinstance(stored, dict):
             data = _deep_merge(_DEFAULTS, stored)
+        else:
+            exists = False
     except (OSError, json.JSONDecodeError):
-        pass
+        exists = False
     _cache = data
+    if not exists:
+        save()
     return _cache
 
 
@@ -98,6 +104,40 @@ def remember_playlist(path, kind='file'):
         'session': {
             'playlist': path,
             'playlist_kind': kind,
+            'sidebar': [],
+        },
+    })
+
+
+def remember_sidebar(items, source='', kind='items'):
+    snapshot = []
+    for entry in items or []:
+        if isinstance(entry, dict):
+            name, url = entry.get('name'), entry.get('url')
+        elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+            name, url = entry[0], entry[1]
+        else:
+            continue
+        if url:
+            snapshot.append({'name': name or '', 'url': url})
+    save({
+        'session': {
+            'playlist': source or '',
+            'playlist_kind': kind or 'items',
+            'sidebar': snapshot,
+        },
+    })
+
+
+def clear_session_list():
+    save({
+        'session': {
+            'playlist': '',
+            'playlist_kind': '',
+            'sidebar': [],
+            'channel_index': None,
+            'channel_name': '',
+            'channel_url': '',
         },
     })
 
