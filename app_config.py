@@ -1,0 +1,146 @@
+"""Configuración persistente: sesión, ventanas y archivos recientes."""
+
+import json
+import os
+import tkinter as tk
+
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+MAX_RECENT = 12
+
+_DEFAULTS = {
+    'theme': 'dark',
+    'language': 'es',
+    'recent_files': [],
+    'patterns': [
+        'tvg-name="ES"',
+        'group-title="',
+        'tvg-logo="',
+    ],
+    'volume': 50,
+    'windows': {
+        'main': '',
+        'player': '',
+    },
+    'session': {
+        'playlist': '',
+        'playlist_kind': '',
+        'channel_index': None,
+        'channel_name': '',
+        'channel_url': '',
+    },
+}
+
+_cache = None
+
+
+def _deep_merge(base, incoming):
+    merged = dict(base)
+    for key, value in (incoming or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def load():
+    global _cache
+    if _cache is not None:
+        return _cache
+    data = dict(_DEFAULTS)
+    try:
+        with open(CONFIG_PATH, encoding='utf-8') as handle:
+            stored = json.load(handle)
+        if isinstance(stored, dict):
+            data = _deep_merge(_DEFAULTS, stored)
+    except (OSError, json.JSONDecodeError):
+        pass
+    _cache = data
+    return _cache
+
+
+def save(updates=None):
+    data = load()
+    if updates:
+        data = _deep_merge(data, updates)
+        global _cache
+        _cache = data
+    try:
+        with open(CONFIG_PATH, 'w', encoding='utf-8') as handle:
+            json.dump(data, handle, indent=2, ensure_ascii=False)
+    except OSError:
+        pass
+    return data
+
+
+def get_volume():
+    try:
+        return max(0, min(100, int(load().get('volume', 50))))
+    except (TypeError, ValueError):
+        return 50
+
+
+def set_volume(value):
+    try:
+        save({'volume': max(0, min(100, int(value)))})
+    except (TypeError, ValueError):
+        pass
+
+
+def remember_playlist(path, kind='file'):
+    if not path:
+        return
+    path = str(path).strip()
+    recent = [item for item in load().get('recent_files') or [] if item != path]
+    recent.insert(0, path)
+    save({
+        'recent_files': recent[:MAX_RECENT],
+        'session': {
+            'playlist': path,
+            'playlist_kind': kind,
+        },
+    })
+
+
+def remember_channel(index, name, url):
+    save({
+        'session': {
+            'channel_index': index,
+            'channel_name': name or '',
+            'channel_url': url or '',
+        },
+    })
+
+
+def remember_window(name, geometry):
+    if not geometry:
+        return
+    save({'windows': {name: geometry}})
+
+
+def apply_geometry(window, name, fallback=None):
+    geometry = (load().get('windows') or {}).get(name) or fallback
+    if not geometry:
+        return False
+    try:
+        window.geometry(geometry)
+        window.update_idletasks()
+        x, y = window.winfo_x(), window.winfo_y()
+        width, height = window.winfo_width(), window.winfo_height()
+        screen_w, screen_h = window.winfo_screenwidth(), window.winfo_screenheight()
+        if width < 200 or height < 150:
+            return False
+        if x > screen_w - 80 or y > screen_h - 80 or x + width < 80 or y + height < 80:
+            return False
+        return True
+    except tk.TclError:
+        return False
+
+
+def capture_geometry(window):
+    try:
+        if window.state() == 'zoomed':
+            return None
+        return window.geometry()
+    except tk.TclError:
+        return None

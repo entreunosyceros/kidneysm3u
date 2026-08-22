@@ -2,62 +2,61 @@ import tkinter as tk
 from tkinter import ttk
 import webbrowser
 from PIL import Image, ImageTk
+from ui_theme import style_window, set_window_icon, center_window, get_colors, get_font
 
 def show_about(root):
-    # Crear ventana About
     about_window = tk.Toplevel(root)
     about_window.title('Acerca de')
-    about_window.geometry('500x500')
+    about_window.geometry('520x560')
     about_window.resizable(False, False)
     about_window.transient(root)
     about_window.grab_set()
+    style_window(about_window)
+    set_window_icon(about_window)
+    center_window(about_window, 520, 560)
 
-    # Centrar la ventana
-    about_window.update_idletasks()
-    width = about_window.winfo_width()
-    height = about_window.winfo_height()
-    x = (about_window.winfo_screenwidth() // 2) - (width // 2)
-    y = (about_window.winfo_screenheight() // 2) - (height // 2)
-    about_window.geometry(f'{width}x{height}+{x}+{y}')
-
-    # Frame principal
-    main_frame = ttk.Frame(about_window, padding='20')
+    main_frame = ttk.Frame(about_window, padding=28)
     main_frame.pack(fill=tk.BOTH, expand=True)
 
-    # Título
-    title_label = ttk.Label(main_frame, text='Kidneys M3U/M3U8', 
-                          font=('Helvetica', 16, 'bold'))
-    title_label.pack(pady=(0, 10))
+    ttk.Label(main_frame, text='Kidneys M3U/M3U8', style='PageTitle.TLabel').pack(pady=(0, 4))
+    ttk.Label(
+        main_frame,
+        text='Listas IPTV, YouTube y descargas en el escritorio',
+        style='Muted.TLabel',
+    ).pack(pady=(0, 16))
 
-    # Cargar y mostrar imagen
     try:
         image = Image.open('img/logo.png')
-        image = image.resize((125, 150), Image.Resampling.LANCZOS)
+        image = image.resize((110, 132), Image.Resampling.LANCZOS)
         photo = ImageTk.PhotoImage(image)
         image_label = ttk.Label(main_frame, image=photo)
-        image_label.image = photo  # Mantener referencia
-        image_label.pack(pady=(0, 20))
-    except:
-        # Si no se encuentra la imagen, mostrar un mensaje
-        ttk.Label(main_frame, text="[Logo no disponible]").pack(pady=(0, 20))
+        image_label.image = photo
+        image_label.pack(pady=(0, 18))
+    except Exception:
+        ttk.Label(main_frame, text="[Logo no disponible]", style='Muted.TLabel').pack(pady=(0, 18))
 
-    # Descripción
-    description = """Esta aplicación permite procesar y filtrar archivos M3U, 
-    comúnmente utilizados para listas de reproducción de medios. 
-    Permite filtrar canales específicos y reproducirlos 
-    directamente desde la interfaz. También permite descargar, reproducir y buscar vídeos además de listas y canales de Youtube."""
-    
-    desc_label = ttk.Label(main_frame, text=description, wraplength=400, 
-                         justify='center')
-    desc_label.pack(pady=(0, 20))
+    description = (
+        "Procesa y filtra archivos M3U, reproduce canales y vídeos, "
+        "busca en YouTube y gestiona descargas desde una sola interfaz."
+    )
+    ttk.Label(main_frame, text=description, wraplength=420, justify='center').pack(pady=(0, 18))
 
-    # Enlace a GitHub
+    colors = get_colors()
     github_url = "https://github.com/sapoclay/kidneysm3u"
-    github_link = ttk.Label(main_frame, text="Visitar repositorio en GitHub",
-                          foreground='blue', cursor='hand2')
-    github_link.pack(pady=(0, 20))
+    github_link = tk.Label(
+        main_frame,
+        text="Visitar repositorio en GitHub",
+        fg=colors['accent'],
+        bg=colors['bg'],
+        cursor='hand2',
+        font=get_font(10),
+    )
+    github_link.pack(pady=(0, 24))
     github_link.bind('<Button-1>', lambda e: webbrowser.open_new(github_url))
 
-    # Botón cerrar
-    ttk.Button(main_frame, text='Cerrar', 
-              command=about_window.destroy).pack(pady=(0, 10))
+    ttk.Button(
+        main_frame,
+        text='Cerrar',
+        style='Accent.TButton',
+        command=about_window.destroy,
+    ).pack()

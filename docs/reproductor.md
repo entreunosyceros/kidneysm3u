@@ -1,0 +1,68 @@
+# Reproductor
+
+[Inicio](../README.md) · [Índice](README.md) · [Instalación](instalacion.md) · [Uso](uso.md) · [Listas M3U](listas-m3u.md) · [YouTube](youtube.md) · [Reproductor](reproductor.md) · [Notas](notas.md)
+
+![descarga-youtube](https://github.com/user-attachments/assets/5a3592f5-3ef4-46a1-a996-be542638515e)
+
+El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha, controles abajo.
+
+## Lista lateral
+
+- **★ Favoritos** / **Todos** — filtra o restaura el listado.
+- **Limpiar** — vacía la lista (pide confirmación). El aviso queda sobre esta ventana; no pasa al frente la principal.
+- Cuadro de **búsqueda** — filtra por nombre.
+- Doble clic — reproduce.
+- Clic derecho — reproducir desde aquí, favoritos, descargar, eliminar un ítem o vaciar la lista.
+
+**Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso.
+
+Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
+
+## Controles
+
+Play/pausa, stop, salto atrás/adelante, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
+
+En **pantalla completa**, menú y controles se ocultan a los 3 segundos sin usarlos.
+
+La barra de progreso aparece en YouTube y en VOD; no en un canal en directo.
+
+## Atajos de teclado
+
+![kidneys-help](https://github.com/user-attachments/assets/8d40f720-c424-4e1b-a965-d0796f1a93af)
+
+| Tecla | Acción |
+| --- | --- |
+| `Espacio` | Play / pausa |
+| `F1` | Pantalla completa |
+| `Esc` | Salir de pantalla completa |
+| `M` | Silencio |
+| `←` / `→` | Retroceder / avanzar 2 s |
+| `Ctrl+S` | Añadir a favoritos |
+| `Ctrl+D` | Quitar de favoritos |
+| `Alt+F4` | Cerrar la ventana del reproductor |
+
+La ventana principal tiene **Ayuda → Atajos de teclado** (esta tabla) y **Ayuda → Documentación** (el manual en `docs/`).
+
+## Bandeja del sistema
+
+![icono_bandeja_sistema](https://github.com/user-attachments/assets/b18d710f-3f96-42ef-9032-2012f87216a3)
+
+El icono indica que el programa sigue abierto. La X de la ventana principal **minimiza a la bandeja**. Para cerrar del todo: **Salir** en el menú.
+
+### Ubuntu / GNOME
+
+GNOME no muestra bien la bandeja ni su menú si no está la extensión AppIndicator:
+
+```bash
+sudo apt install gnome-shell-extension-appindicator
+```
+
+Cierra sesión y entra otra vez (o `Alt+F2`, `r`, Enter). En XFCE, MATE, Cinnamon o KDE no suele hacer falta.
+
+## Siguiente
+
+- [YouTube](youtube.md)
+- [Listas M3U / IPTV](listas-m3u.md)
+- [Notas técnicas](notas.md)
+
+[Inicio](../README.md) · [Índice](README.md) · [Instalación](instalacion.md) · [Uso](uso.md) · [Listas M3U](listas-m3u.md) · [YouTube](youtube.md) · [Reproductor](reproductor.md) · [Notas](notas.md)

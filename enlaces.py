@@ -3,46 +3,54 @@ from tkinter import ttk, messagebox
 import json
 import webbrowser
 import os
+from ui_theme import style_window, style_listbox, set_window_icon, center_window
 
 class EnlacesManager:
     def __init__(self, root):
         self.window = tk.Toplevel(root)
         self.window.title('Gestionar Enlaces')
-        self.window.geometry('400x300')
+        self.window.geometry('520x380')
+        self.window.minsize(420, 300)
+        style_window(self.window)
+        set_window_icon(self.window)
+        center_window(self.window, 520, 380)
         
         self.enlaces = self.cargar_enlaces()
         self.create_widgets()
         
     def create_widgets(self):
-        # Frame principal
-        main_frame = ttk.Frame(self.window, padding='10')
+        main_frame = ttk.Frame(self.window, padding=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame, text='Enlaces', style='PageTitle.TLabel').pack(anchor=tk.W)
+        ttk.Label(
+            main_frame,
+            text='Accesos rápidos que aparecen en el menú',
+            style='Muted.TLabel',
+        ).pack(anchor=tk.W, pady=(0, 14))
         
-        # Entrada para nuevo enlace
-        input_frame = ttk.Frame(main_frame)
-        input_frame.pack(fill=tk.X, pady=5)
+        input_frame = ttk.Frame(main_frame, style='Card.TFrame')
+        input_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Label(input_frame, text='Nombre:').pack(side=tk.LEFT, padx=5)
-        self.nombre_entry = ttk.Entry(input_frame, width=20)
-        self.nombre_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Label(input_frame, text='Nombre', style='CardMuted.TLabel').grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+        ttk.Label(input_frame, text='URL', style='CardMuted.TLabel').grid(row=0, column=1, sticky=tk.W, padx=(10, 0), pady=(0, 4))
+        self.nombre_entry = ttk.Entry(input_frame)
+        self.nombre_entry.grid(row=1, column=0, sticky=(tk.W, tk.E))
+        self.url_entry = ttk.Entry(input_frame)
+        self.url_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(10, 0))
+        input_frame.columnconfigure(0, weight=1)
+        input_frame.columnconfigure(1, weight=2)
         
-        ttk.Label(input_frame, text='URL:').pack(side=tk.LEFT, padx=5)
-        self.url_entry = ttk.Entry(input_frame, width=30)
-        self.url_entry.pack(side=tk.LEFT, padx=5)
-        
-        # Botones de acción
         buttons_frame = ttk.Frame(main_frame)
-        buttons_frame.pack(fill=tk.X, pady=5)
+        buttons_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Button(buttons_frame, text='Añadir', style='Accent.TButton', command=self.añadir_enlace).pack(side=tk.LEFT)
+        ttk.Button(buttons_frame, text='Eliminar seleccionado', command=self.eliminar_enlace).pack(side=tk.LEFT, padx=8)
         
-        ttk.Button(buttons_frame, text='Añadir', command=self.añadir_enlace).pack(side=tk.LEFT, padx=5)
-        ttk.Button(buttons_frame, text='Eliminar Seleccionado', command=self.eliminar_enlace).pack(side=tk.LEFT, padx=5)
-        
-        # Lista de enlaces
         self.enlaces_listbox = tk.Listbox(main_frame, selectmode=tk.SINGLE)
-        self.enlaces_listbox.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.enlaces_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 4))
+        style_listbox(self.enlaces_listbox)
         self.enlaces_listbox.bind('<Double-Button-1>', self.abrir_enlace)
         
-        # Cargar enlaces existentes
         self.actualizar_lista()
         
     def cargar_enlaces(self):
