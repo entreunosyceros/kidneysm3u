@@ -8,9 +8,15 @@ Desde el menú **Youtube** del [reproductor](reproductor.md) puedes pegar una UR
 
 ## Cookies
 
-Para buscar, ver y descargar hace falta estar **logueado en YouTube**. El programa lee cookies del navegador o de `cookies.txt` en la carpeta del proyecto.
+Para buscar, ver y descargar hace falta estar **logueado en YouTube**. El programa lee la sesión del navegador o, si existe, de `cookies.txt` en la carpeta del proyecto.
 
-Por ahora el flujo más fiable es **Firefox** (con [browser-cookie3](https://pypi.org/project/browser-cookie3/)). Si YouTube bloquea la extracción, instala **Node** o **Deno**: yt-dlp los usa para los retos de la web.
+`cookies.txt` **no viene en el repositorio** (es tu sesión; no lo subas a GitHub). Tampoco hace falta crearlo a mano:
+
+1. Inicia sesión en YouTube en el navegador (el flujo más fiable es **Firefox**, con [browser-cookie3](https://pypi.org/project/browser-cookie3/)).
+2. Reproduce un vídeo desde el programa. Si hay cookies válidas, se escriben solas en `cookies.txt`.
+3. A partir de ahí se reutiliza ese archivo. Si no existe, se sigue leyendo el navegador.
+
+No dejes un `cookies.txt` vacío: yt-dlp lo usaría y YouTube fallaría. Si YouTube bloquea la extracción, instala **Node** o **Deno**: yt-dlp los usa para los retos de la web.
 
 ## Búsqueda
 

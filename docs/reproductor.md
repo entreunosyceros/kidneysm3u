@@ -9,7 +9,7 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 ## Lista lateral
 
 - **★ Favoritos** / **Todos** — filtra o restaura el listado.
-- **Limpiar** — vacía la lista (pide confirmación). El aviso queda sobre esta ventana; no pasa al frente la principal.
+- **Limpiar** — vacía la lista de esta sesión (pide confirmación). El aviso queda sobre esta ventana; no pasa al frente la principal. Al volver a abrir el programa se restaura lo último que había; si no había lista, no se muestra nada. No reproduce solo.
 - Cuadro de **búsqueda** — filtra por nombre.
 - Doble clic — reproduce.
 - Clic derecho — reproducir desde aquí, favoritos, descargar, eliminar un ítem o vaciar la lista.
@@ -24,7 +24,7 @@ Play/pausa, stop, salto atrás/adelante, volumen, silencio, pantalla completa y 
 
 En **pantalla completa**, menú y controles se ocultan a los 3 segundos sin usarlos.
 
-La barra de progreso aparece en YouTube y en VOD; no en un canal en directo.
+La barra de progreso aparece en YouTube y en VOD; no en un canal en directo. Los botones de ±2 s / ±10 s y el arrastre de la barra saltan a ese punto. En YouTube retransmitido (MPEG-TS local) un salto lejano puede tardar un momento: se reinicia el vídeo desde ahí.
 
 ## Atajos de teclado
 

@@ -35,7 +35,7 @@ En el menú **Reproducir**:
 
 Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir).
 
-La sesión recuerda la última lista y el último canal **seleccionado**, no lo reproduce solo al abrir.
+La sesión recuerda la última lista lateral y el último canal **seleccionado**, no lo reproduce solo al abrir. **Limpiar** solo vacía la lista en esta sesión; al arrancar de nuevo se muestra lo último que había. Si no había lista, no muestra nada.
 
 ## YouTube
 

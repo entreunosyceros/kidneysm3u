@@ -11,13 +11,15 @@
 
 ## Archivos en la carpeta del programa
 
-| Archivo | Uso |
-| --- | --- |
-| `favoritos.json` | Favoritos del reproductor |
-| `enlaces.json` | Enlaces guardados en el gestor |
-| `config.json` | Volumen, geometría de ventanas, última lista y canal (sin autoplay) |
-| `cookies.txt` | Cookies de YouTube (opcional; también se leen del navegador) |
-| `.venv/` | Entorno Python; si lo borras, `run_app.py` lo recrea ([instalación](instalacion.md)) |
+`favoritos.json` sí va en el repositorio (lista vacía). El resto los crea o actualiza el programa en tu equipo y **no se publican** (están en `.gitignore`).
+
+| Archivo | Uso | Si no existe |
+| --- | --- | --- |
+| `favoritos.json` | Favoritos del reproductor | Viene en el repo; si falta, el reproductor usa una lista vacía |
+| `enlaces.json` | Enlaces guardados en el gestor | Se crea vacío al arrancar |
+| `config.json` | Volumen, geometría de ventanas, última lista lateral y canal (sin autoplay) | Se crea con valores por defecto al arrancar |
+| `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube si hay sesión en el navegador. Detalle en [YouTube](youtube.md#cookies) |
+| `.venv/` | Entorno Python | `run_app.py` lo recrea ([instalación](instalacion.md)) |
 
 ## Monitor de CPU
 
