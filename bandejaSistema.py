@@ -118,6 +118,18 @@ class IconoBandeja:
     def salir_programa(self, icon, item):
         """Cierra completamente el programa"""
         def cerrar():
+            try:
+                import app_config
+                geometry = app_config.capture_geometry(self.root)
+                if geometry:
+                    app_config.remember_window('main', geometry)
+            except Exception:
+                pass
+            try:
+                from youtube_player import cleanup_youtube_temp_dirs
+                cleanup_youtube_temp_dirs()
+            except Exception:
+                pass
             self.icon.stop()  # Detener el ícono de la bandeja
             self.root.quit()  # Cerrar la aplicación
         

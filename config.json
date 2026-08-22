@@ -1,0 +1,24 @@
+{
+  "theme": "dark",
+  "language": "es",
+  "recent_files": [
+    "/home/entreunosyceros/Escritorio/lista_corta.m3u"
+  ],
+  "patterns": [
+    "tvg-name=\"ES\"",
+    "group-title=\"",
+    "tvg-logo=\""
+  ],
+  "volume": 61,
+  "windows": {
+    "main": "900x620+1066+266",
+    "player": "1100x749+1323+370"
+  },
+  "session": {
+    "playlist": "/home/entreunosyceros/Escritorio/lista_corta.m3u",
+    "playlist_kind": "file",
+    "channel_index": 51255,
+    "channel_name": "Motörhead - Bullet In Your Brain (Official Video)",
+    "channel_url": "https://www.youtube.com/watch?v=jK3hGMan_6U"
+  }
+}

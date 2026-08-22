@@ -6,13 +6,18 @@ import os
 import re
 import requests
 from urllib.parse import unquote
+from ui_theme import style_window, set_window_icon, center_window
 
 class DownloadManager:
     def __init__(self, parent):
         self.window = tk.Toplevel(parent)
         self.window.title("Descargar URL")
-        self.window.geometry("600x400")
+        self.window.geometry("640x460")
         self.window.resizable(True, True)
+        self.window.minsize(520, 400)
+        style_window(self.window)
+        set_window_icon(self.window)
+        center_window(self.window, 640, 460)
         
         # Variables
         self.url = tk.StringVar()
@@ -23,49 +28,44 @@ class DownloadManager:
         self.create_widgets()
         
     def create_widgets(self):
-        # Frame principal
-        main_frame = ttk.Frame(self.window, padding="10")
+        main_frame = ttk.Frame(self.window, padding=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame, text='Descargar URL', style='PageTitle.TLabel').pack(anchor=tk.W)
+        ttk.Label(
+            main_frame,
+            text='YouTube, listas y archivos directos',
+            style='Muted.TLabel',
+        ).pack(anchor=tk.W, pady=(0, 16))
         
-        # URL
-        url_frame = ttk.LabelFrame(main_frame, text="URL a descargar", padding="5")
-        url_frame.pack(fill=tk.X, pady=(0, 10))
+        url_frame = ttk.LabelFrame(main_frame, text=" URL ", padding=10)
+        url_frame.pack(fill=tk.X, pady=(0, 12))
+        ttk.Entry(url_frame, textvariable=self.url).pack(fill=tk.X)
         
-        ttk.Entry(url_frame, textvariable=self.url).pack(fill=tk.X, padx=5, pady=5)
-        
-        # Carpeta de destino
-        dest_frame = ttk.LabelFrame(main_frame, text="Carpeta de destino", padding="5")
-        dest_frame.pack(fill=tk.X, pady=(0, 10))
-        
+        dest_frame = ttk.LabelFrame(main_frame, text=" CARPETA DE DESTINO ", padding=10)
+        dest_frame.pack(fill=tk.X, pady=(0, 12))
         dest_entry = ttk.Entry(dest_frame, textvariable=self.output_path)
-        dest_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, pady=5)
+        dest_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        ttk.Button(dest_frame, text="Examinar", command=self.browse_output).pack(side=tk.RIGHT)
         
-        ttk.Button(dest_frame, text="Buscar", command=self.browse_output).pack(side=tk.RIGHT, padx=5, pady=5)
+        name_frame = ttk.LabelFrame(main_frame, text=" NOMBRE DEL ARCHIVO ", padding=10)
+        name_frame.pack(fill=tk.X, pady=(0, 12))
+        ttk.Entry(name_frame, textvariable=self.filename).pack(fill=tk.X)
         
-        # Nombre del archivo
-        name_frame = ttk.LabelFrame(main_frame, text="Nombre del archivo", padding="5")
-        name_frame.pack(fill=tk.X, pady=(0, 10))
+        self.progress_frame = ttk.LabelFrame(main_frame, text=" PROGRESO ", padding=10)
+        self.progress_frame.pack(fill=tk.X, pady=(0, 12))
+        self.progress = ttk.Progressbar(self.progress_frame, mode='determinate')
+        self.progress.pack(fill=tk.X, pady=(0, 6))
+        self.progress_label = ttk.Label(self.progress_frame, text="", style='CardMuted.TLabel')
+        self.progress_label.pack(anchor=tk.W)
         
-        ttk.Entry(name_frame, textvariable=self.filename).pack(fill=tk.X, padx=5, pady=5)
-        
-        # Barra de progreso
-        self.progress_frame = ttk.LabelFrame(main_frame, text="Progreso", padding="5")
-        self.progress_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        self.progress = ttk.Progressbar(self.progress_frame, length=300, mode='determinate')
-        self.progress.pack(fill=tk.X, padx=5, pady=5)
-        
-        self.progress_label = ttk.Label(self.progress_frame, text="")
-        self.progress_label.pack(pady=5)
-        
-        # Botones
         buttons_frame = ttk.Frame(main_frame)
-        buttons_frame.pack(fill=tk.X, pady=10)
-        
-        self.download_button = ttk.Button(buttons_frame, text="Descargar", command=self.start_download)
-        self.download_button.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(buttons_frame, text="Cancelar", command=self.window.destroy).pack(side=tk.RIGHT, padx=5)
+        buttons_frame.pack(fill=tk.X, pady=(8, 0))
+        self.download_button = ttk.Button(
+            buttons_frame, text="Descargar", style='Accent.TButton', command=self.start_download
+        )
+        self.download_button.pack(side=tk.LEFT)
+        ttk.Button(buttons_frame, text="Cancelar", command=self.window.destroy).pack(side=tk.RIGHT)
         
     def browse_output(self):
         folder = filedialog.askdirectory()

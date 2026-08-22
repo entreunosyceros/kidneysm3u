@@ -1,18 +1,20 @@
+import os
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
-import os
+from ui_theme import style_window, set_window_icon, center_window, get_font
 
 def show_keyboard_shortcuts(root):
-    # Crear ventana de atajos
     shortcuts_window = tk.Toplevel(root)
     shortcuts_window.title('Atajos de Teclado')
-    shortcuts_window.geometry('500x500')
+    shortcuts_window.geometry('540x580')
     shortcuts_window.transient(root)
     shortcuts_window.grab_set()
+    style_window(shortcuts_window)
+    set_window_icon(shortcuts_window)
+    center_window(shortcuts_window, 540, 580)
 
-    # Frame principal con padding
-    main_frame = ttk.Frame(shortcuts_window, padding='20')
+    main_frame = ttk.Frame(shortcuts_window, padding=24)
     main_frame.pack(fill=tk.BOTH, expand=True)
 
     # Cargar y mostrar el logo
@@ -47,17 +49,22 @@ def show_keyboard_shortcuts(root):
         ttk.Label(
             main_frame,
             text="[Logo no disponible]",
-            font=('Arial', 10),
+            font=get_font(10),
             foreground='gray'
         ).pack(pady=(0, 20))
 
     # Título
     title_label = ttk.Label(
-        main_frame, 
-        text='Atajos de Teclado Disponibles',
-        font=('Arial', 12, 'bold')
+        main_frame,
+        text='Atajos de teclado',
+        style='PageTitle.TLabel',
     )
-    title_label.pack(pady=(0, 20))
+    title_label.pack(pady=(0, 8))
+    ttk.Label(
+        main_frame,
+        text='Controles del reproductor y de la lista',
+        style='Muted.TLabel',
+    ).pack(pady=(0, 16))
 
     # Frame para la lista de atajos
     shortcuts_frame = ttk.Frame(main_frame)
@@ -74,21 +81,21 @@ def show_keyboard_shortcuts(root):
             ("ESC", "Salir de pantalla completa")
         ]),
         ("Botones de Control", [
-            ("⏮⏮", "Retroceder 10 segundos"),
-            ("⏮", "Retroceder 2 segundos"),
-            ("⏯", "Reproducir/Pausar"),
-            ("⏭", "Avanzar 2 segundos"),
-            ("⏭⏭", "Avanzar 10 segundos"),
-            ("⏹", "Detener reproducción"),
-            ("🔊", "Silenciar/Activar sonido"),
-            ("⛶", "Alternar pantalla completa"),
+            ("|◀◀", "Retroceder 10 segundos"),
+            ("◀", "Retroceder 2 segundos"),
+            ("▶❚", "Reproducir/Pausar"),
+            ("▶", "Avanzar 2 segundos"),
+            ("▶▶|", "Avanzar 10 segundos"),
+            ("■", "Detener reproducción"),
+            ("Altavoz", "Silenciar/Activar sonido"),
+            ("Esquinas", "Alternar pantalla completa"),
             ("≡", "Mostrar/Ocultar lista de canales")
         ]),
         ("Favoritos", [
             ("Ctrl + S", "Añadir a favoritos"),
             ("Ctrl + D", "Eliminar de favoritos"),
-            ("⭐", "Mostrar lista de favoritos"),
-            ("📺", "Mostrar todos los canales")
+            ("★ Favoritos", "Mostrar lista de favoritos"),
+            ("Todos", "Mostrar todos los canales")
         ]),
         ("General", [
             ("Alt + F4", "Cerrar ventana"),
@@ -105,22 +112,17 @@ def show_keyboard_shortcuts(root):
     scrollbar = ttk.Scrollbar(shortcuts_frame, orient="vertical", command=tree.yview)
     scrollbar.place(relx=1, rely=0, relheight=1, anchor='ne')
     tree.configure(yscrollcommand=scrollbar.set)
-    
-    # Estilo para la scrollbar superpuesta
-    style = ttk.Style()
-    style.configure("Vertical.TScrollbar", borderwidth=0)
-    scrollbar.configure(style="Vertical.TScrollbar")
 
-    # Insertar atajos en el Treeview
     for category, items in shortcuts:
-        category_id = tree.insert("", "end", text=category)
+        category_id = tree.insert("", "end", text=category, open=True)
         for key, action in items:
             tree.insert(category_id, "end", text=f"{key}: {action}")
 
     # Botón de cerrar
     close_button = ttk.Button(
-        main_frame, 
+        main_frame,
         text='Cerrar',
-        command=shortcuts_window.destroy
+        style='Accent.TButton',
+        command=shortcuts_window.destroy,
     )
-    close_button.pack(pady=(20, 0))
+    close_button.pack(pady=(16, 0))

@@ -8,6 +8,108 @@ import os
 import re
 import subprocess
 from datetime import datetime, timedelta
+from urllib.parse import quote, quote_plus
+from youtube_player import youtube_ydl_opts
+from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window
+
+
+def _hashtag_slug(query):
+    text = (query or '').strip().lstrip('#')
+    return re.sub(r'[^\w]+', '', text, flags=re.UNICODE)
+
+
+def _is_youtube_short(entry):
+    if not entry:
+        return False
+    for key in ('url', 'original_url', 'webpage_url'):
+        if '/shorts/' in str(entry.get(key) or ''):
+            return True
+    return False
+
+
+def _fill_short_titles(entries):
+    missing = [entry for entry in entries if not (entry.get('title') or '').strip()]
+    if not missing:
+        return
+
+    def fetch(entry):
+        video_id = entry.get('id')
+        try:
+            response = requests.get(
+                'https://www.youtube.com/oembed',
+                params={'url': f'https://www.youtube.com/watch?v={video_id}', 'format': 'json'},
+                timeout=6,
+            )
+            if response.ok:
+                entry['title'] = (response.json().get('title') or '').strip() or video_id
+                return
+        except Exception:
+            pass
+        entry['title'] = video_id
+
+    workers = [threading.Thread(target=fetch, args=(entry,), daemon=True) for entry in missing]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=8)
+
+
+def _search_youtube_shorts(query, max_results, extra_query=''):
+    """Busca Shorts reales: pestaña /hashtag/.../shorts y filtro de búsqueda."""
+    seen = set()
+    found = []
+    fetch_limit = max(max_results + 10, 20)
+    sources = []
+    slugs = []
+    full_slug = _hashtag_slug(query)
+    if full_slug:
+        slugs.append(full_slug)
+    for word in re.findall(r'\w+', (query or '').lstrip('#'), flags=re.UNICODE):
+        word_slug = _hashtag_slug(word)
+        if word_slug and word_slug not in slugs:
+            slugs.append(word_slug)
+    for slug in slugs:
+        sources.append((f'https://www.youtube.com/hashtag/{quote(slug)}/shorts', True))
+    search_text = (query + extra_query).strip()
+    sources.append((
+        f'https://www.youtube.com/results?search_query={quote_plus(search_text)}&sp=EgIQCQ%3D%3D',
+        False,
+    ))
+
+    for url, from_shorts_tab in sources:
+        if len(found) >= max_results:
+            break
+        ydl_opts = youtube_ydl_opts(
+            extract_flat='in_playlist',
+            skip_download=True,
+            force_generic_extractor=False,
+            noplaylist=False,
+            playlistend=fetch_limit,
+            use_cookiefile=False,
+        )
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except Exception as err:
+            print(f"[Shorts] No se pudo leer una fuente ({err})")
+            continue
+        for entry in info.get('entries') or []:
+            if not entry or not entry.get('id'):
+                continue
+            if not from_shorts_tab and not _is_youtube_short(entry):
+                continue
+            video_id = entry['id']
+            if video_id in seen:
+                continue
+            seen.add(video_id)
+            found.append(entry)
+            if len(found) >= max_results:
+                break
+
+    print(f"[Shorts] {len(found)}/{max_results} resultados")
+    _fill_short_titles(found)
+    return found
+
 
 class YouTubeSearchDialog:
     def __init__(self, parent, play_callback, load_playlist_callback=None):
@@ -16,25 +118,34 @@ class YouTubeSearchDialog:
         self.load_playlist_callback = load_playlist_callback
         self.window = tk.Toplevel(parent)
         self.window.title("Buscar en YouTube")
-        self.window.geometry("700x500")
+        self.window.geometry("780x560")
+        self.window.minsize(640, 420)
+        style_window(self.window)
+        set_window_icon(self.window)
+        center_window(self.window, 780, 560)
         self.create_widgets()
 
     def create_widgets(self):
-        # Frame principal
-        main_frame = ttk.Frame(self.window)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_frame = ttk.Frame(self.window, padding=16)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame, text='Buscar en YouTube', style='PageTitle.TLabel').pack(anchor=tk.W)
+        ttk.Label(
+            main_frame,
+            text='Vídeos, Shorts, listas de reproducción y canales',
+            style='Muted.TLabel',
+        ).pack(anchor=tk.W, pady=(0, 12))
         
-        # Frame de búsqueda
         search_frame = ttk.Frame(main_frame)
         search_frame.pack(fill=tk.X, pady=(0, 10))
 
         self.search_var = tk.StringVar()
-        search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=40)
+        search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
         search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         search_entry.bind('<Return>', lambda e: self.search())
+        search_entry.focus_set()
 
-        search_btn = ttk.Button(search_frame, text="Buscar", command=self.search)
-        search_btn.pack(side=tk.LEFT, padx=5)
+        ttk.Button(search_frame, text="Buscar", style='Accent.TButton', command=self.search).pack(side=tk.LEFT, padx=(8, 0))
 
         # Frame de filtros
         filter_frame = ttk.Frame(main_frame)
@@ -45,10 +156,11 @@ class YouTubeSearchDialog:
         self.type_var = tk.StringVar(value="Vídeos")
         type_combobox = ttk.Combobox(
             filter_frame, textvariable=self.type_var,
-            values=["Vídeos", "Listas de reproducción", "Canales"],
+            values=["Vídeos", "Shorts", "Listas de reproducción", "Canales"],
             width=15, state="readonly"
         )
         type_combobox.pack(side=tk.LEFT, padx=(0, 10))
+        type_combobox.bind('<<ComboboxSelected>>', self._on_type_change)
         
         # Filtro por fecha
         ttk.Label(filter_frame, text="Fecha:").pack(side=tk.LEFT, padx=(0, 2))
@@ -63,12 +175,12 @@ class YouTubeSearchDialog:
         # Filtro por duración
         ttk.Label(filter_frame, text="Duración:").pack(side=tk.LEFT, padx=(0, 2))
         self.duration_var = tk.StringVar(value="Cualquier duración")
-        duration_combobox = ttk.Combobox(
+        self.duration_combobox = ttk.Combobox(
             filter_frame, textvariable=self.duration_var,
             values=["Cualquier duración", "Corto (<4 min)", "Medio (4-20 min)", "Largo (>20 min)"],
             width=15, state="readonly"
         )
-        duration_combobox.pack(side=tk.LEFT, padx=(0, 10))
+        self.duration_combobox.pack(side=tk.LEFT, padx=(0, 10))
         
         # Filtro por orden
         ttk.Label(filter_frame, text="Ordenar por:").pack(side=tk.LEFT, padx=(0, 2))
@@ -86,7 +198,7 @@ class YouTubeSearchDialog:
         
         ttk.Label(results_frame, text="Número de resultados:").pack(side=tk.LEFT, padx=(0, 2))
         self.results_count = tk.IntVar(value=10)
-        results_spinbox = tk.Spinbox(
+        results_spinbox = ttk.Spinbox(
             results_frame, from_=1, to=100, textvariable=self.results_count, width=4
         )
         results_spinbox.pack(side=tk.LEFT)
@@ -100,8 +212,9 @@ class YouTubeSearchDialog:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # Listbox
-        self.results_listbox = tk.Listbox(results_list_frame, yscrollcommand=scrollbar.set, font=("Arial", 10))
+        self.results_listbox = tk.Listbox(results_list_frame, yscrollcommand=scrollbar.set)
         self.results_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        style_listbox(self.results_listbox)
         scrollbar.config(command=self.results_listbox.yview)
         
         # Configurar el menú contextual
@@ -117,7 +230,7 @@ class YouTubeSearchDialog:
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=(10, 0))
         
-        play_btn = ttk.Button(button_frame, text="Reproducir", command=self.play_selected)
+        play_btn = ttk.Button(button_frame, text="Reproducir", style='Accent.TButton', command=self.play_selected)
         play_btn.pack(side=tk.LEFT, padx=(0, 5))
         
         download_video_btn = ttk.Button(button_frame, text="Descargar Vídeo+Audio", 
@@ -134,6 +247,12 @@ class YouTubeSearchDialog:
         self.results = []
         self.result_types = []
         self.result_details = []
+
+    def _on_type_change(self, event=None):
+        shorts = self.type_var.get() == "Shorts"
+        self.duration_combobox.configure(state='disabled' if shorts else 'readonly')
+        if shorts:
+            self.duration_var.set("Cualquier duración")
 
     def format_duration(self, seconds):
         """Formatea la duración en segundos a formato HH:MM:SS o MM:SS"""
@@ -199,23 +318,67 @@ class YouTubeSearchDialog:
         tipo = self.type_var.get()
         if tipo == "Vídeos":
             search_query += date_query + duration_query
+        elif tipo == "Shorts":
+            search_query += date_query
         elif tipo == "Listas de reproducción":
             search_query += " playlist" + date_query
 
         def perform_search():
             try:
-                max_results = min(max(self.results_count.get(), 1), 100)
-                ydl_opts = {
-                    'quiet': True,
-                    'extract_flat': True,
-                    'skip_download': True,
-                    'force_generic_extractor': False,
-                }
+                try:
+                    max_results = int(self.results_count.get())
+                except (tk.TclError, TypeError, ValueError):
+                    max_results = 10
+                max_results = min(max(max_results, 1), 100)
+                if tipo == "Shorts":
+                    shorts = _search_youtube_shorts(query, max_results, extra_query=date_query)
 
+                    def update_shorts_ui():
+                        if not shorts:
+                            messagebox.showinfo("Info", "No se encontraron Shorts con esa búsqueda.")
+                            self.progress_bar.stop()
+                            self.progress_bar.pack_forget()
+                            return
+                        for entry in shorts:
+                            title = (entry.get('title') or '').strip() or entry.get('id')
+                            duration = entry.get('duration')
+                            duration_str = self.format_duration(duration) if duration else ""
+                            self.result_types.append("video")
+                            self.results.append(f"https://www.youtube.com/shorts/{entry.get('id')}")
+                            self.result_details.append({
+                                'title': title,
+                                'id': entry.get('id'),
+                                'duration': duration,
+                            })
+                            display_text = f"[Short] {title}"
+                            if duration_str:
+                                display_text += f" [{duration_str}]"
+                            self.results_listbox.insert(tk.END, display_text)
+                        self.progress_bar.stop()
+                        self.progress_bar.pack_forget()
+
+                    self.window.after(0, update_shorts_ui)
+                    return
+
+                ydl_opts = youtube_ydl_opts(
+                    extract_flat=True,
+                    skip_download=True,
+                    force_generic_extractor=False,
+                    noplaylist=False,
+                    playlistend=max_results + 5,
+                )
+
+                query_q = quote_plus(search_query)
                 if tipo == "Listas de reproducción":
-                    search_url = f"https://www.youtube.com/results?search_query={search_query.replace(' ', '+')}&sp=EL"
+                    sp = "EgIQAw%3D%3D"
+                elif tipo == "Canales":
+                    sp = "EgIQAg%3D%3D"
                 else:
-                    search_url = f"ytsearch{max_results}:{search_query}"
+                    sp = "EgIQAQ%3D%3D"
+                search_url = (
+                    f"https://www.youtube.com/results?search_query={query_q}"
+                    f"&hl=es&gl=ES&sp={sp}"
+                )
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(search_url, download=False)
@@ -224,8 +387,8 @@ class YouTubeSearchDialog:
                     
                     def update_ui():
                         nonlocal results_count, found_playlist
-                        for entry in info.get('entries', []):
-                            if results_count >= max_results:
+                        for entry in info.get('entries') or []:
+                            if not entry or results_count >= max_results:
                                 break
                                 
                             title = entry.get('title', 'Sin título')
@@ -246,7 +409,7 @@ class YouTubeSearchDialog:
                                             'id': playlist_id,
                                             'duration': duration
                                         })
-                                        self.results_listbox.insert(tk.END, f"📑 {title}")
+                                        self.results_listbox.insert(tk.END, f"[Lista] {title}")
                                         found_playlist = True
                                         results_count += 1
                             elif tipo == "Vídeos":
@@ -259,7 +422,7 @@ class YouTubeSearchDialog:
                                         'id': entry.get('id'),
                                         'duration': duration
                                     })
-                                    display_text = f"▶️ {title}"
+                                    display_text = f"[Vídeo] {title}"
                                     if duration_str:
                                         display_text += f" [{duration_str}]"
                                     self.results_listbox.insert(tk.END, display_text)
@@ -275,7 +438,7 @@ class YouTubeSearchDialog:
                                         'title': title,
                                         'id': channel_id
                                     })
-                                    self.results_listbox.insert(tk.END, f"📺 {title}")
+                                    self.results_listbox.insert(tk.END, f"[Canal] {title}")
                                     results_count += 1
                         
                         if tipo == "Listas de reproducción" and not found_playlist:
@@ -305,6 +468,7 @@ class YouTubeSearchDialog:
             self.results_listbox.activate(selection)
             
             context_menu = tk.Menu(self.window, tearoff=0)
+            style_menu_tree(context_menu)
             tipo = self.result_types[selection]
             
             if tipo == "video":
@@ -393,16 +557,12 @@ class YouTubeSearchDialog:
     def _execute_download(self, url, filepath, title, audio_only=False):
         """Ejecuta la descarga del vídeo de YouTube."""
         try:
-            ydl_opts = {
-                'format': 'bestaudio/best' if audio_only else 'best',
-                'outtmpl': filepath,
-                'quiet': False,
-                'noplaylist': True,
-                'noprogress': False,
-                'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
-                }
-            }
+            ydl_opts = youtube_ydl_opts(
+                format='bestaudio/best' if audio_only else 'best',
+                outtmpl=filepath,
+                quiet=False,
+                noprogress=False,
+            )
             
             if audio_only:
                 ydl_opts.update({
@@ -439,12 +599,12 @@ class YouTubeSearchDialog:
 
     def load_playlist_videos(self, playlist_url):
         try:
-            ydl_opts = {
-                'quiet': True,
-                'extract_flat': True,
-                'skip_download': True,
-                'force_generic_extractor': False,
-            }
+            ydl_opts = youtube_ydl_opts(
+                extract_flat=True,
+                skip_download=True,
+                force_generic_extractor=False,
+                noplaylist=False,
+            )
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(playlist_url, download=False)
                 videos = info.get('entries', [])
