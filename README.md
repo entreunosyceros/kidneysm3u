@@ -21,7 +21,7 @@ Si no existe `.venv`, se crea solo e instala lo de `requirements.txt`. La primer
 | --- | --- |
 | [Índice](docs/README.md) | Mapa de toda la documentación |
 | [Instalación](docs/instalacion.md) | Requisitos, Ubuntu, Windows y entorno virtual |
-| [Uso](docs/uso.md) | Cómo empezar: cargar una lista y reproducir |
+| [Uso](docs/uso.md) | Cómo empezar: cargar una lista, reproducir y preferencias |
 | [Listas M3U](docs/listas-m3u.md) | Carga, filtro y ordenación de listas |
 | [YouTube](docs/youtube.md) | Búsqueda, Shorts, playlists, cookies y descargas |
 | [Reproductor](docs/reproductor.md) | Controles, atajos, favoritos, lista lateral y bandeja |
@@ -37,6 +37,7 @@ Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda →
 - Gestionar la lista lateral (favoritos, limpiar, reproducir desde aquí).
 - Descargar vídeos o solo audio (hace falta [ffmpeg](https://ffmpeg.org/download.html)).
 - Ordenar listas M3U desde la interfaz.
+- Ajustar tema, volumen, descargas, cookies y calidad de YouTube en **Preferencias**.
 
 Más detalle en las páginas de [uso](docs/uso.md), [listas M3U](docs/listas-m3u.md) y [YouTube](docs/youtube.md).
 

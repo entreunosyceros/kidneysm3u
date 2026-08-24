@@ -60,7 +60,7 @@ class M3UProcessor:
         
         # Menú Archivo
         archivo_menu = tk.Menu(menubar, tearoff=0)
-        archivo_menu.add_command(label="Cambiar Tema", command=self.toggle_tema)
+        archivo_menu.add_command(label="Preferencias", command=self.open_preferences)
         archivo_menu.add_command(label="Descargar", command=self.open_download_manager)
         archivo_menu.add_separator()
         archivo_menu.add_command(label="Salir", command=self.quit_app)
@@ -404,6 +404,7 @@ class M3UProcessor:
     def _ensure_player(self):
         if self.video_player is None or not getattr(self.video_player, 'is_alive', lambda: False)():
             self.video_player = VideoPlayer()
+            self.video_player._prefs_apply = self.apply_preferences
         return self.video_player
 
     def load_url(self):
@@ -518,6 +519,37 @@ class M3UProcessor:
         apply_theme(self.root, self.tema_oscuro)
         self._refresh_native_chrome()
         self.save_config()
+        self._refresh_tray_theme()
+        player = getattr(self, 'video_player', None)
+        if player:
+            refresh = getattr(player, 'refresh_theme', None)
+            if refresh:
+                refresh()
+
+    def open_preferences(self):
+        from preferences import show_preferences
+        show_preferences(self.root, on_apply=self.apply_preferences)
+
+    def apply_preferences(self):
+        self.config = app_config.load()
+        self.tema_oscuro = app_config.get_theme() == 'dark'
+        apply_theme(self.root, self.tema_oscuro)
+        self._refresh_native_chrome()
+        self._refresh_tray_theme()
+        player = getattr(self, 'video_player', None)
+        if player:
+            apply = getattr(player, 'apply_preferences', None)
+            if apply:
+                apply()
+
+    def _refresh_tray_theme(self):
+        bandeja = getattr(self, 'icono_bandeja', None)
+        if not bandeja:
+            return
+        try:
+            bandeja.actualizar_tema(self.tema_oscuro)
+        except Exception:
+            pass
 
     def setup_drag_drop(self):
         # Drag & Drop multiplataforma usando tkinterdnd2
@@ -570,8 +602,7 @@ class M3UProcessor:
 
     def load_config(self):
         self.config = app_config.load()
-        theme = self.config.get('theme', 'dark')
-        self.tema_oscuro = theme in ('dark', 'equilux')
+        self.tema_oscuro = app_config.get_theme() == 'dark'
         if 'patterns' in self.config:
             self.patterns_list = self.config['patterns']
 

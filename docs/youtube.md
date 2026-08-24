@@ -12,7 +12,7 @@ Para buscar, ver y descargar hace falta estar **logueado en YouTube**. El progra
 
 `cookies.txt` **no viene en el repositorio** (es tu sesión; no lo subas a GitHub). Tampoco hace falta crearlo a mano:
 
-1. Inicia sesión en YouTube en el navegador (el flujo más fiable es **Firefox**, con [browser-cookie3](https://pypi.org/project/browser-cookie3/)).
+1. Inicia sesión en YouTube en el navegador (el flujo más fiable es **Firefox**, con [browser-cookie3](https://pypi.org/project/browser-cookie3/)). En **Preferencias** puedes fijar el navegador de cookies o dejarlo en automático.
 2. Reproduce un vídeo desde el programa, o pulsa **Reexportar cookies**. Si hay login vigente, se escribe `cookies.txt`.
 3. A partir de ahí se reutiliza ese archivo. Si no existe, se sigue leyendo el navegador.
 
@@ -53,6 +53,7 @@ Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short 
 - Vídeo + audio, o **solo audio** (hace falta `ffmpeg` en el PATH).
 - Desde la búsqueda, el menú contextual o **Youtube → Descargar vídeo de YouTube**.
 - En la ventana principal, **Descargas** sirve para bajar cualquier URL (vídeo, imagen, texto, etc.).
+- La carpeta inicial se elige en **Archivo → Preferencias**.
 
 ## Cómo se reproduce
 

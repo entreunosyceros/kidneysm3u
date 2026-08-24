@@ -23,6 +23,8 @@ Desde aquí filtras o abres listas y lanzas el reproductor. El flujo habitual:
 3. Elige si **sustituyes** el archivo de salida o **añades** los resultados al final.
 4. Abre el [reproductor](reproductor.md) con la lista resultante.
 
+En **Archivo → Preferencias** (también **Reproducir → Preferencias** en el reproductor) unificas tema, volumen por defecto, carpeta de descargas, navegador de cookies, calidad de YouTube y si se recuerda la última lista. El botón **Tema claro/oscuro** de la cabecera sigue sirviendo para cambiar solo el tema.
+
 Detalle del filtro y de la herramienta de ordenar: [listas M3U](listas-m3u.md).
 
 ## Reproductor
@@ -35,7 +37,7 @@ En el menú **Reproducir**:
 
 Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir).
 
-La sesión recuerda la última lista lateral y el último canal **seleccionado**, no lo reproduce solo al abrir. **Limpiar** solo vacía la lista en esta sesión; al arrancar de nuevo se muestra lo último que había. Si no había lista, no muestra nada.
+La sesión puede recordar la última lista lateral y el último canal **seleccionado**, no lo reproduce solo al abrir. Eso se activa o desactiva en **Preferencias**. **Limpiar** solo vacía la lista en esta sesión; si «recordar última lista» está activo, al arrancar de nuevo se muestra lo último que había. Si no había lista, no muestra nada.
 
 ## YouTube
 

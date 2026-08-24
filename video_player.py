@@ -20,15 +20,16 @@ import traceback
 from youtube_player import YouTubeHandler, youtube_ydl_opts, _GrowingTSHandler
 from youtube_search import YouTubeSearchDialog
 from ui_theme import (
-    get_colors, get_font, style_window, style_listbox, style_menu_tree,
+    get_colors, get_font, style_window, style_menu_tree,
     set_window_icon, make_control_icons,
 )
 import app_config
 from m3u_parse import (
-    parse_m3u_entries, decode_m3u_bytes, describe_iptv_url,
+    parse_m3u_channels, decode_m3u_bytes, describe_iptv_url,
     classify_iptv_url, iptv_upstream_candidates,
     IPTV_USER_AGENT,
 )
+from channel_sidebar import ChannelSidebar
 
 # Clase Tooltip para mostrar información al pasar el ratón
 class Tooltip:
@@ -111,6 +112,10 @@ class VideoPlayer:
         self.channels = []
         self.current_channel = None
         self.channels_listbox = None
+        self.sidebar = None
+        self._groups = []
+        self._groups_all = []
+        self._filter_job = None
         self.channels_frame_visible = True
         self.is_fullscreen = False
         self.controls_visible = True
@@ -216,9 +221,11 @@ class VideoPlayer:
             command=self.reexport_youtube_cookies,
         ).pack(anchor=tk.W, pady=(4, 0))
 
-        self.channels_listbox = tk.Listbox(self.channels_frame, width=30, yscrollcommand=None)
+        scrollbar = ttk.Scrollbar(self.channels_frame, orient=tk.VERTICAL)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.sidebar = ChannelSidebar(self.channels_frame, scrollbar)
+        self.channels_listbox = self.sidebar.tree
         self.channels_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        style_listbox(self.channels_listbox)
         self.channels_listbox.bind('<Double-Button-1>', self.play_selected)
         self.channels_listbox.bind('<Button-3>', self.show_channel_context_menu)
 
@@ -226,13 +233,9 @@ class VideoPlayer:
         self._listbox_tip_index = None
         self.channels_listbox.bind('<Motion>', self.on_listbox_motion)
         self.channels_listbox.bind('<Leave>', self.on_listbox_leave)
-        self.channels_listbox.bind('<Button-4>', self._hide_listbox_tooltip)
-        self.channels_listbox.bind('<Button-5>', self._hide_listbox_tooltip)
-        self.channels_listbox.bind('<MouseWheel>', self._hide_listbox_tooltip)
-
-        scrollbar = ttk.Scrollbar(self.channels_frame, orient=tk.VERTICAL, command=self.channels_listbox.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.channels_listbox.config(yscrollcommand=scrollbar.set)
+        self.channels_listbox.bind('<Button-4>', self._hide_listbox_tooltip, add='+')
+        self.channels_listbox.bind('<Button-5>', self._hide_listbox_tooltip, add='+')
+        self.channels_listbox.bind('<MouseWheel>', self._hide_listbox_tooltip, add='+')
 
         # Frame de reproductor
         self.player_frame = ttk.Frame(self.main_frame)
@@ -291,6 +294,7 @@ class VideoPlayer:
         ]
         self._audio_btn = None
         self._subs_btn = None
+        self._control_buttons = {}
         self._posted_popup = None
         self._menu_rebuild_job = None
         for key, tip_text, command in buttons_info:
@@ -305,6 +309,7 @@ class VideoPlayer:
             tip = Tooltip(btn)
             btn.bind('<Enter>', lambda e, t=tip, txt=tip_text: t.showtip(txt))
             btn.bind('<Leave>', lambda e, t=tip: t.hidetip())
+            self._control_buttons[key] = btn
             if key == 'quality':
                 self._audio_btn = btn
             elif key == 'subtitles':
@@ -335,6 +340,8 @@ class VideoPlayer:
         reproducir_menu.add_command(label="Cargar Archivo Local", command=self.prompt_file)
         reproducir_menu.add_separator()
         reproducir_menu.add_command(label="Limpiar lista lateral", command=self.clear_channel_list)
+        reproducir_menu.add_separator()
+        reproducir_menu.add_command(label="Preferencias", command=self.open_preferences)
         reproducir_menu.add_command(label="Cerrar Reproductor", command=self.close)
 
         youtube_menu = tk.Menu(self.menubar, tearoff=0)
@@ -671,13 +678,13 @@ class VideoPlayer:
                 command=lambda i=tid: self._choose_from_menu(lambda t=i: self._apply_audio_track(t)),
             )
 
-    def _apply_youtube_quality(self, height):
+    def _apply_youtube_quality(self, height, force=False):
         height = 360 if int(height) == 360 else 720
         previous = app_config.get_youtube_quality()
         app_config.set_youtube_quality(height)
         if getattr(self, '_quality_choice', None) is not None:
             self._quality_choice.set(str(height))
-        if previous == height or not getattr(self, '_playing_youtube', False):
+        if (not force and previous == height) or not getattr(self, '_playing_youtube', False):
             return
         handler = getattr(self, 'youtube_handler', None)
         url = getattr(handler, '_current_url', '') or ''
@@ -1152,6 +1159,8 @@ class VideoPlayer:
 
     def restore_session(self):
         """Restaura la última lista lateral. Si se limpió, queda vacía. No reproduce."""
+        if not app_config.get_remember_last_list():
+            return
         session = app_config.load().get('session') or {}
         playlist = session.get('playlist') or ''
         kind = session.get('playlist_kind') or ''
@@ -1184,9 +1193,13 @@ class VideoPlayer:
     def _apply_sidebar_items(self, items):
         self.channels = list(items)
         self.all_channels = list(items)
-        self._fill_channel_listbox([name for name, _url in items])
+        self._groups = [''] * len(items)
+        self._groups_all = list(self._groups)
+        self._rebuild_sidebar()
 
     def _persist_sidebar(self):
+        if not app_config.get_remember_last_list():
+            return
         items = list(self.all_channels)
         source = self._playlist_source or ''
         kind = self._playlist_kind or ''
@@ -1203,6 +1216,8 @@ class VideoPlayer:
         app_config.remember_sidebar(items, source, kind or 'items')
 
     def restore_last_channel(self):
+        if not app_config.get_remember_last_list():
+            return
         if not self.channels or not self._widget_exists(self.channels_listbox):
             return
         session = app_config.load().get('session') or {}
@@ -1225,10 +1240,8 @@ class VideoPlayer:
         if chosen is None:
             return
         try:
-            self.channels_listbox.selection_clear(0, tk.END)
-            self.channels_listbox.selection_set(chosen)
-            self.channels_listbox.activate(chosen)
-            self.channels_listbox.see(chosen)
+            self.sidebar.select(chosen)
+            self.sidebar.see(chosen)
             self.current_channel = chosen
         except tk.TclError:
             pass
@@ -1255,12 +1268,14 @@ class VideoPlayer:
             return
         self.temp_channels = self.channels.copy()
         self.channels = list(self.favorites)
-        self._fill_channel_listbox([channel[0] for channel in self.channels])
+        self._groups = [''] * len(self.channels)
+        self._rebuild_sidebar()
 
     
     def restore_all_channels(self):
         self.channels = self.all_channels.copy()
-        self._fill_channel_listbox([channel[0] for channel in self.channels])
+        self._groups = list(self._groups_all)
+        self._rebuild_sidebar()
 
     def prompt_url(self):
         url = simpledialog.askstring("Cargar URL", "Introduce la URL de la lista M3U:")
@@ -1307,23 +1322,42 @@ class VideoPlayer:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo cargar la URL M3U: {e}")
 
-    def _fill_channel_listbox(self, names):
-        if not self._widget_exists(self.channels_listbox):
+    def update_sidebar_title(self, url, title):
+        updated = False
+        for i, (name, item_url) in enumerate(self.channels):
+            if item_url != url or name == title:
+                continue
+            self.channels[i] = (title, url)
+            updated = True
+            if getattr(self, 'sidebar', None):
+                self.sidebar.set_item_name(i, title)
+        for i, (name, item_url) in enumerate(self.all_channels):
+            if item_url != url or name == title:
+                continue
+            self.all_channels[i] = (title, url)
+            updated = True
+        return updated
+
+    def _rebuild_sidebar(self):
+        sidebar = getattr(self, 'sidebar', None)
+        if not sidebar or not self._widget_exists(self.channels_listbox):
             return
-        try:
-            self.channels_listbox.delete(0, tk.END)
-            for start in range(0, len(names), 200):
-                self.channels_listbox.insert(tk.END, *names[start:start + 200])
-        except tk.TclError:
-            return
+        if len(self._groups) != len(self.channels):
+            self._groups = [''] * len(self.channels)
+        sidebar.rebuild(self.channels, self._groups)
+
+    def _fill_channel_listbox(self, names=None):
+        self._rebuild_sidebar()
 
     def _process_m3u_content(self, content):
         """Procesa el contenido de un archivo M3U y carga los canales."""
         self.ensure_window()
-        parsed = parse_m3u_entries(content)
-        self.channels = parsed
-        self.all_channels = list(parsed)
-        self._fill_channel_listbox([name for name, _ in parsed])
+        parsed = parse_m3u_channels(content)
+        self.channels = [(name, url) for name, url, _group in parsed]
+        self._groups = [group for _name, _url, group in parsed]
+        self.all_channels = list(self.channels)
+        self._groups_all = list(self._groups)
+        self._rebuild_sidebar()
 
     def prompt_youtube_playlist(self):
         """Solicita URL de playlist de YouTube y la carga."""
@@ -1355,9 +1389,11 @@ class VideoPlayer:
                     parsed.append((title, video_url))
                 self.channels = parsed
                 self.all_channels = list(parsed)
+                self._groups = [''] * len(parsed)
+                self._groups_all = list(self._groups)
                 self._playlist_source = playlist_url
                 self._playlist_kind = 'youtube_playlist'
-                self._fill_channel_listbox([title for title, _ in parsed])
+                self._rebuild_sidebar()
                 self._persist_sidebar()
                 if notify:
                     messagebox.showinfo("Éxito", f"Playlist cargada: {len(videos)} vídeos")
@@ -1366,9 +1402,14 @@ class VideoPlayer:
 
     def play_selected(self, event=None):
         """Reproduce el canal seleccionado de la lista al hacer doble clic."""
-        selection = self.channels_listbox.curselection()
-        if selection:
-            index = selection[0]
+        index = None
+        if event is not None and getattr(self, 'sidebar', None):
+            if self.sidebar.group_at(event):
+                return
+            index = self.sidebar.index_at(event)
+        if index is None and getattr(self, 'sidebar', None):
+            index = self.sidebar.selected_index()
+        if index is not None:
             self.play_channel(index)
             
     def play_channel(self, index):
@@ -2079,13 +2120,39 @@ class VideoPlayer:
     def filter_channels(self, *args):
         if not self._widget_exists(getattr(self, 'channels_listbox', None)):
             return
-        search_term = self.search_var.get().lower()
-        filtered = [
-            (name, url) for name, url in self.all_channels
-            if search_term in name.lower()
-        ]
+        job = getattr(self, '_filter_job', None)
+        if job:
+            try:
+                self.window.after_cancel(job)
+            except tk.TclError:
+                pass
+        self._filter_job = self.window.after(80, self._apply_channel_filter)
+
+    def _apply_channel_filter(self):
+        self._filter_job = None
+        if not self._widget_exists(getattr(self, 'channels_listbox', None)):
+            return
+        search_term = ''
+        if getattr(self, 'search_var', None):
+            try:
+                search_term = (self.search_var.get() or '').strip().lower()
+            except tk.TclError:
+                search_term = ''
+        if not search_term:
+            self.channels = list(self.all_channels)
+            self._groups = list(self._groups_all) if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
+            self._rebuild_sidebar()
+            return
+        groups_all = self._groups_all if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
+        filtered = []
+        filtered_groups = []
+        for (name, url), group in zip(self.all_channels, groups_all):
+            if search_term in (name or '').lower() or search_term in (group or '').lower():
+                filtered.append((name, url))
+                filtered_groups.append(group)
         self.channels = filtered
-        self._fill_channel_listbox([name for name, _ in filtered])
+        self._groups = filtered_groups
+        self._rebuild_sidebar()
 
     def seek_relative(self, seconds):
         """Avanza o retrocede el video en segundos"""
@@ -2131,8 +2198,9 @@ class VideoPlayer:
             existing.add(url)
         if not added:
             return 0
-        for entry in added:
-            self.all_channels.append(entry)
+        for name, url in added:
+            self.all_channels.append((name, url))
+            self._groups_all.append('YouTube')
         if self._playlist_kind in ('file', 'url') and len(self.all_channels) <= 1500:
             self._playlist_kind = 'items'
         elif not self._playlist_kind:
@@ -2148,9 +2216,10 @@ class VideoPlayer:
         else:
             for name, url in added:
                 self.channels.append((name, url))
-                if self._widget_exists(self.channels_listbox):
-                    self.channels_listbox.insert(tk.END, name)
-                    self.channels_listbox.see(tk.END)
+                self._groups.append('YouTube')
+            self._rebuild_sidebar()
+            if getattr(self, 'sidebar', None):
+                self.sidebar.see(len(self.channels) - 1)
         self._persist_sidebar()
         return len(added)
 
@@ -2173,8 +2242,10 @@ class VideoPlayer:
         """Carga los vídeos de una playlist de YouTube como canales en el listado."""
         self.channels = canales
         self.all_channels = canales.copy()
+        self._groups = [''] * len(canales)
+        self._groups_all = list(self._groups)
         self._playlist_kind = self._playlist_kind or 'items'
-        self._fill_channel_listbox([nombre for nombre, _url in canales])
+        self._rebuild_sidebar()
         self._persist_sidebar()
 
     def download_channel(self, index):
@@ -2197,6 +2268,7 @@ class VideoPlayer:
             suggested_filename = re.sub(r'[\\/*?:"<>|]', "", name)  # Limpiar nombre de archivo
             filepath = filedialog.asksaveasfilename(
                 title="Guardar vídeo",
+                initialdir=app_config.get_download_dir(),
                 initialfile=suggested_filename,
                 filetypes=[("Todos los archivos", "*.*")]
             )
@@ -2262,6 +2334,74 @@ class VideoPlayer:
             except tk.TclError:
                 pass
 
+    def open_preferences(self):
+        from preferences import show_preferences
+        callback = getattr(self, '_prefs_apply', self.apply_preferences)
+        show_preferences(self.window, on_apply=callback)
+
+    def apply_preferences(self):
+        if not self._widget_exists(self.window):
+            return
+        self.refresh_theme()
+        volume = app_config.get_volume()
+        self.volume = volume
+        scale = getattr(self, 'volume_scale', None)
+        if scale:
+            try:
+                scale.set(volume)
+            except tk.TclError:
+                pass
+        try:
+            if self.player:
+                self.player.audio_set_volume(volume)
+        except Exception:
+            pass
+        height = app_config.get_youtube_quality()
+        previous = None
+        choice = getattr(self, '_quality_choice', None)
+        if choice is not None:
+            try:
+                previous = int(choice.get())
+            except (TypeError, ValueError, tk.TclError):
+                previous = None
+            try:
+                choice.set(str(height))
+            except tk.TclError:
+                pass
+        if previous is not None and previous != height and getattr(self, '_playing_youtube', False):
+            self._apply_youtube_quality(height, force=True)
+        elif hasattr(self, '_rebuild_track_menus'):
+            self._rebuild_track_menus()
+
+    def refresh_theme(self):
+        if not self._widget_exists(self.window):
+            return
+        style_window(self.window)
+        if self._widget_exists(self.channels_listbox):
+            sidebar = getattr(self, 'sidebar', None)
+            if sidebar:
+                sidebar.refresh_theme()
+        style_menu_tree(getattr(self, 'menubar', None))
+        for menu in (
+            getattr(self, 'audio_menu', None),
+            getattr(self, 'subs_menu', None),
+            getattr(self, 'audio_popup', None),
+            getattr(self, 'subs_popup', None),
+            getattr(self, '_youtube_menu', None),
+        ):
+            if menu is not None:
+                style_menu_tree(menu)
+        colors = get_colors()
+        self._control_icons = make_control_icons(colors['text'])
+        for key, btn in getattr(self, '_control_buttons', {}).items():
+            try:
+                btn.configure(image=self._control_icons[key])
+            except tk.TclError:
+                pass
+        handler = getattr(self, 'youtube_handler', None)
+        if handler:
+            handler.notify_session()
+
     def reexport_youtube_cookies(self):
         self.youtube_handler.reexport_youtube_cookies()
 
@@ -2282,8 +2422,10 @@ class VideoPlayer:
              self.ensure_window()
              self.channels = list(channels_list)
              self.all_channels = list(channels_list)
+             self._groups = [''] * len(channels_list)
+             self._groups_all = list(self._groups)
              self._playlist_kind = self._playlist_kind or 'youtube_playlist'
-             self._fill_channel_listbox([name for name, _url in channels_list])
+             self._rebuild_sidebar()
              self._persist_sidebar()
              messagebox.showinfo("Playlist cargada", f"Se cargaron {len(channels_list)} vídeos de la playlist.")
 
@@ -2335,19 +2477,10 @@ class VideoPlayer:
 
     def _listbox_index_at(self, event):
         """Índice de la fila bajo el puntero, o None si no hay título debajo."""
-        box = self.channels_listbox
-        index = box.nearest(event.y)
-        if index < 0 or index >= len(self.channels):
+        sidebar = getattr(self, 'sidebar', None)
+        if not sidebar:
             return None
-        bbox = box.bbox(index)
-        if not bbox:
-            return None
-        x, y, width, height = bbox
-        if not (y <= event.y < y + height):
-            return None
-        if event.x < x or event.x >= box.winfo_width():
-            return None
-        return index
+        return sidebar.index_at(event)
 
     def _hide_listbox_tooltip(self, event=None):
         self._listbox_tip_index = None
@@ -2357,14 +2490,16 @@ class VideoPlayer:
 
     def on_listbox_motion(self, event):
         """Muestra el título completo solo al pasar el ratón por esa fila."""
-        index = self._listbox_index_at(event)
-        if index is None:
+        sidebar = getattr(self, 'sidebar', None)
+        name = sidebar.name_at(event) if sidebar else None
+        if not name:
             self._hide_listbox_tooltip()
             return
-        if index == self._listbox_tip_index and self.listbox_tooltip.tipwindow:
+        index = sidebar.index_at(event) if sidebar else None
+        tip_key = index if index is not None else name
+        if tip_key == self._listbox_tip_index and self.listbox_tooltip.tipwindow:
             return
-        name = self.channels[index][0]
-        self._listbox_tip_index = index
+        self._listbox_tip_index = tip_key
         self.listbox_tooltip.showtip(
             name,
             event.x_root + 14,
@@ -2479,10 +2614,9 @@ class VideoPlayer:
                 
                 # Actualizar selección visual
                 print("Actualizando selección visual")
-                self.channels_listbox.selection_clear(0, tk.END)
-                self.channels_listbox.selection_set(index)
-                self.channels_listbox.activate(index)
-                self.channels_listbox.see(index)
+                if getattr(self, 'sidebar', None):
+                    self.sidebar.select(index)
+                    self.sidebar.see(index)
                 
                 # Crear nuevo reproductor y reproducir
                 print("Iniciando reproducción")
@@ -2613,12 +2747,21 @@ class VideoPlayer:
     def remove_channel(self, index):
         """Elimina un canal específico de la lista."""
         try:
-            if 0 <= index < len(self.channels):
-                del self.channels[index]
-                if 0 <= index < len(self.all_channels):
-                    del self.all_channels[index]
-                self.channels_listbox.delete(index)
-                self._persist_sidebar()
+            if not (0 <= index < len(self.channels)):
+                return
+            _name, url = self.channels[index]
+            del self.channels[index]
+            if index < len(self._groups):
+                del self._groups[index]
+            for i, (_n, item_url) in enumerate(list(self.all_channels)):
+                if item_url != url:
+                    continue
+                del self.all_channels[i]
+                if i < len(self._groups_all):
+                    del self._groups_all[i]
+                break
+            self._rebuild_sidebar()
+            self._persist_sidebar()
         except Exception as e:
             print(f"Error al eliminar canal: {e}")
 
@@ -2647,21 +2790,32 @@ class VideoPlayer:
         try:
             self.channels.clear()
             self.all_channels.clear()
+            self._groups.clear()
+            self._groups_all.clear()
             self.current_channel = None
             if self._widget_exists(self.search_entry):
                 self.search_var.set('')
-            if self._widget_exists(self.channels_listbox):
-                self.channels_listbox.delete(0, tk.END)
+            if getattr(self, 'sidebar', None):
+                self.sidebar.clear()
         except Exception as e:
             print(f"Error al limpiar la lista: {e}")
 
+    def _selected_channel_index(self, event=None):
+        sidebar = getattr(self, 'sidebar', None)
+        if event is not None and sidebar:
+            index = sidebar.index_at(event)
+            if index is not None:
+                return index
+        if sidebar:
+            return sidebar.selected_index()
+        return None
+
     def add_to_favorites(self):
         """Añade el canal seleccionado a favoritos"""
-        selection = self.channels_listbox.curselection()
-        if not selection:
+        selected_index = self._selected_channel_index()
+        if selected_index is None:
             messagebox.showinfo("Información", "Por favor, selecciona un canal primero")
             return
-        selected_index = selection[0]
         channel = self.channels[selected_index]
         if channel not in self.favorites:
             self.favorites.append(channel)
@@ -2672,11 +2826,10 @@ class VideoPlayer:
 
     def remove_from_favorites(self):
         """Elimina el canal seleccionado de favoritos"""
-        selection = self.channels_listbox.curselection()
-        if not selection:
+        selected_index = self._selected_channel_index()
+        if selected_index is None:
             messagebox.showinfo("Información", "Por favor, selecciona un canal primero")
             return
-        selected_index = selection[0]
         channel = self.channels[selected_index]
         if channel in self.favorites:
             self.favorites.remove(channel)
@@ -2686,12 +2839,11 @@ class VideoPlayer:
             messagebox.showinfo("Información", f"El canal '{channel[0]}' no estaba en favoritos")
 
     def show_channel_context_menu(self, event):
-        selection = self.channels_listbox.nearest(event.y)
-        if selection < 0 or selection >= len(self.channels):
+        selection = self._selected_channel_index(event)
+        if selection is None:
             return
-        self.channels_listbox.selection_clear(0, tk.END)
-        self.channels_listbox.selection_set(selection)
-        self.channels_listbox.activate(selection)
+        if getattr(self, 'sidebar', None):
+            self.sidebar.select(selection)
         self._hide_listbox_tooltip()
         menu = tk.Menu(self.window, tearoff=0)
         style_menu_tree(menu)
