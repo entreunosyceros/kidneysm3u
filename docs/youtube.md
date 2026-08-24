@@ -2,7 +2,9 @@
 
 [Inicio](../README.md) · [Índice](README.md) · [Instalación](instalacion.md) · [Uso](uso.md) · [Listas M3U](listas-m3u.md) · [YouTube](youtube.md) · [Reproductor](reproductor.md) · [Notas](notas.md)
 
-![reproduccion-youtube](https://github.com/user-attachments/assets/bc84bf95-b03a-4959-a8cc-ccbfeb04df32)
+<p align="center">
+<img width="1916" height="1049" alt="cargando-video-youtube" src="https://github.com/user-attachments/assets/a9405356-8fa6-456e-8e65-f14326124ead" />
+</p>
 
 Desde el menú **Youtube** del [reproductor](reproductor.md) puedes pegar una URL, buscar, cargar una playlist o descargar.
 
@@ -22,7 +24,9 @@ No se escribe un `cookies.txt` vacío ni uno sin cookies de login: yt-dlp lo usa
 
 ## Búsqueda
 
-![buscar-youtube](https://github.com/user-attachments/assets/5f6f3597-b09e-4574-bb67-afdf5d8b4fe4)
+<p align="center">
+<img width="960" height="707" alt="buscar-listas-youtube" src="https://github.com/user-attachments/assets/b5563240-7b57-4f70-8591-21a77dd01852" />
+</p>
 
 **Youtube → Buscar en YouTube**. Filtros:
 
@@ -43,6 +47,9 @@ También puedes filtrar por fecha, duración (no aplica a Shorts) y número de r
 Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short de la búsqueda.
 
 ## Playlists
+<p align="center">
+<img width="1919" height="1048" alt="reproduciendo-lista" src="https://github.com/user-attachments/assets/dee90af9-0002-4c7b-990f-04c2f5781817" />
+</p>
 
 **Youtube → Cargar Playlist de YouTube** (o desde el resultado de una lista). Los vídeos pasan a la lista de la izquierda y se pueden seguir con **Reproducir desde aquí**.
 
