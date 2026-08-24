@@ -1,5 +1,9 @@
 # Documentación de Kidneysm3u
 
+<p align="center">
+<img width="899" height="684" alt="interfaz-kidneys" src="https://github.com/user-attachments/assets/88366f48-e059-46d8-9169-a94aec31a738" />
+</p>
+
 [Inicio](../README.md) · [Índice](README.md) · [Instalación](instalacion.md) · [Uso](uso.md) · [Listas M3U](listas-m3u.md) · [YouTube](youtube.md) · [Reproductor](reproductor.md) · [Notas](notas.md)
 
 Esta carpeta es el manual del programa. El [README principal](../README.md) es la puerta de entrada; desde aquí puedes abrir cada tema y, en todas las páginas, volver al inicio o saltar a otro apartado.
