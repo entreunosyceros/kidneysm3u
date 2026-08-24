@@ -35,6 +35,8 @@ En el menú **Reproducir**:
 
 - **Cargar URL** — lista M3U remota o enlace de vídeo.
 - **Cargar archivo local** — `.m3u`, `.m3u8` o un fichero de vídeo.
+- **Guía EPG → Desde URL…** — guía XMLTV remota (`http`/`https`).
+- **Guía EPG → Desde archivo…** — guía XMLTV local (`.xml`, `.xml.gz`).
 - **Limpiar lista lateral** — vacía el listado de la izquierda (pide confirmación).
 
 Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir).
