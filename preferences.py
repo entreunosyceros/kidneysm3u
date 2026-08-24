@@ -39,12 +39,12 @@ def show_preferences(parent, on_apply=None):
 
     window = tk.Toplevel(parent)
     window.title('Preferencias')
-    window.geometry('560x780')
-    window.minsize(500, 700)
+    window.geometry('560x840')
+    window.minsize(500, 740)
     window.transient(parent)
     style_window(window)
     set_window_icon(window)
-    center_window(window, 560, 780)
+    center_window(window, 560, 840)
     root._prefs_window = window
 
     theme_var = tk.StringVar(value=app_config.get_theme())
@@ -54,6 +54,7 @@ def show_preferences(parent, on_apply=None):
     quality_var = tk.StringVar(value=str(app_config.get_youtube_quality()))
     cookie_var = tk.StringVar(value=app_config.get_cookie_browser())
     remember_var = tk.BooleanVar(value=app_config.get_remember_last_list())
+    logos_var = tk.BooleanVar(value=app_config.get_show_channel_logos())
 
     main = ttk.Frame(window, padding=20)
     main.pack(fill=tk.BOTH, expand=True)
@@ -61,7 +62,7 @@ def show_preferences(parent, on_apply=None):
     ttk.Label(main, text='Preferencias', style='PageTitle.TLabel').pack(anchor=tk.W)
     ttk.Label(
         main,
-        text='Tema, reproducción, descargas y sesión de YouTube',
+        text='Tema, logos, reproducción, descargas y sesión de YouTube',
         style='Muted.TLabel',
     ).pack(anchor=tk.W, pady=(0, 14))
 
@@ -72,6 +73,18 @@ def show_preferences(parent, on_apply=None):
     ttk.Label(theme_row, text='Tema', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 16))
     ttk.Radiobutton(theme_row, text='Oscuro', variable=theme_var, value='dark').pack(side=tk.LEFT, padx=(0, 10))
     ttk.Radiobutton(theme_row, text='Claro', variable=theme_var, value='light').pack(side=tk.LEFT)
+    ttk.Checkbutton(
+        appearance,
+        text='Mostrar logos de canal',
+        variable=logos_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W, pady=(10, 0))
+    ttk.Label(
+        appearance,
+        text='Miniaturas de tvg-logo en la lista y en la parrilla. En listas grandes desactívalo: la lista se pinta antes y no se descargan imágenes.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(6, 0))
 
     playback = ttk.LabelFrame(main, text=' REPRODUCCIÓN ', padding=12)
     playback.pack(fill=tk.X, pady=(0, 10))
@@ -199,6 +212,7 @@ def show_preferences(parent, on_apply=None):
             'download_dir': folder,
             'cookie_browser': cookie_key,
             'remember_last_list': bool(remember_var.get()),
+            'show_channel_logos': bool(logos_var.get()),
             'youtube_quality': 360 if quality <= 360 else 720,
         })
         close()

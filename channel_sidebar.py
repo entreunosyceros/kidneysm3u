@@ -81,6 +81,9 @@ class ChannelSidebar:
         self._tab_buttons = []
         self._updating_picker = False
         self._ignore_play_until = 0
+        self.on_view_change = None
+        self.now_text = None
+        self.row_image = None
 
         self.tree.bind('<<TreeviewOpen>>', self._on_open)
         self.tree.bind('<<TreeviewClose>>', self._on_close)
@@ -168,6 +171,7 @@ class ChannelSidebar:
             self._active_group = ALL_GROUPS
         self._sync_picker()
         self._render()
+        self._notify_view_change()
 
     def show_all_groups(self):
         self.set_active_group(ALL_GROUPS)
@@ -186,6 +190,71 @@ class ChannelSidebar:
         self._clear_tree()
         self._sync_picker_selection()
         self._render()
+        self._notify_view_change()
+
+    def _notify_view_change(self):
+        callback = self.on_view_change
+        if callable(callback):
+            callback()
+
+    def current_indices(self):
+        if self.mode == 'catalog':
+            return []
+        if self._view_indices is not None:
+            return list(self._view_indices)
+        return list(range(len(self.channels)))
+
+    def _row_text(self, index):
+        if index is None or not (0 <= index < len(self.channels)):
+            return ''
+        name = self.channels[index][0]
+        getter = self.now_text
+        extra = getter(index) if callable(getter) else ''
+        extra = (extra or '').strip()
+        if extra:
+            return f'{name}  ·  {extra}'
+        return name
+
+    def _image_for(self, index):
+        getter = self.row_image
+        if not callable(getter):
+            return None
+        try:
+            return getter(index)
+        except Exception:
+            return None
+
+    def _item_kwargs(self, index):
+        kwargs = {'text': self._row_text(index)}
+        image = self._image_for(index)
+        if image is not None:
+            kwargs['image'] = image
+        else:
+            kwargs['image'] = ''
+        return kwargs
+
+    def refresh_rows(self):
+        if self.mode == 'virtual':
+            self._refresh_virtual()
+            return
+        if self.mode == 'catalog':
+            return
+
+        def walk(parent=''):
+            try:
+                items = list(self.tree.get_children(parent))
+            except tk.TclError:
+                return
+            for iid in items:
+                index = self._index_from_iid(iid)
+                if index is not None:
+                    try:
+                        self.tree.item(iid, **self._item_kwargs(index))
+                    except tk.TclError:
+                        continue
+                walk(iid)
+
+        walk()
 
     def _has_groups(self):
         return len(self.channels) >= 2 and len(self._order) >= 2
@@ -352,9 +421,8 @@ class ChannelSidebar:
             index = self._index_at_row(row)
             if index is None:
                 continue
-            name = self.channels[index][0]
             try:
-                self.tree.insert('', 'end', iid=f'c:{index}', text=name)
+                self.tree.insert('', 'end', iid=f'c:{index}', **self._item_kwargs(index))
             except tk.TclError:
                 return
         if end < total:
@@ -442,9 +510,8 @@ class ChannelSidebar:
         end = min(len(indices), start + CHUNK)
         for pos in range(start, end):
             index = indices[pos]
-            name = self.channels[index][0]
             try:
-                self.tree.insert(gid, 'end', iid=f'c:{index}', text=name)
+                self.tree.insert(gid, 'end', iid=f'c:{index}', **self._item_kwargs(index))
             except tk.TclError:
                 return
         if end < len(indices):
@@ -525,13 +592,13 @@ class ChannelSidebar:
         for row in range(need):
             view_row = self._virtual_start + row
             index = self._index_at_row(view_row)
-            text = self.channels[index][0] if index is not None else ''
+            kwargs = self._item_kwargs(index) if index is not None else {'text': '', 'image': ''}
             iid = f'v:{row}'
             try:
                 if self.tree.exists(iid):
-                    self.tree.item(iid, text=text)
+                    self.tree.item(iid, **kwargs)
                 else:
-                    self.tree.insert('', 'end', iid=iid, text=text)
+                    self.tree.insert('', 'end', iid=iid, **kwargs)
             except tk.TclError:
                 return
         for row in range(need, self._pool):
@@ -618,10 +685,16 @@ class ChannelSidebar:
             x, y, width, height = bbox
             if not (y <= event.y < y + height):
                 return None
+        index = self._index_from_iid(iid)
+        if index is not None and 0 <= index < len(self.channels):
+            return self.channels[index][0]
         try:
-            return self.tree.item(iid, 'text') or None
+            text = self.tree.item(iid, 'text') or None
         except tk.TclError:
             return None
+        if text and '  ·  ' in text:
+            return text.split('  ·  ', 1)[0]
+        return text
 
     def selected_index(self):
         if self.mode == 'virtual':

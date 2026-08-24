@@ -1,0 +1,400 @@
+"""Reproducción IPTV: VLC remoto, reintento MPEG-TS y detección de stream muerto."""
+
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import threading
+import time
+from http.server import ThreadingHTTPServer
+
+import vlc
+
+from m3u_parse import (
+    IPTV_USER_AGENT,
+    classify_iptv_url,
+    describe_iptv_url,
+    iptv_upstream_candidates,
+    is_iptv_vod,
+)
+from youtube_player import _GrowingTSHandler
+
+
+class IptvPlaybackMixin:
+    def _play_iptv_url(self, name, url):
+        url = (url or '').strip()
+        if not url:
+            self._show_channel_unavailable(name)
+            return
+        self._media_started = False
+        self._playing_youtube = False
+        self._iptv_ok_ticks = 0
+        kind = classify_iptv_url(url)
+        print(f"[IPTV] '{name}' → {describe_iptv_url(url)} tipo={kind}")
+        if kind == 'container' or is_iptv_vod(url):
+            self._known_duration_ms = 0
+            self.show_youtube_progress_bar()
+        else:
+            self.hide_progress_bar()
+        self._iptv_retry_name = name
+        self._iptv_source_url = url
+        self._iptv_did_ts_retry = False
+        self._iptv_check_gen = getattr(self, '_iptv_check_gen', 0) + 1
+        check_gen = self._iptv_check_gen
+        self._start_vlc_remote(name, url, kind)
+        self.window.after(800, lambda: self._watch_iptv_start(check_gen, name, url, kind, 0))
+        self.window.after(12000, lambda: self._iptv_deadman(check_gen, name))
+
+    def _sanitize_iptv_log(self, text):
+        return re.sub(r'https?://\S+', '[url]', text or '')
+
+    def _iptv_media_stats(self):
+        if not self.player:
+            return None
+        try:
+            media = self.player.get_media()
+        except Exception:
+            return None
+        if media is None:
+            return None
+        try:
+            stats = vlc.MediaStats()
+            if not media.get_stats(stats):
+                return None
+            return stats
+        except Exception:
+            return None
+
+    def _iptv_has_real_media(self):
+        """Playing/Buffering con pantalla negra no cuenta: hace falta decodificar algo."""
+        stats = self._iptv_media_stats()
+        if stats is None:
+            return False
+        for field in ('decoded_video', 'decoded_audio', 'displayed_pictures', 'played_abuffers'):
+            try:
+                if int(getattr(stats, field, 0) or 0) > 0:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
+
+    def _iptv_remote_options(self, kind, force_ts=False):
+        options = [
+            ':network-caching=3000',
+            ':live-caching=3000',
+            ':file-caching=3000',
+            ':sout-mux-caching=3000',
+            ':avcodec-hw=none',
+            ':audio-resampler=soxr',
+            ':codec=avcodec',
+            f':http-user-agent={IPTV_USER_AGENT}',
+            ':http-reconnect=true',
+            ':aout=alsa',
+        ]
+        if force_ts:
+            options.extend([':demux=ts', ':no-ts-trust-pcr'])
+        elif kind == 'mpegts':
+            options.append(':no-ts-trust-pcr')
+        return options
+
+    def _start_vlc_remote(self, name, url, kind, force_ts=False):
+        if not self.instance:
+            return
+        if self.player is None:
+            self.player = self.instance.media_player_new()
+            try:
+                self.player.audio_set_volume(self.volume)
+            except Exception:
+                pass
+        try:
+            self.player.stop()
+        except Exception:
+            pass
+        how = 'mpegts forzado' if force_ts else kind
+        print(f"[IPTV] Abriendo {describe_iptv_url(url)} ({how})")
+        media = self.instance.media_new(url)
+        for option in self._iptv_remote_options(kind, force_ts=force_ts):
+            media.add_option(option)
+        self.player.set_media(media)
+        self._embed_vlc_in_frame()
+        self.player.play()
+        self.adjust_video_settings()
+        self.start_update_time()
+        self._schedule_track_refresh()
+        self._iptv_retry_name = name
+
+    def _iptv_deadman(self, check_gen, name):
+        if check_gen != getattr(self, '_iptv_check_gen', 0):
+            return
+        if getattr(self, '_iptv_failed', False) or getattr(self, '_playing_youtube', False):
+            return
+        if self._iptv_has_real_media():
+            self._media_started = True
+            apply = getattr(self, '_apply_pending_iptv_resume', None)
+            if apply:
+                apply()
+            return
+        self._iptv_report_unavailable(name)
+
+    def _watch_iptv_start(self, check_gen, name, url, kind, ticks=0):
+        if check_gen != getattr(self, '_iptv_check_gen', 0):
+            return
+        if getattr(self, '_iptv_failed', False):
+            return
+        if not self.player or getattr(self, '_playing_youtube', False):
+            if ticks >= 4:
+                self._iptv_report_unavailable(name)
+            elif not getattr(self, '_playing_youtube', False):
+                self.window.after(2000, lambda: self._watch_iptv_start(check_gen, name, url, kind, ticks + 1))
+            return
+        try:
+            state = self.player.get_state()
+        except Exception:
+            if ticks >= 4:
+                self._iptv_report_unavailable(name)
+            else:
+                self.window.after(2000, lambda: self._watch_iptv_start(check_gen, name, url, kind, ticks + 1))
+            return
+        stats = self._iptv_media_stats()
+        decoded_v = int(getattr(stats, 'decoded_video', 0) or 0) if stats else 0
+        decoded_a = int(getattr(stats, 'decoded_audio', 0) or 0) if stats else 0
+        pictures = int(getattr(stats, 'displayed_pictures', 0) or 0) if stats else 0
+        if ticks < 8:
+            print(f"[IPTV] VLC {state} decoded_v={decoded_v} decoded_a={decoded_a} pictures={pictures}")
+        if self._iptv_has_real_media():
+            self._media_started = True
+            apply = getattr(self, '_apply_pending_iptv_resume', None)
+            if apply:
+                apply()
+            return
+        retry_container = (
+            kind == 'container'
+            and not getattr(self, '_iptv_did_ts_retry', False)
+            and state in (vlc.State.Ended, vlc.State.Error, vlc.State.Stopped)
+        )
+        if retry_container:
+            self._iptv_did_ts_retry = True
+            print("[IPTV] El contenedor cortó al abrir; reintento como MPEG-TS")
+            self._iptv_check_gen = check_gen + 1
+            retry_gen = self._iptv_check_gen
+            self._start_vlc_remote(name, url, kind, force_ts=True)
+            self.window.after(2000, lambda: self._watch_iptv_start(retry_gen, name, url, kind, 0))
+            self.window.after(12000, lambda: self._iptv_deadman(retry_gen, name))
+            return
+        if state == vlc.State.Error:
+            self._iptv_report_unavailable(name)
+            return
+        if state == vlc.State.Ended and ticks >= 1:
+            self._iptv_report_unavailable(name)
+            return
+        if ticks >= 5:
+            self._iptv_report_unavailable(name)
+            return
+        self.window.after(2000, lambda: self._watch_iptv_start(check_gen, name, url, kind, ticks + 1))
+
+    def _iptv_local_options(self):
+        return [
+            'network-caching=1500',
+            'file-caching=1500',
+            'avcodec-hw=none',
+            'audio-resampler=soxr',
+            'aout=alsa',
+            'demux=ts',
+            'no-ts-trust-pcr',
+        ]
+
+    def _start_vlc_local_ts(self, name, url):
+        """VLC solo abre localhost; no usa el HTTP remoto que falla tras el 302."""
+        if not self.instance:
+            return
+        if self.player is None:
+            self.player = self.instance.media_player_new()
+            try:
+                self.player.audio_set_volume(self.volume)
+            except Exception:
+                pass
+        try:
+            if self.player.is_playing():
+                self.player.stop()
+        except Exception:
+            pass
+        media = self.instance.media_new(url)
+        for option in self._iptv_local_options():
+            media.add_option(option)
+        self.player.set_media(media)
+        self._embed_vlc_in_frame()
+        self.player.play()
+        self.adjust_video_settings()
+        self.start_update_time()
+        self._schedule_track_refresh()
+        self._iptv_retry_name = name
+
+    def _check_iptv_stream(self, check_gen=None, waited=0):
+        if check_gen is not None and check_gen != getattr(self, '_iptv_check_gen', 0):
+            return
+        if not self.player:
+            return
+        try:
+            state = self.player.get_state()
+        except Exception:
+            return
+        if state in (vlc.State.Playing, vlc.State.Buffering, vlc.State.Paused):
+            if self._iptv_has_real_media():
+                self._media_started = True
+
+    def _stop_iptv_relay(self):
+        server = getattr(self, '_iptv_relay_server', None)
+        self._iptv_relay_server = None
+        if server:
+            try:
+                server.shutdown()
+            except Exception:
+                pass
+            try:
+                server.server_close()
+            except Exception:
+                pass
+        for proc in getattr(self, '_iptv_relay_procs', []) or []:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        for proc in getattr(self, '_iptv_relay_procs', []) or []:
+            try:
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        self._iptv_relay_procs = []
+        tmpdir = getattr(self, '_iptv_relay_tmpdir', None)
+        self._iptv_relay_tmpdir = None
+        if tmpdir:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def _ffmpeg_pull_cmd(self, ffmpeg, source, ts_path):
+        return [
+            ffmpeg, '-hide_banner', '-loglevel', 'error',
+            '-user_agent', IPTV_USER_AGENT,
+            '-reconnect', '1', '-reconnect_streamed', '1',
+            '-reconnect_delay_max', '5',
+            '-i', source,
+            '-c', 'copy', '-f', 'mpegts', ts_path,
+        ]
+
+    def _start_iptv_ffmpeg_relay(self, name, url):
+        ffmpeg = shutil.which('ffmpeg')
+        if not ffmpeg:
+            print("[IPTV] ffmpeg no está instalado")
+            print(f"[IPTV] No se pudo abrir el canal '{name}'")
+            return
+        self._stop_iptv_relay()
+        tmpdir = tempfile.mkdtemp(prefix='kidneys_iptv_')
+        ts_path = os.path.join(tmpdir, 'stream.ts')
+        self._iptv_relay_tmpdir = tmpdir
+        check_gen = getattr(self, '_iptv_check_gen', 0) + 1
+        self._iptv_check_gen = check_gen
+
+        server = ThreadingHTTPServer(('127.0.0.1', 0), _GrowingTSHandler)
+        server.ts_path = ts_path
+        server.yt_procs = []
+        self._iptv_relay_server = server
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        local_url = f'http://127.0.0.1:{server.server_address[1]}/stream.ts'
+
+        def producer():
+            try:
+                sources = iptv_upstream_candidates(url)
+            except Exception as err:
+                print(f"[IPTV] No se pudieron preparar orígenes ({err})")
+                sources = [url]
+            if getattr(self, '_iptv_check_gen', 0) != check_gen:
+                return
+            print(f"[IPTV] Retransmitiendo por 127.0.0.1 ({len(sources)} origen(es))")
+            for index, source in enumerate(sources, start=1):
+                if getattr(self, '_iptv_check_gen', 0) != check_gen:
+                    return
+                try:
+                    if os.path.exists(ts_path):
+                        os.remove(ts_path)
+                except OSError:
+                    pass
+                cmd = self._ffmpeg_pull_cmd(ffmpeg, source, ts_path)
+                try:
+                    proc = subprocess.Popen(cmd, stderr=subprocess.PIPE)
+                except Exception as exc:
+                    print(f"[IPTV] ffmpeg no arrancó ({exc})")
+                    continue
+                self._iptv_relay_procs = [proc]
+                if self._iptv_relay_server:
+                    self._iptv_relay_server.yt_procs = self._iptv_relay_procs
+                deadline = time.time() + 12
+                got_data = False
+                while time.time() < deadline:
+                    if getattr(self, '_iptv_check_gen', 0) != check_gen:
+                        try:
+                            proc.terminate()
+                        except Exception:
+                            pass
+                        return
+                    try:
+                        if os.path.exists(ts_path) and os.path.getsize(ts_path) >= 32 * 1024:
+                            got_data = True
+                            break
+                    except OSError:
+                        pass
+                    if proc.poll() is not None:
+                        break
+                    time.sleep(0.2)
+                if got_data:
+                    err = None
+                    try:
+                        err = proc.communicate()[1]
+                    except Exception:
+                        pass
+                    if err:
+                        text = err.decode('utf-8', errors='replace')[-400:]
+                        if text.strip():
+                            print(f"[IPTV ffmpeg] {self._sanitize_iptv_log(text)}")
+                    return
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=2)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                err = b''
+                try:
+                    err = proc.stderr.read() if proc.stderr else b''
+                except Exception:
+                    pass
+                if err:
+                    print(f"[IPTV] origen {index}/{len(sources)} sin datos: {self._sanitize_iptv_log(err.decode('utf-8', errors='replace')[-200:])}")
+                else:
+                    print(f"[IPTV] origen {index}/{len(sources)} sin datos")
+            if self._widget_exists(self.window):
+                self.window.after(0, lambda: self._iptv_report_unavailable(name))
+
+        def wait_and_play():
+            deadline = time.time() + 45
+            while time.time() < deadline:
+                if getattr(self, '_iptv_check_gen', 0) != check_gen:
+                    return
+                try:
+                    if os.path.exists(ts_path) and os.path.getsize(ts_path) >= 32 * 1024:
+                        break
+                except OSError:
+                    pass
+                time.sleep(0.2)
+            else:
+                return
+            if not self._widget_exists(self.window):
+                return
+            self.window.after(0, lambda: self._start_vlc_local_ts(name, local_url))
+
+        threading.Thread(target=producer, daemon=True).start()
+        threading.Thread(target=wait_and_play, daemon=True).start()

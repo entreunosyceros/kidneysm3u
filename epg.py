@@ -14,12 +14,18 @@ from urllib.request import Request, urlopen
 from m3u_parse import IPTV_USER_AGENT
 
 MAX_EPG_BYTES = 80 * 1024 * 1024
-MAX_PROGRAMMES = 4
-WINDOW_PAST = timedelta(hours=2)
-WINDOW_FUTURE = timedelta(hours=18)
+MAX_PROGRAMMES = 24
+WINDOW_PAST = timedelta(hours=1)
+WINDOW_FUTURE = timedelta(hours=8)
 DEFAULT_DURATION = 30 * 60
+FETCH_TIMEOUT = 90
 _XMLTV_DT = re.compile(r'^(\d{14})(?:\s*([+-]\d{2}):?(\d{2}))?')
 _HOSTISH = re.compile(r'^(?:www\.)?[a-z0-9.-]+\.[a-z]{2,}(?:[:/?]|$)', re.I)
+_SPACE = re.compile(r'\s+')
+
+
+def _norm_epg_name(text):
+    return _SPACE.sub(' ', (text or '').strip()).lower()
 
 
 class Programme:
@@ -39,17 +45,21 @@ class Programme:
 
 
 class Guide:
-    def __init__(self, programmes=None):
+    def __init__(self, programmes=None, icons=None):
         self._by_id = programmes or {}
+        self._icons = icons or {}
 
     def channel_count(self):
-        return len(self._by_id)
+        return len({key for key in self._by_id if key and key != key.lower()}) or len(self._by_id)
 
-    def now_next(self, tvg_id, now=None):
+    def _items(self, tvg_id):
         key = (tvg_id or '').strip()
         if not key:
-            return None, None
-        items = self._by_id.get(key) or self._by_id.get(key.lower())
+            return []
+        return self._by_id.get(key) or self._by_id.get(key.lower()) or []
+
+    def now_next(self, tvg_id, now=None):
+        items = self._items(tvg_id)
         if not items:
             return None, None
         now = time_now() if now is None else now
@@ -65,6 +75,29 @@ class Guide:
                 nxt = prog
                 break
         return current, nxt
+
+    def now_title(self, tvg_id, now=None, limit=36):
+        current, _nxt = self.now_next(tvg_id, now=now)
+        if not current:
+            return ''
+        return _short(current.title, limit)
+
+    def programmes_between(self, tvg_id, start, stop):
+        items = self._items(tvg_id)
+        if not items or stop <= start:
+            return []
+        found = []
+        for prog in items:
+            if prog.stop <= start or prog.start >= stop:
+                continue
+            found.append(prog)
+        return found
+
+    def icon(self, tvg_id):
+        key = (tvg_id or '').strip()
+        if not key:
+            return ''
+        return self._icons.get(key) or self._icons.get(key.lower()) or ''
 
 
 def time_now():
@@ -137,19 +170,60 @@ def _programme_title(elem):
     return chosen
 
 
-def parse_xmltv(source, wanted_ids, now=None):
-    """Lee XMLTV y deja solo ahora/próximo de los tvg-id pedidos."""
-    wanted = {item.strip() for item in wanted_ids if item and str(item).strip()}
+def parse_xmltv(source, wanted_ids, now=None, wanted_names=None):
+    """Lee XMLTV y deja la ventana ahora→unas horas de los tvg-id o nombres pedidos."""
+    wanted = {str(item).strip() for item in wanted_ids if item and str(item).strip()}
     wanted_l = {item.lower() for item in wanted}
-    if not wanted:
+    name_index = {}
+    for item in list(wanted_names or []) + list(wanted):
+        item = str(item).strip()
+        if not item:
+            continue
+        name_index.setdefault(_norm_epg_name(item), []).append(item)
+    if not wanted and not name_index:
         return Guide()
     now = time_now() if now is None else now
     start_min = now - WINDOW_PAST.total_seconds()
     stop_max = now + WINDOW_FUTURE.total_seconds()
     collected = defaultdict(list)
+    icons = {}
+    aliases = {}
     try:
         for _event, elem in ET.iterparse(source, events=('end',)):
-            if _local_name(elem.tag) != 'programme':
+            tag = _local_name(elem.tag)
+            if tag == 'channel':
+                channel = (elem.get('id') or '').strip()
+                names = []
+                icon_src = ''
+                for child in elem:
+                    local = _local_name(child.tag)
+                    if local == 'display-name':
+                        text = (child.text or '').strip()
+                        if text:
+                            names.append(text)
+                    elif local == 'icon' and not icon_src:
+                        icon_src = (child.get('src') or '').strip()
+                hit = bool(channel) and (channel in wanted or channel.lower() in wanted_l)
+                extra = []
+                if not hit and name_index:
+                    for name in names:
+                        extra.extend(name_index.get(_norm_epg_name(name)) or [])
+                    hit = bool(extra)
+                if hit and channel:
+                    wanted.add(channel)
+                    wanted_l.add(channel.lower())
+                    if icon_src:
+                        icons[channel] = icon_src
+                        icons.setdefault(channel.lower(), icon_src)
+                    for label in names + extra:
+                        aliases[label] = channel
+                        aliases[label.lower()] = channel
+                        if icon_src:
+                            icons.setdefault(label, icon_src)
+                            icons.setdefault(label.lower(), icon_src)
+                elem.clear()
+                continue
+            if tag != 'programme':
                 continue
             channel = (elem.get('channel') or '').strip()
             if channel not in wanted and channel.lower() not in wanted_l:
@@ -165,14 +239,11 @@ def parse_xmltv(source, wanted_ids, now=None):
                     elem.clear()
                     continue
                 stop = (now + DEFAULT_DURATION) if start <= now else (start + DEFAULT_DURATION)
-            if stop <= now or start >= stop_max:
+            if stop <= start_min or start >= stop_max:
                 elem.clear()
                 continue
             title = _programme_title(elem)
-            key = channel
-            bucket = collected[key]
-            if len(bucket) < MAX_PROGRAMMES:
-                bucket.append(Programme(start, stop, title))
+            collected[channel].append(Programme(start, stop, title))
             elem.clear()
     except ET.ParseError:
         if not collected:
@@ -180,11 +251,16 @@ def parse_xmltv(source, wanted_ids, now=None):
     result = {}
     for key, items in collected.items():
         items.sort(key=lambda item: item.start)
+        items = items[:MAX_PROGRAMMES]
         result[key] = items
         lower = key.lower()
         if lower not in result:
             result[lower] = items
-    return Guide(result)
+    for alias, channel in aliases.items():
+        items = result.get(channel) or result.get(channel.lower())
+        if items and alias not in result:
+            result[alias] = items
+    return Guide(result, icons)
 
 
 def _read_limited(handle, limit=MAX_EPG_BYTES):
@@ -227,20 +303,23 @@ def normalize_epg_source(value):
     if text.startswith('//'):
         return 'https:' + text
     if _HOSTISH.match(text):
-        return 'https://' + text
+        host = text.split('/', 1)[0]
+        port = host.rsplit(':', 1)[-1] if ':' in host else ''
+        scheme = 'http' if port == '80' else 'https'
+        return f'{scheme}://{text}'
     return text
 
 
 def _urlopen_bytes(request):
     try:
-        with urlopen(request, timeout=45) as response:
+        with urlopen(request, timeout=FETCH_TIMEOUT) as response:
             return _maybe_gunzip(_read_limited(response))
     except Exception as exc:
         reason = getattr(exc, 'reason', None)
         if not isinstance(exc, ssl.SSLError) and not isinstance(reason, ssl.SSLError):
             raise
         ctx = ssl._create_unverified_context()
-        with urlopen(request, timeout=45, context=ctx) as response:
+        with urlopen(request, timeout=FETCH_TIMEOUT, context=ctx) as response:
             return _maybe_gunzip(_read_limited(response))
 
 
@@ -251,7 +330,7 @@ def _fetch_http(url):
             url,
             headers={
                 'User-Agent': user_agent,
-                'Accept': '*/*',
+                'Accept': 'application/xml, text/xml, application/gzip, */*',
             },
         )
         try:
@@ -283,12 +362,14 @@ def _fetch_bytes(source):
     return b''
 
 
-def load_guide(urls, wanted_ids):
+def load_guide(urls, wanted_ids, wanted_names=None):
     """Descarga y mezcla hasta 3 XMLTV. No registra las URLs (pueden llevar token)."""
     wanted = [item for item in wanted_ids if item]
-    if not urls or not wanted:
+    names = [item for item in (wanted_names or []) if item]
+    if not urls or (not wanted and not names):
         return Guide()
     merged = {}
+    icons = {}
     parsed_any = False
     for source in list(urls)[:3]:
         source = (source or '').strip()
@@ -299,19 +380,22 @@ def load_guide(urls, wanted_ids):
             if not raw or _looks_like_html(raw):
                 print('[EPG] No se pudo leer una guía XMLTV (formato)')
                 continue
-            guide = parse_xmltv(BytesIO(raw), wanted)
+            guide = parse_xmltv(BytesIO(raw), wanted, wanted_names=names)
             parsed_any = True
         except Exception as exc:
             print(f'[EPG] No se pudo leer una guía XMLTV ({type(exc).__name__})')
             continue
         merged.update(guide._by_id)
-        if len(merged) >= len(set(item.lower() for item in wanted)):
+        for key, src in (guide._icons or {}).items():
+            if key not in icons:
+                icons[key] = src
+        if len({k.lower() for k in merged if k}) >= len(set(item.lower() for item in wanted)):
             break
     if parsed_any and not merged:
-        print('[EPG] Guía leída, pero ningún tvg-id de la lista coincidió')
-    return Guide(merged)
+        print('[EPG] Guía leída, pero no coincidió con los canales de la lista')
+    return Guide(merged, icons)
 
 
-def load_guide_from_text(xml_text, wanted_ids, now=None):
+def load_guide_from_text(xml_text, wanted_ids, now=None, wanted_names=None):
     raw = xml_text.encode('utf-8') if isinstance(xml_text, str) else xml_text
-    return parse_xmltv(BytesIO(raw), wanted_ids, now=now)
+    return parse_xmltv(BytesIO(raw), wanted_ids, now=now, wanted_names=wanted_names)

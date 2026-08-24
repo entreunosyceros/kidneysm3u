@@ -4,6 +4,7 @@ import os
 import subprocess
 import json
 from video_player import VideoPlayer
+from m3u_parse import extm3u_header_line
 from about import show_about
 from keyboard import show_keyboard_shortcuts
 from docs_viewer import show_documentation
@@ -382,10 +383,9 @@ class M3UProcessor:
 
                         if mode == 'w' and not wrote_header:
                             wrote_header = True
-                            if line.startswith('#EXTM3U'):
-                                outfile.write(line if line.endswith('\n') else line + '\n')
+                            outfile.write(extm3u_header_line(line))
+                            if line.lstrip('\ufeff').startswith('#EXTM3U'):
                                 continue
-                            outfile.write('#EXTM3U\n')
 
                         if line.startswith('#EXTINF'):
                             line1 = line
@@ -656,7 +656,6 @@ class M3UProcessor:
     def get_default_config(self):
         return {
             'theme': 'dark',
-            'language': 'es',
             'recent_files': [],
             'patterns': self.patterns_list
         }

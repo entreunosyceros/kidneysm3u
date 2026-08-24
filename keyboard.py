@@ -98,10 +98,18 @@ def show_keyboard_shortcuts(root):
             ("★ Favoritos", "Mostrar lista de favoritos"),
             ("Todos", "Mostrar todos los canales")
         ]),
+        ("Guía EPG", [
+            ("G", "Abrir la parrilla"),
+            ("Guía", "Botón de la lista lateral"),
+            ("Mostrar logos de canal", "Menú Guía EPG o Preferencias")
+        ]),
+        ("Historial", [
+            ("Historial", "Últimos canales y seguir viendo (VOD)")
+        ]),
         ("General", [
             ("Alt + F4", "Cerrar ventana"),
             ("Barra de volumen", "Ajustar volumen del reproductor"),
-            ("Barra de progreso", "Ver y cambiar posición del video (solo YouTube)")
+            ("Barra de progreso", "Ver y cambiar posición (YouTube y VOD)")
         ])
     ]
 

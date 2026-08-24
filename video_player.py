@@ -2,22 +2,18 @@ import os
 import pathlib
 import time
 import shutil
-import subprocess
-import tempfile
 import psutil
-from http.server import ThreadingHTTPServer
 from favorites_manager import FavoritesManager
 import vlc
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 import json
 import sys
-import requests
 import re
 import threading
 import yt_dlp
 import traceback
-from youtube_player import YouTubeHandler, youtube_ydl_opts, _GrowingTSHandler
+from youtube_player import YouTubeHandler, youtube_ydl_opts
 from youtube_search import YouTubeSearchDialog
 from ui_theme import (
     get_colors, get_font, style_window, style_menu_tree,
@@ -25,12 +21,17 @@ from ui_theme import (
 )
 import app_config
 from m3u_parse import (
-    parse_m3u_channels, parse_m3u_epg_urls, decode_m3u_bytes, describe_iptv_url,
-    classify_iptv_url, iptv_upstream_candidates,
+    parse_m3u_channels, parse_m3u_epg_urls, decode_m3u_bytes,
     IPTV_USER_AGENT,
 )
 from channel_sidebar import ChannelSidebar
 import epg
+import logo_cache
+from epg_grid import show_epg_grid
+from iptv_history import show_iptv_history
+from player_controls import PlayerControlsMixin
+from player_iptv import IptvPlaybackMixin
+from player_overlay import ChannelNoticeMixin
 
 # Clase Tooltip para mostrar información al pasar el ratón
 class Tooltip:
@@ -105,7 +106,7 @@ def _make_vlc_instance():
     )
 
 
-class VideoPlayer:
+class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
     def __init__(self):
         self.window = None
         self.instance = _make_vlc_instance()
@@ -118,11 +119,24 @@ class VideoPlayer:
         self._groups_all = []
         self._tvg_ids = []
         self._tvg_ids_all = []
+        self._logos = []
+        self._logos_all = []
+        self._logo_photos = {}
+        self._show_logos = app_config.get_show_channel_logos()
+        self._logos_var = None
         self._epg = None
         self._epg_urls = []
         self._epg_urls_list = []
         self._epg_url_manual = ''
         self._epg_gen = 0
+        self._epg_grid = None
+        self._iptv_history = None
+        self._history_menu = None
+        self._iptv_resume_s = 0
+        self._last_iptv_resume_save = 0
+        self._epg_reload_job = None
+        self._epg_tick_job = None
+        self._logo_refresh_job = None
         self._filter_job = None
         self._filter_gen = 0
         self._load_gen = 0
@@ -157,6 +171,11 @@ class VideoPlayer:
         self._iptv_attempts = []
         self._iptv_source_url = ''
         self._iptv_check_gen = 0
+        self._iptv_status_frame = None
+        self._iptv_notice_top = None
+        self._iptv_banner = None
+        self._iptv_failed = False
+        self._iptv_ok_ticks = 0
         self._audio_tracks = []
         self._spu_tracks = []
         self._yt_subtitles = []
@@ -215,6 +234,7 @@ class VideoPlayer:
         ttk.Button(favorites_buttons_frame, text="★ Favoritos", command=self.show_favorites).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(favorites_buttons_frame, text="Todos", command=self.restore_all_channels).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(favorites_buttons_frame, text="Limpiar", command=self.clear_channel_list).pack(side=tk.LEFT)
+        ttk.Button(favorites_buttons_frame, text="Guía", command=self.open_epg_grid).pack(side=tk.LEFT, padx=(6, 0))
 
         # Búsqueda
         self.search_var = tk.StringVar()
@@ -241,6 +261,9 @@ class VideoPlayer:
         ).pack(anchor=tk.W, pady=(4, 0))
 
         self.sidebar = ChannelSidebar(self.channels_frame)
+        self.sidebar.now_text = self._epg_now_title
+        self.sidebar.row_image = self._logo_photo
+        self.sidebar.on_view_change = self._prefetch_visible_logos
         self.channels_listbox = self.sidebar.tree
         self.channels_listbox.bind('<Double-Button-1>', self.play_selected)
         self.channels_listbox.bind('<Button-3>', self.show_channel_context_menu)
@@ -357,11 +380,23 @@ class VideoPlayer:
         reproducir_menu.add_command(label="Cargar URL", command=self.prompt_url)
         reproducir_menu.add_command(label="Cargar Archivo Local", command=self.prompt_file)
         epg_menu = tk.Menu(reproducir_menu, tearoff=0)
+        epg_menu.add_command(label="Parrilla…", command=self.open_epg_grid)
+        epg_menu.add_separator()
         epg_menu.add_command(label="Desde URL…", command=self.prompt_epg_url)
         epg_menu.add_command(label="Desde archivo…", command=self.prompt_epg_file)
         epg_menu.add_separator()
         epg_menu.add_command(label="Quitar guía", command=self.clear_manual_epg)
+        self._logos_var = tk.BooleanVar(value=self.channel_logos_enabled())
+        epg_menu.add_separator()
+        epg_menu.add_checkbutton(
+            label="Mostrar logos de canal",
+            variable=self._logos_var,
+            command=self._on_logos_menu_toggle,
+        )
         reproducir_menu.add_cascade(label="Guía EPG", menu=epg_menu)
+        self._history_menu = tk.Menu(reproducir_menu, tearoff=0)
+        self._history_menu.configure(postcommand=self._fill_history_menu)
+        reproducir_menu.add_cascade(label="Historial", menu=self._history_menu)
         reproducir_menu.add_separator()
         reproducir_menu.add_command(label="Limpiar lista lateral", command=self.clear_channel_list)
         reproducir_menu.add_separator()
@@ -413,6 +448,8 @@ class VideoPlayer:
         # Atajos para favoritos
         self.window.bind('<Control-s>', self.handle_add_favorite)
         self.window.bind('<Control-d>', self.handle_remove_favorite)
+        self.window.bind('<g>', self._on_epg_grid_key)
+        self.window.bind('<G>', self._on_epg_grid_key)
         
         # Asegurarse de que el listbox también recibe los eventos
         self.channels_listbox.bind('<Control-s>', self.handle_add_favorite)
@@ -948,122 +985,6 @@ class VideoPlayer:
             pass
         return 'break'
 
-    def hide_controls_and_menu(self):
-        """Oculta controles y menú superior juntos (solo en fullscreen el menú)."""
-        self._dismiss_track_menus()
-        if self.controls_visible:
-            self.controls_frame.pack_forget()
-            self.controls_visible = False
-        # Ocultar menú superior solo si estamos en fullscreen
-        if self.is_fullscreen:
-            self.window.config(menu="")
-        # Cancelar temporizador si existe
-        if self.hide_controls_timer:
-            self.window.after_cancel(self.hide_controls_timer)
-            self.hide_controls_timer = None
-
-    def show_controls_and_menu(self):
-        """Muestra controles y menú superior juntos."""
-        if not self.controls_visible:
-            self.controls_frame.pack(fill=tk.X, pady=5)
-            self.controls_visible = True
-        
-        # Mostrar menú solo si estamos en fullscreen
-        if self.is_fullscreen:
-            self.window.config(menu=self.menubar)
-            # Siempre reiniciar el timeout cuando se muestran controles en fullscreen
-            self.reset_hide_controls_timer()
-        else:
-            # Fuera de pantalla completa el menú ya está visible; no reaplicarlo (provoca parpadeo)
-            pass
-
-    def enter_fullscreen(self):
-        self.window.attributes('-fullscreen', True)
-        self.is_fullscreen = True
-        self.window.config(menu="")  # Ocultar menú superior
-        if self.channels_frame_visible:
-            self.channels_frame.pack_forget()
-            self.sizer.pack_forget()  # Ocultar también el sizer
-        else:
-            # Por si acaso el sizer quedó visible
-            self.sizer.pack_forget()
-        self.hide_controls_and_menu()  # Ocultar controles y menú al entrar en fullscreen
-
-    def exit_fullscreen(self):
-        self.window.attributes('-fullscreen', False)
-        self.is_fullscreen = False
-        self.window.config(menu=self.menubar)
-        if self.channels_frame_visible:
-            self.channels_frame.pack(side=tk.LEFT, fill=tk.Y)
-            self.sizer.pack(side=tk.LEFT, fill=tk.Y)
-        if self.hide_controls_timer:
-            self.window.after_cancel(self.hide_controls_timer)
-            self.hide_controls_timer = None
-        self.show_controls_and_menu()
-
-    def reset_hide_controls_timer(self):
-        """
-        Reinicia el temporizador para ocultar controles y menú en pantalla completa.
-        
-        SOLUCIÓN AL TIMEOUT: Este método implementa el timeout de 3 segundos que
-        oculta automáticamente el menú y controles en fullscreen. Solo se activa
-        con interacciones intencionales (clics), no con movimientos de mouse.
-        """
-        if self.hide_controls_timer:
-            self.window.after_cancel(self.hide_controls_timer)
-            self.hide_controls_timer = None
-        if self.is_fullscreen:
-            self.hide_controls_timer = self.window.after(3000, self.hide_controls_and_menu)
-
-    def on_control_interact(self, event=None):
-        """
-        Manejador para cualquier interacción con los controles en fullscreen.
-        
-        SOLUCIÓN AL TIMEOUT: Solo se activa con clics intencionales, no con
-        movimientos de mouse, permitiendo que el timeout de 3 segundos funcione.
-        """
-        widget = getattr(event, 'widget', None) if event is not None else None
-        if widget not in (getattr(self, '_audio_btn', None), getattr(self, '_subs_btn', None)):
-            self._dismiss_track_menus()
-        if self.is_fullscreen:
-            self.reset_hide_controls_timer()
-
-    # Frame de configuración de audio
-    def add_volume_control(self):
-        self.volume_scale = ttk.Scale(
-            self.controls_frame, from_=0, to=100,
-            orient='horizontal', command=self.set_volume
-        )
-        self.volume_scale.set(self.volume)
-        self.volume_scale.pack(side=tk.LEFT, padx=5)
-        
-        # SOLUCIÓN TIMEOUT: Solo clics en control de volumen, no <Motion>
-        # que causaba reinicio constante del timer
-        self.volume_scale.bind('<Button-1>', self.on_control_interact)
-        self.volume_scale.bind('<ButtonRelease-1>', self.on_control_interact)
-
-    def set_volume(self, value):
-        """Establece el volumen del reproductor"""
-        try:
-            if self.player:
-                self.volume = int(float(value))
-                self.player.audio_set_volume(self.volume)
-                self._schedule_volume_save()
-            # Reiniciar timer si estamos en fullscreen
-            if self.is_fullscreen:
-                self.reset_hide_controls_timer()
-        except Exception as e:
-            print(f"Error al ajustar el volumen: {e}")
-
-    def toggle_mute(self):
-        self.player.audio_toggle_mute()
-
-    def toggle_fullscreen(self, event=None):
-        if not self.is_fullscreen:
-            self.enter_fullscreen()
-        else:
-            self.exit_fullscreen()
-
     def close(self):
         """Cierra la ventana y libera recursos."""
         try:
@@ -1085,10 +1006,12 @@ class VideoPlayer:
             # Guardar datos y limpiar temporizadores
             self._dismiss_track_menus()
             self.save_youtube_resume()
+            self.save_iptv_resume()
             self._save_window_geometry()
             app_config.set_volume(self.volume)
             self.save_favorites()
-            self.stop_update_time()  # Detener temporizador de actualización
+            self.stop_update_time()
+            self._cancel_epg_jobs()
 
             if hasattr(self, 'youtube_handler') and self.youtube_handler:
                 try:
@@ -1250,13 +1173,15 @@ class VideoPlayer:
         items = []
         groups = []
         tvg_ids = []
+        logos = []
         for entry in sidebar:
             if isinstance(entry, dict) and entry.get('url'):
                 items.append((entry.get('name') or entry.get('url'), entry['url']))
                 groups.append(entry.get('group') or '')
                 tvg_ids.append(entry.get('tvg_id') or '')
+                logos.append(entry.get('tvg_logo') or '')
         if kind == 'items' or (items and kind not in ('file', 'url')):
-            self._apply_sidebar_items(items, groups, tvg_ids)
+            self._apply_sidebar_items(items, groups, tvg_ids, logos)
             self._playlist_source = playlist
             self._playlist_kind = kind or 'items'
             self.restore_last_channel()
@@ -1266,7 +1191,7 @@ class VideoPlayer:
             return
         if kind == 'youtube_playlist':
             if items:
-                self._apply_sidebar_items(items, groups, tvg_ids)
+                self._apply_sidebar_items(items, groups, tvg_ids, logos)
                 self._playlist_source = playlist
                 self._playlist_kind = 'youtube_playlist'
                 self.restore_last_channel()
@@ -1280,7 +1205,7 @@ class VideoPlayer:
         else:
             self.restore_last_channel()
 
-    def _apply_sidebar_items(self, items, groups=None, tvg_ids=None):
+    def _apply_sidebar_items(self, items, groups=None, tvg_ids=None, logos=None):
         self.channels = list(items)
         self.all_channels = list(items)
         if groups is None or len(groups) != len(items):
@@ -1293,6 +1218,11 @@ class VideoPlayer:
         else:
             self._tvg_ids = list(tvg_ids)
         self._tvg_ids_all = list(self._tvg_ids)
+        if logos is None or len(logos) != len(items):
+            self._logos = [''] * len(items)
+        else:
+            self._logos = list(logos)
+        self._logos_all = list(self._logos)
         self._rebuild_sidebar()
 
     def _persist_sidebar(self):
@@ -1313,7 +1243,7 @@ class VideoPlayer:
             return
         app_config.remember_sidebar(
             items, source, kind or 'items', self._groups_all, self._tvg_ids_all,
-            epg_urls=self._epg_urls,
+            epg_urls=self._epg_urls, logos=self._logos_all,
         )
 
     def restore_last_channel(self):
@@ -1371,6 +1301,7 @@ class VideoPlayer:
         self.channels = list(self.favorites)
         self._groups = [''] * len(self.channels)
         self._tvg_ids = [self._tvg_id_for_url(url) for _name, url in self.channels]
+        self._logos = [self._logo_for_url(url) for _name, url in self.channels]
         self._rebuild_sidebar()
         self._set_epg_label('')
 
@@ -1379,6 +1310,7 @@ class VideoPlayer:
         self.channels = self.all_channels.copy()
         self._groups = list(self._groups_all)
         self._tvg_ids = list(self._tvg_ids_all) if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
+        self._logos = list(self._logos_all) if len(getattr(self, '_logos_all', [])) == len(self.all_channels) else [''] * len(self.all_channels)
         self._rebuild_sidebar()
 
     def prompt_url(self):
@@ -1582,25 +1514,30 @@ class VideoPlayer:
         channels = []
         groups = []
         tvg_ids = []
+        logos = []
         for row in parsed or []:
             name = row[0] if row else ''
             url = row[1] if len(row) > 1 else ''
             group = row[2] if len(row) > 2 else ''
             tvg_id = row[3] if len(row) > 3 else ''
+            logo = row[4] if len(row) > 4 else ''
             channels.append((name, url))
             groups.append(group or '')
             tvg_ids.append(tvg_id or '')
-        return channels, groups, tvg_ids
+            logos.append(logo or '')
+        return channels, groups, tvg_ids, logos
 
     def _apply_parsed_channels(self, parsed, source, kind, notify=True, epg_urls=None):
         self.ensure_window()
-        channels, groups, tvg_ids = self._unpack_parsed_channels(parsed)
+        channels, groups, tvg_ids, logos = self._unpack_parsed_channels(parsed)
         self.channels = channels
         self._groups = groups
         self._tvg_ids = tvg_ids
+        self._logos = logos
         self.all_channels = list(self.channels)
         self._groups_all = list(self._groups)
         self._tvg_ids_all = list(self._tvg_ids)
+        self._logos_all = list(self._logos)
         self._playlist_source = source
         self._playlist_kind = kind
         self._rebuild_sidebar()
@@ -1626,14 +1563,18 @@ class VideoPlayer:
         if urls is not None:
             self._epg_urls_list = [item for item in urls if item]
         self._epg_urls = self._merged_epg_urls()
-        wanted = [item for item in (self._tvg_ids_all or []) if item]
-        if not self._epg_urls or not wanted:
+        wanted_ids = [item for item in (self._tvg_ids_all or []) if item]
+        wanted_names = [name for name, _url in (self.all_channels or self.channels or [])]
+        if not wanted_ids:
+            wanted_ids = list(wanted_names)
+        if not self._epg_urls or not (wanted_ids or wanted_names):
             self._epg = None
             self._set_epg_label('')
-            if notify and not wanted:
+            self._refresh_sidebar_now()
+            if notify and not (self.all_channels or self.channels):
                 messagebox.showinfo(
                     "Guía EPG",
-                    "La lista no trae tvg-id, así que no se puede asociar la guía a los canales. Se guardará para la próxima lista que sí los tenga.",
+                    "No hay canales en la lista ahora. La URL se ha guardado y se aplicará al cargar un M3U.",
                     parent=self.window,
                 )
             return
@@ -1645,7 +1586,7 @@ class VideoPlayer:
 
         def work():
             try:
-                guide = epg.load_guide(sources, wanted)
+                guide = epg.load_guide(sources, wanted_ids, wanted_names=wanted_names)
             except Exception:
                 guide = epg.Guide()
 
@@ -1661,10 +1602,17 @@ class VideoPlayer:
                     self._refresh_epg_label(index)
                 else:
                     self._set_epg_label('')
+                self._refresh_sidebar_now()
+                self._prefetch_visible_logos()
+                grid = getattr(self, '_epg_grid', None)
+                if grid is not None:
+                    grid.refresh()
+                self._schedule_epg_reload()
+                self._schedule_epg_tick()
                 if notify and not guide.channel_count():
                     messagebox.showinfo(
                         "Guía EPG",
-                        "No se pudo aplicar la guía. Comprueba la dirección o que los tvg-id coincidan con el XMLTV.",
+                        "Se guardó la guía, pero no coincidió con esta lista. Se prueba tvg-id, tvg-name y el nombre del canal frente al XMLTV.",
                         parent=self.window,
                     )
 
@@ -1673,11 +1621,9 @@ class VideoPlayer:
         threading.Thread(target=work, daemon=True).start()
 
     def _epg_text_for_index(self, index):
-        if index is None or not (0 <= index < len(self._tvg_ids)):
-            return ''
         if not self._epg:
             return ''
-        current, nxt = self._epg.now_next(self._tvg_ids[index])
+        current, nxt = self._epg.now_next(self._epg_key(index))
         return epg.format_now_next(current, nxt)
 
     def _set_epg_label(self, text):
@@ -1723,6 +1669,296 @@ class VideoPlayer:
                 return self._tvg_ids_all[i]
             return ''
         return ''
+
+    def _logo_for_url(self, url):
+        for i, (_name, item_url) in enumerate(self.all_channels):
+            if item_url != url:
+                continue
+            if i < len(getattr(self, '_logos_all', [])):
+                return self._logos_all[i]
+            return ''
+        return ''
+
+    def _epg_key(self, index):
+        if index is None:
+            return ''
+        if 0 <= index < len(getattr(self, '_tvg_ids', [])):
+            tvg = (self._tvg_ids[index] or '').strip()
+            if tvg:
+                return tvg
+        if 0 <= index < len(self.channels):
+            return (self.channels[index][0] or '').strip()
+        return ''
+
+    def _epg_now_title(self, index):
+        guide = getattr(self, '_epg', None)
+        if not guide:
+            return ''
+        return guide.now_title(self._epg_key(index))
+
+    def _logo_url(self, index):
+        if index is None:
+            return ''
+        if 0 <= index < len(self._logos) and self._logos[index]:
+            return self._logos[index]
+        if self._epg:
+            return self._epg.icon(self._epg_key(index))
+        return ''
+
+    def _logo_photo(self, index):
+        if not self.channel_logos_enabled():
+            return None
+        url = self._logo_url(index)
+        if not url:
+            return None
+        photos = getattr(self, '_logo_photos', None)
+        if photos is None:
+            photos = {}
+            self._logo_photos = photos
+        return logo_cache.load_photo(url, photos)
+
+    def channel_logos_enabled(self):
+        return bool(getattr(self, '_show_logos', True))
+
+    def _on_logos_menu_toggle(self):
+        var = getattr(self, '_logos_var', None)
+        enabled = bool(var.get()) if var is not None else True
+        app_config.set_show_channel_logos(enabled)
+        self._apply_logo_pref(enabled)
+
+    def _apply_logo_pref(self, enabled=None):
+        if enabled is None:
+            enabled = app_config.get_show_channel_logos()
+        self._show_logos = bool(enabled)
+        var = getattr(self, '_logos_var', None)
+        if var is not None:
+            try:
+                var.set(self._show_logos)
+            except tk.TclError:
+                pass
+        if self._show_logos:
+            self._prefetch_visible_logos()
+        self._refresh_sidebar_now()
+
+    def _prefetch_visible_logos(self):
+        if not self.channel_logos_enabled():
+            return
+        sidebar = getattr(self, 'sidebar', None)
+        indices = sidebar.current_indices() if sidebar else list(range(min(80, len(self.channels))))
+        urls = []
+        for index in indices[:80]:
+            url = self._logo_url(index)
+            if url:
+                urls.append(url)
+        if not urls:
+            return
+        window = self.window
+
+        def done():
+            if not self.channel_logos_enabled():
+                return
+            if self._widget_exists(window):
+                window.after(0, self._schedule_logo_refresh)
+
+        logo_cache.fetch_many(urls, on_done=done)
+
+    def _schedule_logo_refresh(self):
+        job = getattr(self, '_logo_refresh_job', None)
+        if job and self._widget_exists(self.window):
+            try:
+                self.window.after_cancel(job)
+            except tk.TclError:
+                pass
+        if not self._widget_exists(self.window):
+            return
+        self._logo_refresh_job = self.window.after(120, self._flush_logo_refresh)
+
+    def _flush_logo_refresh(self):
+        self._logo_refresh_job = None
+        self._refresh_sidebar_now()
+
+    def _refresh_sidebar_now(self):
+        sidebar = getattr(self, 'sidebar', None)
+        if sidebar:
+            sidebar.refresh_rows()
+        grid = getattr(self, '_epg_grid', None)
+        if grid is not None:
+            try:
+                grid.refresh()
+            except tk.TclError:
+                pass
+
+    def _cancel_epg_jobs(self):
+        for attr in ('_epg_reload_job', '_epg_tick_job', '_logo_refresh_job'):
+            job = getattr(self, attr, None)
+            setattr(self, attr, None)
+            if job and self._widget_exists(self.window):
+                try:
+                    self.window.after_cancel(job)
+                except tk.TclError:
+                    pass
+
+    def _schedule_epg_reload(self):
+        job = getattr(self, '_epg_reload_job', None)
+        if job and self._widget_exists(self.window):
+            try:
+                self.window.after_cancel(job)
+            except tk.TclError:
+                pass
+        if not self._widget_exists(self.window):
+            return
+        self._epg_reload_job = self.window.after(30 * 60 * 1000, lambda: self._start_epg(notify=False))
+
+    def _schedule_epg_tick(self):
+        job = getattr(self, '_epg_tick_job', None)
+        if job and self._widget_exists(self.window):
+            try:
+                self.window.after_cancel(job)
+            except tk.TclError:
+                pass
+        if not self._widget_exists(self.window):
+            return
+        self._epg_tick_job = self.window.after(60 * 1000, self._tick_epg)
+
+    def _tick_epg(self):
+        self._epg_tick_job = None
+        if not self._widget_exists(self.window):
+            return
+        index = self._selected_channel_index()
+        if index is None:
+            index = self.current_channel
+        if index is not None:
+            self._refresh_epg_label(index)
+        self._refresh_sidebar_now()
+        self._schedule_epg_tick()
+
+    def open_epg_grid(self):
+        show_epg_grid(self)
+        self._prefetch_visible_logos()
+
+    def open_iptv_history(self):
+        show_iptv_history(self)
+
+    def _refresh_history_ui(self):
+        win = getattr(self, '_iptv_history', None)
+        if win is not None:
+            try:
+                win.refresh()
+            except tk.TclError:
+                pass
+
+    def _fill_history_menu(self):
+        menu = getattr(self, '_history_menu', None)
+        if menu is None:
+            return
+        try:
+            menu.delete(0, 'end')
+        except tk.TclError:
+            return
+        watching = app_config.iptv_continue_watching()
+        recent = app_config.iptv_history()
+        menu.add_command(label="Ver historial…", command=self.open_iptv_history)
+        if watching:
+            menu.add_separator()
+            menu.add_command(label="Seguir viendo", state='disabled')
+            for item in watching[:8]:
+                url = item['url']
+                menu.add_command(
+                    label=app_config.iptv_history_label(item, with_time=True),
+                    command=lambda u=url: self.play_history_url(u),
+                )
+        menu.add_separator()
+        if not recent:
+            menu.add_command(label="Sin recientes", state='disabled')
+        else:
+            for item in recent[:15]:
+                url = item['url']
+                vod = item.get('kind') == 'vod'
+                menu.add_command(
+                    label=app_config.iptv_history_label(item, with_time=vod),
+                    command=lambda u=url: self.play_history_url(u),
+                )
+        menu.add_separator()
+        menu.add_command(label="Vaciar historial", command=self.clear_iptv_history_prompt)
+
+    def clear_iptv_history_prompt(self):
+        if not app_config.iptv_history():
+            return
+        if not messagebox.askyesno(
+            'Vaciar historial',
+            '¿Quitar todos los canales y películas del historial?',
+            parent=self.window,
+        ):
+            return
+        app_config.clear_iptv_history()
+        self._refresh_history_ui()
+
+    def play_history_url(self, url):
+        url = (url or '').strip()
+        if not url:
+            return
+        for index, (_name, item_url) in enumerate(self.channels):
+            if item_url != url:
+                continue
+            sidebar = getattr(self, 'sidebar', None)
+            if sidebar:
+                try:
+                    sidebar.select(index)
+                    sidebar.see(index)
+                except tk.TclError:
+                    pass
+            self.play_channel(index)
+            return
+        item = app_config.iptv_history_item(url) or {}
+        name = item.get('name') or 'Historial'
+        self.save_youtube_resume()
+        self.save_iptv_resume()
+        self.current_channel = None
+        app_config.remember_iptv_history(name, url, group=item.get('group') or '')
+        if self.instance is None:
+            self.instance = _make_vlc_instance()
+        self.clear_youtube_subtitles()
+        self._reset_vlc_tracks()
+        self._hide_channel_status()
+        self._cleanup_vlc_player()
+        self.player = self.instance.media_player_new()
+        try:
+            self.player.audio_set_volume(self.volume)
+        except Exception:
+            pass
+        self.show_controls_and_menu()
+        self._iptv_resume_s = app_config.iptv_resume_seconds(url)
+        try:
+            self._play_iptv_url(name, url)
+        except Exception:
+            self._show_channel_unavailable(name)
+        self._refresh_history_ui()
+
+    def _on_epg_grid_key(self, event=None):
+        widget = getattr(event, 'widget', None) if event is not None else None
+        try:
+            if widget and widget.winfo_class() in ('Entry', 'TEntry', 'Text'):
+                return
+        except tk.TclError:
+            pass
+        self.open_epg_grid()
+        return 'break'
+
+    def _epg_grid_rows(self):
+        sidebar = getattr(self, 'sidebar', None)
+        if sidebar and getattr(sidebar, 'mode', '') == 'catalog':
+            return []
+        indices = sidebar.current_indices() if sidebar else []
+        if not indices:
+            indices = list(range(min(80, len(self.channels))))
+        rows = []
+        for index in indices[:80]:
+            if not (0 <= index < len(self.channels)):
+                continue
+            name = self.channels[index][0]
+            tvg_id = self._epg_key(index)
+            rows.append((index, name, tvg_id, self._logo_url(index)))
+        return rows
 
     def prompt_youtube_playlist(self):
         """Solicita URL de playlist de YouTube y la carga."""
@@ -1775,6 +2011,8 @@ class VideoPlayer:
                 self._groups_all = list(self._groups)
                 self._tvg_ids = [''] * len(parsed)
                 self._tvg_ids_all = list(self._tvg_ids)
+                self._logos = [''] * len(parsed)
+                self._logos_all = list(self._logos)
                 self._epg = None
                 self._epg_urls = []
                 self._epg_urls_list = []
@@ -1810,14 +2048,19 @@ class VideoPlayer:
     def play_channel(self, index):
         if 0 <= index < len(self.channels):
             self.save_youtube_resume()
+            self.save_iptv_resume()
             name, url = self.channels[index]
             self.current_channel = index
             self._refresh_epg_label(index)
             app_config.remember_channel(index, name, url)
+            group = self._groups[index] if index < len(getattr(self, '_groups', [])) else ''
+            app_config.remember_iptv_history(name, url, group=group)
+            self._refresh_history_ui()
             if self.instance is None:
                 self.instance = _make_vlc_instance()
             self.clear_youtube_subtitles()
             self._reset_vlc_tracks()
+            self._hide_channel_status()
             # Limpiar reproductor anterior de forma segura
             self._cleanup_vlc_player()
 
@@ -1833,6 +2076,7 @@ class VideoPlayer:
                 self.setup_event_manager()
                 
             self.show_controls_and_menu()
+            self._iptv_resume_s = 0
             if "youtube.com" in url or "youtu.be" in url:
                 self._playing_youtube = True
                 self.youtube_handler.play_youtube_url(
@@ -1843,332 +2087,17 @@ class VideoPlayer:
                     title=name,
                 )
                 return
+            self._iptv_resume_s = app_config.iptv_resume_seconds(url)
             try:
                 self._play_iptv_url(name, url)
             except Exception as e:
                 import traceback
                 print(traceback.format_exc())
-                messagebox.showerror("Error de reproducción", f"No se pudo reproducir el canal '{name}'.\n\nError: {e}")
-
-    def _play_iptv_url(self, name, url):
-        url = (url or '').strip()
-        if not url:
-            messagebox.showerror("Error de reproducción", f"No se pudo reproducir el canal '{name}'.")
-            return
-        self._media_started = False
-        self._playing_youtube = False
-        kind = classify_iptv_url(url)
-        print(f"[IPTV] '{name}' → {describe_iptv_url(url)} tipo={kind}")
-        if kind == 'container':
-            self._known_duration_ms = 0
-            self.show_youtube_progress_bar()
-        else:
-            self.hide_progress_bar()
-        self._iptv_retry_name = name
-        self._iptv_source_url = url
-        self._iptv_did_ts_retry = False
-        self._iptv_check_gen = getattr(self, '_iptv_check_gen', 0) + 1
-        check_gen = self._iptv_check_gen
-        self._start_vlc_remote(name, url, kind)
-        self.window.after(2000, lambda: self._watch_iptv_start(check_gen, name, url, kind, 0))
-
-    def _sanitize_iptv_log(self, text):
-        return re.sub(r'https?://\S+', '[url]', text or '')
-
-    def _iptv_report_unavailable(self, name):
-        print(f"[IPTV] No se pudo abrir '{name}'")
-        if not self._widget_exists(self.window):
-            return
-        messagebox.showerror(
-            "No se pudo reproducir",
-            f"No se pudo abrir «{name}».\n\n"
-            "VLC no consiguió iniciar el vídeo.",
-        )
-
-    def _iptv_remote_options(self, kind, force_ts=False):
-        options = [
-            ':network-caching=3000',
-            ':live-caching=3000',
-            ':file-caching=3000',
-            ':sout-mux-caching=3000',
-            ':avcodec-hw=none',
-            ':audio-resampler=soxr',
-            ':codec=avcodec',
-            f':http-user-agent={IPTV_USER_AGENT}',
-            ':http-reconnect=true',
-            ':aout=alsa',
-        ]
-        if force_ts:
-            options.extend([':demux=ts', ':no-ts-trust-pcr'])
-        elif kind == 'mpegts':
-            options.append(':no-ts-trust-pcr')
-        return options
-
-    def _start_vlc_remote(self, name, url, kind, force_ts=False):
-        if not self.instance:
-            return
-        if self.player is None:
-            self.player = self.instance.media_player_new()
-            try:
-                self.player.audio_set_volume(self.volume)
-            except Exception:
-                pass
-        try:
-            self.player.stop()
-        except Exception:
-            pass
-        how = 'mpegts forzado' if force_ts else kind
-        print(f"[IPTV] Abriendo {describe_iptv_url(url)} ({how})")
-        media = self.instance.media_new(url)
-        for option in self._iptv_remote_options(kind, force_ts=force_ts):
-            media.add_option(option)
-        self.player.set_media(media)
-        self._embed_vlc_in_frame()
-        self.player.play()
-        self.adjust_video_settings()
-        self.start_update_time()
-        self._schedule_track_refresh()
-        self._iptv_retry_name = name
-
-    def _watch_iptv_start(self, check_gen, name, url, kind, ticks=0):
-        if check_gen != getattr(self, '_iptv_check_gen', 0):
-            return
-        if not self.player:
-            return
-        try:
-            state = self.player.get_state()
-        except Exception:
-            return
-        if ticks < 6:
-            print(f"[IPTV] VLC {state}")
-        if state in (vlc.State.Playing, vlc.State.Buffering, vlc.State.Paused):
-            self._media_started = True
-            return
-        if (
-            state in (vlc.State.Ended, vlc.State.Error)
-            and kind == 'container'
-            and not getattr(self, '_iptv_did_ts_retry', False)
-        ):
-            self._iptv_did_ts_retry = True
-            print("[IPTV] El contenedor cortó al abrir; reintento como MPEG-TS")
-            self._iptv_check_gen = check_gen + 1
-            retry_gen = self._iptv_check_gen
-            self._start_vlc_remote(name, url, kind, force_ts=True)
-            self.window.after(2500, lambda: self._watch_iptv_start(retry_gen, name, url, kind, 0))
-            return
-        if state == vlc.State.Opening:
-            self.window.after(3000, lambda: self._watch_iptv_start(check_gen, name, url, kind, ticks + 1))
-            return
-        if kind == 'container' and getattr(self, '_iptv_did_ts_retry', False):
-            self._iptv_report_unavailable(name)
-
-    def _iptv_local_options(self):
-        return [
-            'network-caching=1500',
-            'file-caching=1500',
-            'avcodec-hw=none',
-            'audio-resampler=soxr',
-            'aout=alsa',
-            'demux=ts',
-            'no-ts-trust-pcr',
-        ]
-
-    def _start_vlc_local_ts(self, name, url):
-        """VLC solo abre localhost; no usa el HTTP remoto que falla tras el 302."""
-        if not self.instance:
-            return
-        if self.player is None:
-            self.player = self.instance.media_player_new()
-            try:
-                self.player.audio_set_volume(self.volume)
-            except Exception:
-                pass
-        try:
-            if self.player.is_playing():
-                self.player.stop()
-        except Exception:
-            pass
-        media = self.instance.media_new(url)
-        for option in self._iptv_local_options():
-            media.add_option(option)
-        self.player.set_media(media)
-        self._embed_vlc_in_frame()
-        self.player.play()
-        self.adjust_video_settings()
-        self.start_update_time()
-        self._schedule_track_refresh()
-        self._iptv_retry_name = name
-
-    def _check_iptv_stream(self, check_gen=None, waited=0):
-        if check_gen is not None and check_gen != getattr(self, '_iptv_check_gen', 0):
-            return
-        if not self.player:
-            return
-        try:
-            state = self.player.get_state()
-        except Exception:
-            return
-        if state in (vlc.State.Playing, vlc.State.Buffering, vlc.State.Paused):
-            self._media_started = True
-
-    def _stop_iptv_relay(self):
-        server = getattr(self, '_iptv_relay_server', None)
-        self._iptv_relay_server = None
-        if server:
-            try:
-                server.shutdown()
-            except Exception:
-                pass
-            try:
-                server.server_close()
-            except Exception:
-                pass
-        for proc in getattr(self, '_iptv_relay_procs', []) or []:
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-        for proc in getattr(self, '_iptv_relay_procs', []) or []:
-            try:
-                proc.wait(timeout=2)
-            except Exception:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-        self._iptv_relay_procs = []
-        tmpdir = getattr(self, '_iptv_relay_tmpdir', None)
-        self._iptv_relay_tmpdir = None
-        if tmpdir:
-            shutil.rmtree(tmpdir, ignore_errors=True)
-
-    def _ffmpeg_pull_cmd(self, ffmpeg, source, ts_path):
-        return [
-            ffmpeg, '-hide_banner', '-loglevel', 'error',
-            '-user_agent', IPTV_USER_AGENT,
-            '-reconnect', '1', '-reconnect_streamed', '1',
-            '-reconnect_delay_max', '5',
-            '-i', source,
-            '-c', 'copy', '-f', 'mpegts', ts_path,
-        ]
-
-    def _start_iptv_ffmpeg_relay(self, name, url):
-        ffmpeg = shutil.which('ffmpeg')
-        if not ffmpeg:
-            print("[IPTV] ffmpeg no está instalado")
-            print(f"[IPTV] No se pudo abrir el canal '{name}'")
-            return
-        self._stop_iptv_relay()
-        tmpdir = tempfile.mkdtemp(prefix='kidneys_iptv_')
-        ts_path = os.path.join(tmpdir, 'stream.ts')
-        self._iptv_relay_tmpdir = tmpdir
-        check_gen = getattr(self, '_iptv_check_gen', 0) + 1
-        self._iptv_check_gen = check_gen
-
-        server = ThreadingHTTPServer(('127.0.0.1', 0), _GrowingTSHandler)
-        server.ts_path = ts_path
-        server.yt_procs = []
-        self._iptv_relay_server = server
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        local_url = f'http://127.0.0.1:{server.server_address[1]}/stream.ts'
-
-        def producer():
-            try:
-                sources = iptv_upstream_candidates(url)
-            except Exception as err:
-                print(f"[IPTV] No se pudieron preparar orígenes ({err})")
-                sources = [url]
-            if getattr(self, '_iptv_check_gen', 0) != check_gen:
-                return
-            print(f"[IPTV] Retransmitiendo por 127.0.0.1 ({len(sources)} origen(es))")
-            for index, source in enumerate(sources, start=1):
-                if getattr(self, '_iptv_check_gen', 0) != check_gen:
-                    return
-                try:
-                    if os.path.exists(ts_path):
-                        os.remove(ts_path)
-                except OSError:
-                    pass
-                cmd = self._ffmpeg_pull_cmd(ffmpeg, source, ts_path)
-                try:
-                    proc = subprocess.Popen(cmd, stderr=subprocess.PIPE)
-                except Exception as exc:
-                    print(f"[IPTV] ffmpeg no arrancó ({exc})")
-                    continue
-                self._iptv_relay_procs = [proc]
-                if self._iptv_relay_server:
-                    self._iptv_relay_server.yt_procs = self._iptv_relay_procs
-                deadline = time.time() + 12
-                got_data = False
-                while time.time() < deadline:
-                    if getattr(self, '_iptv_check_gen', 0) != check_gen:
-                        try:
-                            proc.terminate()
-                        except Exception:
-                            pass
-                        return
-                    try:
-                        if os.path.exists(ts_path) and os.path.getsize(ts_path) >= 32 * 1024:
-                            got_data = True
-                            break
-                    except OSError:
-                        pass
-                    if proc.poll() is not None:
-                        break
-                    time.sleep(0.2)
-                if got_data:
-                    err = None
-                    try:
-                        err = proc.communicate()[1]
-                    except Exception:
-                        pass
-                    if err:
-                        text = err.decode('utf-8', errors='replace')[-400:]
-                        if text.strip():
-                            print(f"[IPTV ffmpeg] {self._sanitize_iptv_log(text)}")
-                    return
-                try:
-                    proc.terminate()
-                    proc.wait(timeout=2)
-                except Exception:
-                    try:
-                        proc.kill()
-                    except Exception:
-                        pass
-                err = b''
-                try:
-                    err = proc.stderr.read() if proc.stderr else b''
-                except Exception:
-                    pass
-                if err:
-                    print(f"[IPTV] origen {index}/{len(sources)} sin datos: {self._sanitize_iptv_log(err.decode('utf-8', errors='replace')[-200:])}")
-                else:
-                    print(f"[IPTV] origen {index}/{len(sources)} sin datos")
-            if self._widget_exists(self.window):
-                self.window.after(0, lambda: self._iptv_report_unavailable(name))
-
-        def wait_and_play():
-            deadline = time.time() + 45
-            while time.time() < deadline:
-                if getattr(self, '_iptv_check_gen', 0) != check_gen:
-                    return
-                try:
-                    if os.path.exists(ts_path) and os.path.getsize(ts_path) >= 32 * 1024:
-                        break
-                except OSError:
-                    pass
-                time.sleep(0.2)
-            else:
-                return
-            if not self._widget_exists(self.window):
-                return
-            self.window.after(0, lambda: self._start_vlc_local_ts(name, local_url))
-
-        threading.Thread(target=producer, daemon=True).start()
-        threading.Thread(target=wait_and_play, daemon=True).start()
+                self._show_channel_unavailable(name)
 
     def play_video_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, http_headers=None, on_fail=None, fail_after_s=8, local_file=False, duration_s=None, subtitle_path=None, start_s=0):
         try:
+            self._hide_channel_status()
             for widget in self.video_frame.winfo_children():
                 widget.destroy()
             if self.player is None:
@@ -2372,6 +2301,36 @@ class VideoPlayer:
         )
         self._last_yt_resume_save = time.time()
 
+    def save_iptv_resume(self):
+        if getattr(self, '_playing_youtube', False):
+            return
+        url = (getattr(self, '_iptv_source_url', '') or '').strip()
+        if not url:
+            return
+        pending = float(getattr(self, '_iptv_resume_s', 0) or 0)
+        elapsed_ms = self._playback_elapsed_ms()
+        if pending and elapsed_ms < pending * 1000 - 2000:
+            return
+        duration_ms = self._media_length_ms()
+        app_config.update_iptv_position(
+            url,
+            elapsed_ms / 1000.0,
+            (duration_ms / 1000.0) if duration_ms else None,
+        )
+        self._last_iptv_resume_save = time.time()
+
+    def _apply_pending_iptv_resume(self, tries=0):
+        pending = float(getattr(self, '_iptv_resume_s', 0) or 0)
+        if pending < 0.5 or getattr(self, '_playing_youtube', False):
+            return
+        if not self._widget_exists(self.window):
+            return
+        if not self._iptv_has_real_media() and tries < 20:
+            self.window.after(400, lambda: self._apply_pending_iptv_resume(tries + 1))
+            return
+        self._iptv_resume_s = 0
+        self._apply_seek(int(pending * 1000))
+
     def clear_youtube_resume(self):
         video_id = self._current_youtube_id()
         if video_id:
@@ -2461,8 +2420,24 @@ class VideoPlayer:
                     except Exception:
                         pass
                     active = state in (vlc.State.Playing, vlc.State.Paused, vlc.State.Buffering)
-                if active:
-                    self._media_started = True
+                if getattr(self, '_iptv_failed', False):
+                    pass
+                elif (
+                    state == vlc.State.Error
+                    and not getattr(self, '_playing_youtube', False)
+                    and not self._widget_exists(getattr(self, '_iptv_notice_top', None))
+                    and not self._widget_exists(getattr(self, '_iptv_status_frame', None))
+                ):
+                    name = ''
+                    if self.current_channel is not None and 0 <= self.current_channel < len(self.channels):
+                        name = self.channels[self.current_channel][0]
+                    self._show_channel_unavailable(name)
+                elif state == vlc.State.Playing:
+                    if getattr(self, '_playing_youtube', False) or self._iptv_has_real_media():
+                        started = getattr(self, '_media_started', False)
+                        self._media_started = True
+                        if not started and not getattr(self, '_playing_youtube', False):
+                            self._apply_pending_iptv_resume()
                 if active and not self.is_seeking and self.progress_frame.winfo_ismapped():
                     elapsed = self._playback_elapsed_ms()
                     if holding:
@@ -2480,8 +2455,11 @@ class VideoPlayer:
                     elif hint is not None and time.time() >= until:
                         self._seek_hint_ms = None
                     self._set_progress_ui(elapsed)
-                    if active and time.time() - getattr(self, '_last_yt_resume_save', 0) >= 20:
+                    now = time.time()
+                    if active and now - getattr(self, '_last_yt_resume_save', 0) >= 20:
                         self.save_youtube_resume()
+                    if active and now - getattr(self, '_last_iptv_resume_save', 0) >= 20:
+                        self.save_iptv_resume()
         except Exception as e:
             print(f"Error actualizando tiempo: {e}")
         self.update_time_job = self.window.after(250, self.update_time)
@@ -2520,15 +2498,18 @@ class VideoPlayer:
             self.channels = list(self.all_channels)
             self._groups = list(self._groups_all) if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
             self._tvg_ids = list(self._tvg_ids_all) if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
+            self._logos = list(self._logos_all) if len(self._logos_all) == len(self.all_channels) else [''] * len(self.all_channels)
             self._rebuild_sidebar()
             return
         groups_all = self._groups_all if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
         tvg_all = self._tvg_ids_all if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
+        logos_all = self._logos_all if len(getattr(self, '_logos_all', [])) == len(self.all_channels) else [''] * len(self.all_channels)
         snapshot = self.all_channels
         groups_snap = groups_all
         tvg_snap = tvg_all
+        logos_snap = logos_all
 
-        def finish(filtered, filtered_groups, filtered_tvg):
+        def finish(filtered, filtered_groups, filtered_tvg, filtered_logos):
             if gen != self._filter_gen:
                 return
             if not self._widget_exists(getattr(self, 'channels_listbox', None)):
@@ -2536,18 +2517,21 @@ class VideoPlayer:
             self.channels = filtered
             self._groups = filtered_groups
             self._tvg_ids = filtered_tvg
+            self._logos = filtered_logos
             self._rebuild_sidebar()
 
         def scan():
             filtered = []
             filtered_groups = []
             filtered_tvg = []
-            for (name, url), group, tvg_id in zip(snapshot, groups_snap, tvg_snap):
+            filtered_logos = []
+            for (name, url), group, tvg_id, logo in zip(snapshot, groups_snap, tvg_snap, logos_snap):
                 if search_term in (name or '').lower() or search_term in (group or '').lower():
                     filtered.append((name, url))
                     filtered_groups.append(group)
                     filtered_tvg.append(tvg_id)
-            return filtered, filtered_groups, filtered_tvg
+                    filtered_logos.append(logo)
+            return filtered, filtered_groups, filtered_tvg, filtered_logos
 
         if len(snapshot) < 800:
             finish(*scan())
@@ -2556,8 +2540,8 @@ class VideoPlayer:
         window = self.window
 
         def work():
-            filtered, filtered_groups, filtered_tvg = scan()
-            self._after_window(window, lambda: finish(filtered, filtered_groups, filtered_tvg))
+            result = scan()
+            self._after_window(window, lambda: finish(*result))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -2609,6 +2593,7 @@ class VideoPlayer:
             self.all_channels.append((name, url))
             self._groups_all.append('YouTube')
             self._tvg_ids_all.append('')
+            self._logos_all.append('')
         if self._playlist_kind in ('file', 'url') and len(self.all_channels) <= 1500:
             self._playlist_kind = 'items'
         elif not self._playlist_kind:
@@ -2626,6 +2611,7 @@ class VideoPlayer:
                 self.channels.append((name, url))
                 self._groups.append('YouTube')
                 self._tvg_ids.append('')
+                self._logos.append('')
             self._rebuild_sidebar()
             if getattr(self, 'sidebar', None):
                 self.sidebar.see(len(self.channels) - 1)
@@ -2655,6 +2641,8 @@ class VideoPlayer:
         self._groups_all = list(self._groups)
         self._tvg_ids = [''] * len(canales)
         self._tvg_ids_all = list(self._tvg_ids)
+        self._logos = [''] * len(canales)
+        self._logos_all = list(self._logos)
         self._epg = None
         self._epg_urls = []
         self._epg_urls_list = []
@@ -2787,6 +2775,7 @@ class VideoPlayer:
             self._apply_youtube_quality(height, force=True)
         elif hasattr(self, '_rebuild_track_menus'):
             self._rebuild_track_menus()
+        self._apply_logo_pref()
 
     def refresh_theme(self):
         if not self._widget_exists(self.window):
@@ -2841,6 +2830,8 @@ class VideoPlayer:
              self._groups_all = list(self._groups)
              self._tvg_ids = [''] * len(channels_list)
              self._tvg_ids_all = list(self._tvg_ids)
+             self._logos = [''] * len(channels_list)
+             self._logos_all = list(self._logos)
              self._epg = None
              self._epg_urls = []
              self._epg_urls_list = []
@@ -2849,52 +2840,6 @@ class VideoPlayer:
              self._rebuild_sidebar()
              self._persist_sidebar()
              messagebox.showinfo("Playlist cargada", f"Se cargaron {len(channels_list)} vídeos de la playlist.")
-
-    def toggle_play(self):
-        """Alterna entre reproducir y pausar el vídeo actual."""
-        if self.player:
-            if self.player.is_playing():
-                self.player.pause()
-            else:
-                self.player.play()
-
-    def stop(self):
-        """Detiene la reproducción del vídeo actual y reinicia el estado del reproductor."""
-        try:
-            self.save_youtube_resume()
-            # Usar método de limpieza segura
-            self._cleanup_vlc_player()
-            # Ocultar la barra de progreso
-            self.hide_progress_bar()
-            if hasattr(self, 'youtube_handler') and self.youtube_handler:
-                self.youtube_handler.cancel_pending_play()
-        except Exception as e:
-            print(f"Error al detener la reproducción: {e}")
-        
-        self.stop_update_time()
-        # Resetear el estado de reproducción secuencial
-        self.is_sequential_playback = False
-        self.current_playlist_index = None
-
-    def show_youtube_progress_bar(self):
-        """Muestra y configura la barra de progreso para videos de YouTube."""
-        pack_opts = {'fill': tk.X, 'padx': 8, 'pady': (0, 6)}
-        if getattr(self, 'controls_buttons_frame', None):
-            self.progress_frame.pack(before=self.controls_buttons_frame, **pack_opts)
-        else:
-            self.progress_frame.pack(**pack_opts)
-        self._progress_internal = True
-        try:
-            self.progress_bar.set(0)
-        finally:
-            self._progress_internal = False
-        if hasattr(self, 'progress_time_label'):
-            total = self._format_clock(self._known_duration_ms) if self._known_duration_ms else '--:--'
-            self.progress_time_label.configure(text=f'00:00 / {total}')
-        self.progress_bar.state(['!disabled'])
-
-    def hide_progress_bar(self):
-        self.progress_frame.pack_forget()
 
     def _listbox_index_at(self, event):
         """Índice de la fila bajo el puntero, o None si no hay título debajo."""
@@ -3181,6 +3126,8 @@ class VideoPlayer:
                 del self._groups[index]
             if index < len(self._tvg_ids):
                 del self._tvg_ids[index]
+            if index < len(getattr(self, '_logos', [])):
+                del self._logos[index]
             for i, (_n, item_url) in enumerate(list(self.all_channels)):
                 if item_url != url:
                     continue
@@ -3189,6 +3136,8 @@ class VideoPlayer:
                     del self._groups_all[i]
                 if i < len(self._tvg_ids_all):
                     del self._tvg_ids_all[i]
+                if i < len(getattr(self, '_logos_all', [])):
+                    del self._logos_all[i]
                 break
             self._rebuild_sidebar()
             self._persist_sidebar()
@@ -3224,6 +3173,8 @@ class VideoPlayer:
             self._groups_all.clear()
             self._tvg_ids.clear()
             self._tvg_ids_all.clear()
+            self._logos.clear()
+            self._logos_all.clear()
             self._epg = None
             self._epg_urls = []
             self._epg_urls_list = []

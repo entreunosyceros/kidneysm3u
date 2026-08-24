@@ -43,6 +43,13 @@ También puedes instalar a mano:
 python3 -m pip install -r requirements.txt
 ```
 
+Para correr las pruebas del parseo M3U y de la EPG (opcional, no hace falta para usar el programa):
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+python3 -m pytest
+```
+
 ## Instalación en Ubuntu (paquete .deb)
 
 1. Descarga el `.deb` desde la página de lanzamientos.
