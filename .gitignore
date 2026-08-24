@@ -3,6 +3,8 @@ epg_cache/
 __pycache__/
 .pytest_cache/
 debian-package/
+packaging/
+*.deb
 
 # Datos locales del usuario (no van al repositorio)
 config.json

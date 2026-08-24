@@ -56,11 +56,13 @@ python3 -m pytest
 2. En una terminal:
 
 ```bash
-sudo dpkg -i kidneysm3u_1.0.0_all.deb
+sudo dpkg -i kidneysm3u_1.1.0_all.deb
 sudo apt-get install -f   # si hace falta
 ```
 
-3. Ejecuta `kidneysm3u` o busca el lanzador.
+3. Ejecuta `kidneysm3u` o busca el lanzador **Kidneys M3U**.
+
+El paquete instala el código en `/usr/share/kidneysm3u`. Al arrancar se copia a `~/.local/share/kidneysm3u` (ahí van `config.json`, cookies, favoritos, `epg_cache/` y `.venv`). Así no se escribe en directorios de sistema.
 
 > [!NOTE]
 > El primer arranque tarda más porque crea el entorno virtual e instala dependencias. Los siguientes son más rápidos.
