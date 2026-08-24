@@ -55,6 +55,8 @@ Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short 
 
 yt-dlp elige un stream que VLC pueda abrir (audio y vídeo juntos cuando es posible). Mientras carga, el reproductor muestra el título, la miniatura y una barra para que no parezca colgado. Si el directo falla, se retransmite por un servidor local. La barra de progreso es para YouTube y VOD, no para un directo IPTV.
 
+Si cierras el reproductor o cambias de vídeo, se guarda el segundo. Al volver a abrirlo (también en una lista) continúa desde ahí, salvo que estuvieras al principio o casi al final. No se reproduce solo al restaurar la sesión.
+
 Si el vídeo tiene subtítulos, el reproductor los ofrece en **Subtítulos** (oficiales primero; los automáticos llevan «auto»). Los doblajes de YouTube no se pueden elegir: el stream solo trae una pista de audio. Detalle en [reproductor](reproductor.md#controles).
 
 Si un vídeo no está disponible (restricción de YouTube o sin stream compatible), no hay alternativa dentro del programa. Ver [notas](notas.md#problemas-conocidos).
