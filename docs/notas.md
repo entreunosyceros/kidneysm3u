@@ -56,6 +56,9 @@ self.setup_performance_monitoring()
 Aparecerá el porcentaje abajo a la derecha, actualizado cada segundo.
 
 ## Problemas conocidos
+<p align="center">
+<img width="1126" height="764" alt="documentacion" src="https://github.com/user-attachments/assets/4a6ae87c-8b96-4c63-930a-ec1b22d8382b" />
+</p>
 
 > [!IMPORTANT]
 > El desarrollo y las pruebas se hacen sobre todo en Linux. En Windows puede haber fallos no vistos.
