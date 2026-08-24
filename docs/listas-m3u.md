@@ -32,7 +32,9 @@ Que el enlace esté bien formado no garantiza imagen: si el servidor de vídeo n
 
 ## Ordenar listas desde la interfaz
 
-![ordenar-canales](https://github.com/user-attachments/assets/24d8924d-7b99-42c0-b96a-b0172aeb65c0)
+<p align="center">
+<img width="1922" height="1049" alt="ordenar-listas-m3u" src="https://github.com/user-attachments/assets/32d0139b-0b27-4794-8588-8fc6cd2f680c" />
+</p>
 
 Utilidad gráfica para organizar un M3U sin terminal.
 
