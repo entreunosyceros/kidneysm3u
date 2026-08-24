@@ -2081,14 +2081,45 @@ class VideoPlayer:
 
     def add_channel_to_list(self, name, url):
         """Añade un canal o vídeo individual a la lista de la izquierda y a all_channels."""
-        self.channels.append((name, url))
-        self.all_channels.append((name, url))
-        self.channels_listbox.insert(tk.END, name)
+        self.enqueue_youtube_items([(name, url)])
+
+    def enqueue_youtube_items(self, items):
+        """Añade vídeos a la lista lateral sin reproducirlos."""
+        if not self.is_alive():
+            self.ensure_window()
+        existing = {url for _name, url in self.all_channels}
+        added = []
+        for name, url in items or []:
+            url = (url or '').strip()
+            if not url or url in existing:
+                continue
+            title = (name or '').strip() or 'YouTube'
+            added.append((title, url))
+            existing.add(url)
+        if not added:
+            return 0
+        for entry in added:
+            self.all_channels.append(entry)
         if self._playlist_kind in ('file', 'url') and len(self.all_channels) <= 1500:
             self._playlist_kind = 'items'
         elif not self._playlist_kind:
             self._playlist_kind = 'items'
+        search = ''
+        if getattr(self, 'search_var', None):
+            try:
+                search = (self.search_var.get() or '').strip()
+            except tk.TclError:
+                search = ''
+        if search:
+            self.filter_channels()
+        else:
+            for name, url in added:
+                self.channels.append((name, url))
+                if self._widget_exists(self.channels_listbox):
+                    self.channels_listbox.insert(tk.END, name)
+                    self.channels_listbox.see(tk.END)
         self._persist_sidebar()
+        return len(added)
 
     def play_youtube_url(self, url, title=None):
         """Delega la reproducción de YouTube al manejador y añade el vídeo a la lista si falta."""
@@ -2182,7 +2213,12 @@ class VideoPlayer:
     def open_youtube_search(self):
         """Abre la ventana de búsqueda de YouTube."""
         # Asegúrate de que load_playlist_callback se pasa correctamente
-        search_dialog = YouTubeSearchDialog(self.window, self.play_youtube_url, self.load_playlist_callback)
+        search_dialog = YouTubeSearchDialog(
+            self.window,
+            self.play_youtube_url,
+            self.load_playlist_callback,
+            self.enqueue_youtube_items,
+        )
 
     def load_playlist_callback(self, channels_list):
          """Callback para cargar vídeos de una playlist en la lista principal."""

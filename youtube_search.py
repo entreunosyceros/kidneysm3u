@@ -112,10 +112,11 @@ def _search_youtube_shorts(query, max_results, extra_query=''):
 
 
 class YouTubeSearchDialog:
-    def __init__(self, parent, play_callback, load_playlist_callback=None):
+    def __init__(self, parent, play_callback, load_playlist_callback=None, enqueue_callback=None):
         self.parent = parent
         self.play_callback = play_callback
         self.load_playlist_callback = load_playlist_callback
+        self.enqueue_callback = enqueue_callback
         self.window = tk.Toplevel(parent)
         self.window.title("Buscar en YouTube")
         self.window.geometry("780x560")
@@ -132,7 +133,7 @@ class YouTubeSearchDialog:
         ttk.Label(main_frame, text='Buscar en YouTube', style='PageTitle.TLabel').pack(anchor=tk.W)
         ttk.Label(
             main_frame,
-            text='Vídeos, Shorts, listas de reproducción y canales',
+            text='Vídeos, Shorts, listas y canales. Añade a la cola sin cerrar esta ventana.',
             style='Muted.TLabel',
         ).pack(anchor=tk.W, pady=(0, 12))
         
@@ -212,7 +213,11 @@ class YouTubeSearchDialog:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # Listbox
-        self.results_listbox = tk.Listbox(results_list_frame, yscrollcommand=scrollbar.set)
+        self.results_listbox = tk.Listbox(
+            results_list_frame,
+            yscrollcommand=scrollbar.set,
+            selectmode=tk.EXTENDED,
+        )
         self.results_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         style_listbox(self.results_listbox)
         scrollbar.config(command=self.results_listbox.yview)
@@ -220,6 +225,7 @@ class YouTubeSearchDialog:
         # Configurar el menú contextual
         self.results_listbox.bind('<Double-Button-1>', self.play_selected)
         self.results_listbox.bind('<Button-3>', self.show_context_menu)
+        self.results_listbox.bind('<Control-Return>', lambda e: self.enqueue_selected() or 'break')
 
         # Barra de progreso
         self.progress_frame = ttk.Frame(main_frame)
@@ -232,6 +238,11 @@ class YouTubeSearchDialog:
         
         play_btn = ttk.Button(button_frame, text="Reproducir", style='Accent.TButton', command=self.play_selected)
         play_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        queue_btn = ttk.Button(button_frame, text="Añadir a la cola", command=self.enqueue_selected)
+        queue_btn.pack(side=tk.LEFT, padx=(0, 5))
+        if not self.enqueue_callback:
+            queue_btn.configure(state='disabled')
         
         download_video_btn = ttk.Button(button_frame, text="Descargar Vídeo+Audio", 
                                       command=lambda: self.download_selected(False))
@@ -243,6 +254,9 @@ class YouTubeSearchDialog:
         
         close_btn = ttk.Button(button_frame, text="Cerrar", command=self.window.destroy)
         close_btn.pack(side=tk.RIGHT)
+
+        self.queue_status = ttk.Label(main_frame, text='', style='Muted.TLabel')
+        self.queue_status.pack(anchor=tk.W, pady=(8, 0))
         
         self.results = []
         self.result_types = []
@@ -473,6 +487,7 @@ class YouTubeSearchDialog:
             
             if tipo == "video":
                 context_menu.add_command(label="Reproducir", command=self.play_selected)
+                context_menu.add_command(label="Añadir a la cola", command=self.enqueue_selected)
                 context_menu.add_command(label="Descargar vídeo", command=lambda: self.download_selected(False))
                 context_menu.add_command(label="Descargar audio", command=lambda: self.download_selected(True))
                 context_menu.add_separator()
@@ -480,6 +495,7 @@ class YouTubeSearchDialog:
                                        command=lambda: webbrowser.open_new(self.results[selection]))
             elif tipo == "playlist":
                 context_menu.add_command(label="Cargar lista", command=self.play_selected)
+                context_menu.add_command(label="Añadir lista a la cola", command=self.enqueue_selected)
                 context_menu.add_separator()
                 context_menu.add_command(label="Abrir en navegador", 
                                        command=lambda: webbrowser.open_new(self.results[selection]))
@@ -487,7 +503,13 @@ class YouTubeSearchDialog:
                 context_menu.add_command(label="Abrir en navegador", 
                                        command=lambda: webbrowser.open_new(self.results[selection]))
             
-            context_menu.tk_popup(event.x_root, event.y_root)
+            try:
+                context_menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                try:
+                    context_menu.grab_release()
+                except tk.TclError:
+                    pass
 
     def play_selected(self, event=None):
         selection = self.results_listbox.curselection()
@@ -496,7 +518,7 @@ class YouTubeSearchDialog:
             url = self.results[index]
             tipo = self.result_types[index] if hasattr(self, 'result_types') else "video"
             if tipo == "video":
-                label = self.results_listbox.get(index)
+                label = self._result_title(index)
                 self.play_callback(url, title=label)
                 self.window.destroy()
             elif tipo == "playlist":
@@ -505,6 +527,94 @@ class YouTubeSearchDialog:
             elif tipo == "channel":
                 webbrowser.open_new(url)
                 self.window.destroy()
+
+    def _result_title(self, index):
+        details = None
+        if 0 <= index < len(self.result_details):
+            details = self.result_details[index]
+        if details and details.get('title'):
+            return details['title']
+        try:
+            return self.results_listbox.get(index)
+        except tk.TclError:
+            return 'YouTube'
+
+    def _set_queue_status(self, text):
+        label = getattr(self, 'queue_status', None)
+        if label:
+            try:
+                label.configure(text=text)
+            except tk.TclError:
+                pass
+
+    def enqueue_selected(self, event=None):
+        if not self.enqueue_callback:
+            return
+        selection = self.results_listbox.curselection()
+        if not selection:
+            self._set_queue_status('Selecciona uno o más resultados para la cola.')
+            return
+        videos = []
+        playlists = []
+        skipped = 0
+        for index in selection:
+            tipo = self.result_types[index] if index < len(self.result_types) else 'video'
+            url = self.results[index] if index < len(self.results) else ''
+            if tipo == 'video' and url:
+                videos.append((self._result_title(index), url))
+            elif tipo == 'playlist' and url:
+                playlists.append((self._result_title(index), url))
+            else:
+                skipped += 1
+        if videos:
+            added = self.enqueue_callback(videos)
+            if added:
+                if added == 1:
+                    self._set_queue_status(f'Añadido a la cola: {videos[0][0]}')
+                else:
+                    self._set_queue_status(f'{added} vídeos añadidos a la cola.')
+            else:
+                self._set_queue_status('Esos vídeos ya estaban en la cola.')
+        if playlists:
+            self._enqueue_playlists(playlists, skipped)
+            return
+        if skipped and not videos:
+            self._set_queue_status('Los canales se abren en el navegador, no van a la cola.')
+
+    def _enqueue_playlists(self, playlists, skipped=0):
+        self._set_queue_status('Añadiendo lista a la cola…')
+        self.progress_bar.pack(fill=tk.X, expand=True)
+        self.progress_bar.start(10)
+
+        def work():
+            collected = []
+            errors = []
+            for title, url in playlists:
+                try:
+                    videos = self._fetch_playlist_videos(url)
+                    if videos:
+                        collected.extend(videos)
+                    else:
+                        errors.append(title)
+                except Exception as exc:
+                    errors.append(f'{title}: {exc}')
+
+            def done():
+                self.progress_bar.stop()
+                self.progress_bar.pack_forget()
+                added = self.enqueue_callback(collected) if collected else 0
+                if added:
+                    self._set_queue_status(f'{added} vídeos de lista añadidos a la cola.')
+                elif errors:
+                    self._set_queue_status('No se pudo añadir la lista a la cola.')
+                else:
+                    self._set_queue_status('Esos vídeos ya estaban en la cola.')
+                if skipped and not added:
+                    self._set_queue_status('Los canales se abren en el navegador, no van a la cola.')
+
+            self.window.after(0, done)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def download_selected(self, audio_only=False):
         """Descarga el vídeo seleccionado o solo su audio"""
@@ -600,26 +710,32 @@ class YouTubeSearchDialog:
 
     def load_playlist_videos(self, playlist_url):
         try:
-            ydl_opts = youtube_ydl_opts(
-                extract_flat=True,
-                skip_download=True,
-                force_generic_extractor=False,
-                noplaylist=False,
-            )
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(playlist_url, download=False)
-                videos = info.get('entries', [])
-                if not videos:
-                    messagebox.showinfo("Info", "No se encontraron vídeos en la playlist.")
-                    return
-                channels = []
-                for video in videos:
-                    title = video.get('title', 'Sin título')
-                    video_url = f"https://www.youtube.com/watch?v={video.get('id')}"
-                    channels.append((title, video_url))
-                if self.load_playlist_callback:
-                    self.load_playlist_callback(channels)
+            channels = self._fetch_playlist_videos(playlist_url)
+            if not channels:
+                messagebox.showinfo("Info", "No se encontraron vídeos en la playlist.")
+                return
+            if self.load_playlist_callback:
+                self.load_playlist_callback(channels)
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo obtener la playlist: {e}")
+
+    def _fetch_playlist_videos(self, playlist_url):
+        ydl_opts = youtube_ydl_opts(
+            extract_flat=True,
+            skip_download=True,
+            force_generic_extractor=False,
+            noplaylist=False,
+        )
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(playlist_url, download=False)
+            videos = info.get('entries', []) or []
+            channels = []
+            for video in videos:
+                if not video or not video.get('id'):
+                    continue
+                title = video.get('title', 'Sin título')
+                video_url = f"https://www.youtube.com/watch?v={video.get('id')}"
+                channels.append((title, video_url))
+            return channels
 
 
