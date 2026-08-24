@@ -21,12 +21,20 @@ _TVG_ID_RE = re.compile(
     r'tvg-id=(?:"([^"]*)"|\'([^\']*)\'|([^\s,]+))',
     re.I,
 )
+_CHANNEL_ID_RE = re.compile(
+    r'channel-id=(?:"([^"]*)"|\'([^\']*)\'|([^\s,]+))',
+    re.I,
+)
 _TVG_URL_RE = re.compile(
     r'(?:url-tvg|x-tvg-url|tvg-url)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|(\S+))',
     re.I,
 )
 _TVG_NAME_RE = re.compile(
     r'tvg-name=(?:"([^"]*)"|\'([^\']*)\'|([^\s,]+))',
+    re.I,
+)
+_TVG_LOGO_RE = re.compile(
+    r'tvg-logo=(?:"([^"]*)"|\'([^\']*)\'|([^\s,]+))',
     re.I,
 )
 
@@ -51,7 +59,14 @@ def _channel_tvg_id(extinf):
     tvg_id = _quoted_groups(_TVG_ID_RE.search(extinf or ''))
     if tvg_id:
         return tvg_id
+    channel_id = _quoted_groups(_CHANNEL_ID_RE.search(extinf or ''))
+    if channel_id:
+        return channel_id
     return _quoted_groups(_TVG_NAME_RE.search(extinf or ''))
+
+
+def _channel_logo(extinf):
+    return _quoted_groups(_TVG_LOGO_RE.search(extinf or ''))
 
 
 def _collect_epg_urls(text, urls, seen):
@@ -90,7 +105,7 @@ def parse_m3u_epg_urls(content):
 
 
 def parse_m3u_channels(content):
-    """Devuelve [(nombre, url, grupo, tvg-id), ...] ignorando comentarios entre EXTINF y la URL."""
+    """Devuelve [(nombre, url, grupo, tvg-id, logo), ...] ignorando comentarios entre EXTINF y la URL."""
     if isinstance(content, bytes):
         content = _decode_bytes(content)
     lines = content.replace('\r\n', '\n').replace('\r', '\n').split('\n')
@@ -102,6 +117,7 @@ def parse_m3u_channels(content):
             name = _channel_name(line)
             group = _channel_group(line)
             tvg_id = _channel_tvg_id(line)
+            logo = _channel_logo(line)
             i += 1
             while i < len(lines):
                 nxt = lines[i].strip()
@@ -114,7 +130,7 @@ def parse_m3u_channels(content):
                     i += 1
                     continue
                 if _URL_RE.match(nxt) or nxt.startswith(('udp:', 'rtp:', 'mms:')):
-                    entries.append((name, nxt, group, tvg_id))
+                    entries.append((name, nxt, group, tvg_id, logo))
                     i += 1
                     break
                 i += 1
@@ -143,6 +159,16 @@ def _decode_bytes(raw):
     return raw.decode('utf-8', errors='replace')
 
 
+def extm3u_header_line(first_line=''):
+    """Primera línea de un M3U de salida. Conserva url-tvg / x-tvg-url / tvg-url."""
+    text = first_line or ''
+    if text.startswith('\ufeff'):
+        text = text[1:]
+    if text.startswith('#EXTM3U'):
+        return text if text.endswith('\n') else text.rstrip('\r\n') + '\n'
+    return '#EXTM3U\n'
+
+
 def describe_iptv_url(url):
     """Resumen sin credenciales: series/mkv, directo/sin-ext, etc."""
     path = (url or '').partition('?')[0]
@@ -153,6 +179,9 @@ def describe_iptv_url(url):
     return f'{kind}/{ext}'
 
 
+_VOD_SEG = re.compile(r'(?:^|/)(movie|movies|series|vod|video)(?:/|$)', re.I)
+
+
 def classify_iptv_url(url):
     """container | hls | mpegts según la extensión de la URL del M3U."""
     path = (url or '').partition('?')[0]
@@ -161,6 +190,17 @@ def classify_iptv_url(url):
     if _CONTAINER_EXT.search(path):
         return 'container'
     return 'mpegts'
+
+
+def is_iptv_vod(url):
+    """Película/serie (contenedor o ruta movie/series/vod), no un directo."""
+    url = (url or '').strip()
+    if not url:
+        return False
+    if classify_iptv_url(url) == 'container':
+        return True
+    path = url.partition('?')[0]
+    return bool(_VOD_SEG.search(path))
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

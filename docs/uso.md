@@ -25,7 +25,7 @@ Desde aquí filtras o abres listas y lanzas el reproductor. El flujo habitual:
 
 El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras corre.
 
-En **Archivo → Preferencias** (también **Reproducir → Preferencias** en el reproductor) unificas tema, volumen por defecto, carpeta de descargas, navegador de cookies, calidad de YouTube y si se recuerda la última lista. El botón **Tema claro/oscuro** de la cabecera sigue sirviendo para cambiar solo el tema.
+En **Archivo → Preferencias** (también **Reproducir → Preferencias** en el reproductor) unificas tema, logos de canal, volumen por defecto, carpeta de descargas, navegador de cookies, calidad de YouTube y si se recuerda la última lista. El botón **Tema claro/oscuro** de la cabecera sigue sirviendo para cambiar solo el tema.
 
 Detalle del filtro y de la herramienta de ordenar: [listas M3U](listas-m3u.md).
 
@@ -35,8 +35,11 @@ En el menú **Reproducir**:
 
 - **Cargar URL** — lista M3U remota o enlace de vídeo.
 - **Cargar archivo local** — `.m3u`, `.m3u8` o un fichero de vídeo.
-- **Guía EPG → Desde URL…** — guía XMLTV remota (`http`/`https`).
+- **Guía EPG → Parrilla…** — parrilla de ahora + unas horas (también el botón **Guía** o la tecla `G`).
+- **Guía EPG → Mostrar logos de canal** — miniaturas en la lista y en la parrilla. En listas grandes, desactívalo.
+- **Guía EPG → Desde URL…** — guía XMLTV remota (`http`/`https`). Sirve una URL tipo `get.php?username=…&password=…` que devuelva el XMLTV; se usa tal cual.
 - **Guía EPG → Desde archivo…** — guía XMLTV local (`.xml`, `.xml.gz`).
+- **Historial** — últimos canales y **seguir viendo** en películas/VOD (se reanuda el segundo). También **Ver historial…**.
 - **Limpiar lista lateral** — vacía el listado de la izquierda (pide confirmación).
 
 Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir).

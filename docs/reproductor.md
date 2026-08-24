@@ -13,7 +13,7 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 - Cuadro de **búsqueda** — filtra por nombre o grupo.
 - Si el M3U trae `group-title`, arriba aparecen **pestañas** (pocos grupos) o un desplegable **Grupo** (muchos). En **Todos** ves las categorías (Deportes, Películas, España…); un clic entra en ese grupo. **← Grupos** o la pestaña **Todos** vuelve al listado de categorías.
 - Abajo: **Sesión YouTube: OK / caducada** y **Reexportar cookies** (también en el menú **Youtube**). Si YouTube pide login o un bot-check, el indicador pasa a caducada.
-- Al pasar el ratón por un título se ve el nombre completo; si hay EPG (`tvg-id` + XMLTV), también **ahora / a continuación**. Al seleccionar un canal, lo mismo aparece bajo la búsqueda. Si la lista no trae guía, **Reproducir → Guía EPG → Desde URL…** o **Desde archivo…**.
+- Al pasar el ratón por un título se ve el nombre completo; si hay EPG (`tvg-id` + XMLTV), también **ahora / a continuación**. Al seleccionar un canal, lo mismo aparece bajo la búsqueda. En la fila se ve el programa en curso y, si el M3U trae `tvg-logo`, una miniatura (caché local `epg_cache/`). Los logos se activan o desactivan en **Reproducir → Guía EPG → Mostrar logos de canal** o en **Preferencias**; en listas grandes conviene apagarlos para que la lista no se retrase. **Guía** o **Reproducir → Guía EPG → Parrilla…** (tecla `G`) abre una parrilla de ahora + 6 horas del grupo visible. La guía se recarga sola cada 30 minutos. Si la lista no trae URL de guía, **Desde URL…** o **Desde archivo…**. Vale una dirección tipo `get.php?username=…&password=…` que devuelva XMLTV; se usa tal cual, sin inventar otras rutas, y no se escribe en el registro.
 - Si no hay `group-title` y hay miles de canales, la lista es virtual: solo se pintan las filas visibles.
 - Cargar un M3U o una playlist de YouTube no bloquea la ventana: se leen en segundo plano. El cuadro de búsqueda de una lista enorme recorre los nombres fuera del hilo de la interfaz; al aplicar el resultado, pintar miles de filas aún puede congelar un instante.
 - Doble clic — reproduce un canal. Un clic en una categoría abre ese grupo.
@@ -21,7 +21,7 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 
 Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeos se concatenan a esta lista sin cerrar la búsqueda.
 
-**Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso. **Reproducir → Guía EPG** admite una URL XMLTV o un archivo. **Reproducir → Preferencias** abre la misma ventana que **Archivo → Preferencias** en la principal.
+**Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso. **Reproducir → Historial** lista los últimos canales y las películas a medio ver; **Ver historial…** abre la ventana. **Reproducir → Guía EPG → Parrilla…** abre la parrilla; **Desde URL…** / **Desde archivo…** indican el XMLTV. **Reproducir → Preferencias** abre la misma ventana que **Archivo → Preferencias** en la principal.
 
 Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 
@@ -37,7 +37,9 @@ En **pantalla completa**, menú y controles se ocultan a los 3 segundos sin usar
 
 La barra de progreso aparece en YouTube y en VOD; no en un canal en directo. Los botones de ±2 s / ±10 s y el arrastre de la barra saltan a ese punto. En YouTube retransmitido (MPEG-TS local) un salto lejano puede tardar un momento: se reinicia el vídeo desde ahí.
 
-Al abrir un vídeo de YouTube, el área de vídeo muestra el título, la miniatura y una barra mientras se obtiene el stream, para que no parezca que se ha colgado. Si ya lo habías visto, se reanuda en el segundo guardado al cerrar o al cambiar de vídeo.
+Al abrir un vídeo de YouTube, el área de vídeo muestra el título, la miniatura y una barra mientras se obtiene el stream, para que no parezca que se ha colgado. Si ya lo habías visto, se reanuda en el segundo guardado al cerrar o al cambiar de vídeo. En IPTV, **Historial** guarda los últimos canales. En VOD (`.mkv`/`.mp4` o rutas `movie`/`series`) también se guarda el segundo, como en YouTube; al volver a abrirlo continúa. Cerca del final se considera terminado. Las URLs no se escriben en el registro.
+
+Si un canal IPTV no arranca (error de VLC, pantalla negra o el servidor no entrega vídeo), en unos segundos aparece el nombre y **Este canal por el momento no funciona**. No es un fallo del programa: el enlace de esa lista no está disponible ahora.
 
 ## Atajos de teclado
 
@@ -53,6 +55,7 @@ Al abrir un vídeo de YouTube, el área de vídeo muestra el título, la miniatu
 | `←` / `→` | Retroceder / avanzar 2 s |
 | `Ctrl+S` | Añadir a favoritos |
 | `Ctrl+D` | Quitar de favoritos |
+| `G` | Parrilla EPG (si el foco no está en un cuadro de texto) |
 | `Alt+F4` | Cerrar la ventana del reproductor |
 
 La ventana principal tiene **Ayuda → Atajos de teclado** (esta tabla) y **Ayuda → Documentación** (el manual en `docs/`).

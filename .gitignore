@@ -1,5 +1,7 @@
+epg_cache/
 .venv/
 __pycache__/
+.pytest_cache/
 debian-package/
 
 # Datos locales del usuario (no van al repositorio)

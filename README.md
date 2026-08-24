@@ -25,7 +25,7 @@ Si no existe `.venv`, se crea solo e instala lo de `requirements.txt`. La primer
 | [Listas M3U](docs/listas-m3u.md) | Carga, filtro y ordenación de listas |
 | [YouTube](docs/youtube.md) | Búsqueda, Shorts, playlists, cookies y descargas |
 | [Reproductor](docs/reproductor.md) | Controles, atajos, favoritos, lista lateral y bandeja |
-| [Notas](docs/notas.md) | Detalles técnicos, monitor de CPU y problemas conocidos |
+| [Notas](docs/notas.md) | Detalles técnicos, tests, monitor de CPU y problemas conocidos |
 
 Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda → Documentación** (se lee en la propia ventana).
 
@@ -34,6 +34,8 @@ Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda →
 - Cargar y filtrar listas M3U/M3U8 locales o por URL (archivos grandes incluidos).
 - Reproducir IPTV y ficheros directos con VLC embebido.
 - Buscar y reproducir YouTube: vídeos, **Shorts**, listas y canales.
+- Ver la guía EPG en parrilla (ahora + unas horas), con logos de canal y recarga automática.
+- Historial de canales IPTV y seguir viendo películas/VOD desde el segundo guardado.
 - Gestionar la lista lateral (favoritos, limpiar, reproducir desde aquí).
 - Descargar vídeos o solo audio (hace falta [ffmpeg](https://ffmpeg.org/download.html)).
 - Ordenar listas M3U desde la interfaz.
