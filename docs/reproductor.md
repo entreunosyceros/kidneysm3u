@@ -13,7 +13,7 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 - Cuadro de **búsqueda** — filtra por nombre o grupo.
 - Si el M3U trae `group-title`, arriba aparecen **pestañas** (pocos grupos) o un desplegable **Grupo** (muchos). En **Todos** ves las categorías (Deportes, Películas, España…); un clic entra en ese grupo. **← Grupos** o la pestaña **Todos** vuelve al listado de categorías.
 - Abajo: **Sesión YouTube: OK / caducada** y **Reexportar cookies** (también en el menú **Youtube**). Si YouTube pide login o un bot-check, el indicador pasa a caducada.
-- Al pasar el ratón por un título se ve el nombre completo; al salir, el aviso desaparece.
+- Al pasar el ratón por un título se ve el nombre completo; si hay EPG (`tvg-id` + XMLTV), también **ahora / a continuación**. Al seleccionar un canal, lo mismo aparece bajo la búsqueda. Si la lista no trae guía, **Reproducir → Guía EPG → Desde URL…** o **Desde archivo…**.
 - Si no hay `group-title` y hay miles de canales, la lista es virtual: solo se pintan las filas visibles.
 - Cargar un M3U o una playlist de YouTube no bloquea la ventana: se leen en segundo plano. El cuadro de búsqueda de una lista enorme recorre los nombres fuera del hilo de la interfaz; al aplicar el resultado, pintar miles de filas aún puede congelar un instante.
 - Doble clic — reproduce un canal. Un clic en una categoría abre ese grupo.
@@ -21,7 +21,7 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 
 Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeos se concatenan a esta lista sin cerrar la búsqueda.
 
-**Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso. **Reproducir → Preferencias** abre la misma ventana que **Archivo → Preferencias** en la principal.
+**Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso. **Reproducir → Guía EPG** admite una URL XMLTV o un archivo. **Reproducir → Preferencias** abre la misma ventana que **Archivo → Preferencias** en la principal.
 
 Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 

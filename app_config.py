@@ -26,6 +26,7 @@ _DEFAULTS = {
     'download_dir': '',
     'cookie_browser': 'auto',
     'remember_last_list': True,
+    'epg_url': '',
     'windows': {
         'main': '',
         'player': '',
@@ -156,6 +157,14 @@ def set_remember_last_list(value):
     save({'remember_last_list': bool(value)})
 
 
+def get_epg_url():
+    return str(load().get('epg_url') or '').strip()
+
+
+def set_epg_url(url):
+    save({'epg_url': str(url or '').strip()})
+
+
 def get_youtube_quality():
     try:
         value = int(load().get('youtube_quality', 720))
@@ -184,30 +193,50 @@ def remember_playlist(path, kind='file'):
     save(updates)
 
 
-def remember_sidebar(items, source='', kind='items', groups=None):
+def remember_sidebar(items, source='', kind='items', groups=None, tvg_ids=None, epg_urls=None):
     if not get_remember_last_list():
         return
     snapshot = []
     for index, entry in enumerate(items or []):
         group = ''
+        tvg_id = ''
         if groups is not None and index < len(groups):
             group = groups[index] or ''
+        if tvg_ids is not None and index < len(tvg_ids):
+            tvg_id = tvg_ids[index] or ''
         if isinstance(entry, dict):
             name, url = entry.get('name'), entry.get('url')
             group = entry.get('group') or group
+            tvg_id = entry.get('tvg_id') or tvg_id
         elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
             name, url = entry[0], entry[1]
             if len(entry) >= 3:
                 group = entry[2] or group
+            if len(entry) >= 4:
+                tvg_id = entry[3] or tvg_id
         else:
             continue
         if url:
-            snapshot.append({'name': name or '', 'url': url, 'group': group or ''})
+            snapshot.append({
+                'name': name or '',
+                'url': url,
+                'group': group or '',
+                'tvg_id': tvg_id or '',
+            })
+    urls = []
+    seen = set()
+    for item in epg_urls or []:
+        item = (item or '').strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        urls.append(item)
     save({
         'session': {
             'playlist': source or '',
             'playlist_kind': kind or 'items',
             'sidebar': snapshot,
+            'epg_urls': urls[:3],
         },
     })
 

@@ -12,6 +12,8 @@ La ventana principal puede leer listas locales o por URL, también si son muy gr
 
 Después abre el [reproductor](reproductor.md) con esa lista. También puedes cargar un M3U directo desde **Reproducir → Cargar archivo local** o **Cargar URL**. Leer y parsear el archivo va en segundo plano; pintar una lista enorme en la barra lateral aún puede tardar un momento. En el reproductor, `group-title` se ve como pestañas o un desplegable **Grupo**: primero las categorías y, al entrar, los canales.
 
+Si el M3U trae `tvg-id` y una URL XMLTV (`url-tvg`, `x-tvg-url` o `tvg-url` en `#EXTM3U`), el reproductor descarga esa guía en segundo plano y muestra **ahora / a continuación** al pasar el ratón o al elegir un canal. No es una guía completa de la semana: solo el programa en curso y el siguiente. No se inventan URLs de EPG. Si la lista no trae guía, en el reproductor **Reproducir → Guía EPG → Desde URL…** (o **Desde archivo…**) puedes indicar una XMLTV. Esa dirección se recuerda. Al filtrar desde la ventana principal se conserva el encabezado `#EXTM3U` (incluida la URL de la guía).
+
 Los enlaces que guardes en el gestor de enlaces quedan en `enlaces.json` dentro de la carpeta del programa.
 
 ## Reproducción IPTV

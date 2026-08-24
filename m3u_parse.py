@@ -17,6 +17,18 @@ _GROUP_RE = re.compile(
     r'group-title=(?:"([^"]*)"|\'([^\']*)\'|([^\s,]+))',
     re.I,
 )
+_TVG_ID_RE = re.compile(
+    r'tvg-id=(?:"([^"]*)"|\'([^\']*)\'|([^\s,]+))',
+    re.I,
+)
+_TVG_URL_RE = re.compile(
+    r'(?:url-tvg|x-tvg-url|tvg-url)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|(\S+))',
+    re.I,
+)
+_TVG_NAME_RE = re.compile(
+    r'tvg-name=(?:"([^"]*)"|\'([^\']*)\'|([^\s,]+))',
+    re.I,
+)
 
 
 def _channel_name(extinf):
@@ -25,15 +37,60 @@ def _channel_name(extinf):
     return extinf.strip()
 
 
-def _channel_group(extinf):
-    match = _GROUP_RE.search(extinf or '')
+def _quoted_groups(match):
     if not match:
         return ''
     return (match.group(1) or match.group(2) or match.group(3) or '').strip()
 
 
+def _channel_group(extinf):
+    return _quoted_groups(_GROUP_RE.search(extinf or ''))
+
+
+def _channel_tvg_id(extinf):
+    tvg_id = _quoted_groups(_TVG_ID_RE.search(extinf or ''))
+    if tvg_id:
+        return tvg_id
+    return _quoted_groups(_TVG_NAME_RE.search(extinf or ''))
+
+
+def _collect_epg_urls(text, urls, seen):
+    for match in _TVG_URL_RE.finditer(text or ''):
+        blob = _quoted_groups(match)
+        for part in blob.split(','):
+            part = part.strip()
+            if not part or part in seen:
+                continue
+            seen.add(part)
+            urls.append(part)
+
+
+def parse_m3u_epg_urls(content):
+    """URLs XMLTV del encabezado (#EXTM3U url-tvg / x-tvg-url / tvg-url) o de EXTINF."""
+    if isinstance(content, bytes):
+        content = _decode_bytes(content)
+    urls = []
+    seen = set()
+    lines = content.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    for raw_line in lines[:80]:
+        line = raw_line.strip()
+        if line.startswith('#EXTINF'):
+            break
+        _collect_epg_urls(line, urls, seen)
+    if urls:
+        return urls
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line.startswith('#EXTINF'):
+            continue
+        _collect_epg_urls(line, urls, seen)
+        if len(urls) >= 3:
+            break
+    return urls
+
+
 def parse_m3u_channels(content):
-    """Devuelve [(nombre, url, grupo), ...] ignorando comentarios entre EXTINF y la URL."""
+    """Devuelve [(nombre, url, grupo, tvg-id), ...] ignorando comentarios entre EXTINF y la URL."""
     if isinstance(content, bytes):
         content = _decode_bytes(content)
     lines = content.replace('\r\n', '\n').replace('\r', '\n').split('\n')
@@ -44,6 +101,7 @@ def parse_m3u_channels(content):
         if line.startswith('#EXTINF'):
             name = _channel_name(line)
             group = _channel_group(line)
+            tvg_id = _channel_tvg_id(line)
             i += 1
             while i < len(lines):
                 nxt = lines[i].strip()
@@ -56,7 +114,7 @@ def parse_m3u_channels(content):
                     i += 1
                     continue
                 if _URL_RE.match(nxt) or nxt.startswith(('udp:', 'rtp:', 'mms:')):
-                    entries.append((name, nxt, group))
+                    entries.append((name, nxt, group, tvg_id))
                     i += 1
                     break
                 i += 1
@@ -67,7 +125,7 @@ def parse_m3u_channels(content):
 
 def parse_m3u_entries(content):
     """Devuelve [(nombre, url), ...] ignorando comentarios entre EXTINF y la URL."""
-    return [(name, url) for name, url, _group in parse_m3u_channels(content)]
+    return [(name, url) for name, url, *_rest in parse_m3u_channels(content)]
 
 
 def decode_m3u_bytes(raw):

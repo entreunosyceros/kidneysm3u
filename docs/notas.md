@@ -8,6 +8,7 @@
 - **YouTube**: [yt-dlp](https://github.com/yt-dlp/yt-dlp) elige un stream que VLC pueda abrir (audio+vídeo juntos si existe; se evitan DASH/HLS difíciles). La calidad se pide en **Calidad / audio** (360p o 720p). Si falla, hay un relevo local o un archivo de caché jugable (tope ~500 MB, sin remux si ya es MP4/MKV/WebM).
 - **IPTV**: se usa la URL del M3U. No se inventan rutas Xtream. Un 302 del panel lo sigue VLC; si el nodo de vídeo cierra la conexión, no hay imagen. Ver [listas M3U](listas-m3u.md#reproducción-iptv).
 - **Listas grandes**: el filtrado de la ventana principal y la carga/parseo del M3U van en segundo plano. La barra lateral agrupa por `group-title`: pestañas si hay pocos grupos, desplegable si hay muchos; un clic entra en la categoría. Sin grupos y con miles de entradas, solo se dibujan las filas visibles. Pintar o filtrar una lista enorme en la lateral aún puede congelar un momento.
+- **EPG**: si hay `tvg-id` y XMLTV (en el M3U o en **Reproducir → Guía EPG**, por URL o archivo), se muestra ahora / a continuación al pasar el ratón o al seleccionar. La guía se pide en segundo plano y no se registran las URLs (pueden llevar token).
 - **Audio y subtítulos**: VLC lista las pistas del stream (típico en IPTV/HLS) en **Calidad / audio**. YouTube aporta subtítulos descargados (oficiales o auto); no hay cambio de idioma de audio.
 - No se usa `--no-hw-dec`: en VLC 3.0.20 esa opción puede hacer que `vlc.Instance()` falle.
 
@@ -19,7 +20,7 @@
 | --- | --- | --- |
 | `favoritos.json` | Favoritos del reproductor | Viene en el repo; si falta, el reproductor usa una lista vacía |
 | `enlaces.json` | Enlaces guardados en el gestor | Se crea vacío al arrancar |
-| `config.json` | Preferencias (tema, volumen, carpeta de descargas, navegador de cookies, calidad YouTube, recordar última lista), geometría de ventanas, última lista lateral y canal (sin autoplay) y segundo de YouTube para reanudar | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
+| `config.json` | Preferencias (tema, volumen, carpeta de descargas, navegador de cookies, calidad YouTube, recordar última lista, URL de guía EPG), geometría de ventanas, última lista lateral y canal (sin autoplay) y segundo de YouTube para reanudar | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
 | `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube o al pulsar **Reexportar cookies**, solo si hay login vigente en el navegador. El indicador **Sesión YouTube: OK / caducada** avisa si hace falta reexportar. Detalle en [YouTube](youtube.md#cookies) |
 | `.venv/` | Entorno Python | `run_app.py` lo recrea ([instalación](instalacion.md)) |
 

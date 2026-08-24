@@ -25,11 +25,12 @@ from ui_theme import (
 )
 import app_config
 from m3u_parse import (
-    parse_m3u_channels, decode_m3u_bytes, describe_iptv_url,
+    parse_m3u_channels, parse_m3u_epg_urls, decode_m3u_bytes, describe_iptv_url,
     classify_iptv_url, iptv_upstream_candidates,
     IPTV_USER_AGENT,
 )
 from channel_sidebar import ChannelSidebar
+import epg
 
 # Clase Tooltip para mostrar información al pasar el ratón
 class Tooltip:
@@ -57,7 +58,7 @@ class Tooltip:
         tw.wm_overrideredirect(True)
         tw.wm_geometry(f"+{int(x)}+{int(y)}")
         try:
-            tw.transient(self.widget.winfo_toplevel())
+            tw.attributes('-topmost', True)
         except tk.TclError:
             pass
         colors = get_colors()
@@ -115,6 +116,13 @@ class VideoPlayer:
         self.sidebar = None
         self._groups = []
         self._groups_all = []
+        self._tvg_ids = []
+        self._tvg_ids_all = []
+        self._epg = None
+        self._epg_urls = []
+        self._epg_urls_list = []
+        self._epg_url_manual = ''
+        self._epg_gen = 0
         self._filter_job = None
         self._filter_gen = 0
         self._load_gen = 0
@@ -214,6 +222,14 @@ class VideoPlayer:
         self.search_entry = ttk.Entry(self.channels_frame, textvariable=self.search_var)
         self.search_entry.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 8))
 
+        self._epg_label = ttk.Label(
+            self.channels_frame,
+            text='',
+            style='Muted.TLabel',
+            wraplength=260,
+            justify=tk.LEFT,
+        )
+
         session_frame = ttk.Frame(self.channels_frame)
         session_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 8))
         self._yt_session_label = ttk.Label(session_frame, text='Sesión YouTube: …', style='Muted.TLabel')
@@ -228,6 +244,7 @@ class VideoPlayer:
         self.channels_listbox = self.sidebar.tree
         self.channels_listbox.bind('<Double-Button-1>', self.play_selected)
         self.channels_listbox.bind('<Button-3>', self.show_channel_context_menu)
+        self.channels_listbox.bind('<<TreeviewSelect>>', self._on_sidebar_select_epg, add='+')
 
         self.listbox_tooltip = Tooltip(self.channels_listbox)
         self._listbox_tip_index = None
@@ -296,6 +313,7 @@ class VideoPlayer:
         self._subs_btn = None
         self._control_buttons = {}
         self._posted_popup = None
+        self._channel_menu = None
         self._menu_rebuild_job = None
         for key, tip_text, command in buttons_info:
             btn = ttk.Button(
@@ -338,6 +356,12 @@ class VideoPlayer:
         reproducir_menu = tk.Menu(self.menubar, tearoff=0)
         reproducir_menu.add_command(label="Cargar URL", command=self.prompt_url)
         reproducir_menu.add_command(label="Cargar Archivo Local", command=self.prompt_file)
+        epg_menu = tk.Menu(reproducir_menu, tearoff=0)
+        epg_menu.add_command(label="Desde URL…", command=self.prompt_epg_url)
+        epg_menu.add_command(label="Desde archivo…", command=self.prompt_epg_file)
+        epg_menu.add_separator()
+        epg_menu.add_command(label="Quitar guía", command=self.clear_manual_epg)
+        reproducir_menu.add_cascade(label="Guía EPG", menu=epg_menu)
         reproducir_menu.add_separator()
         reproducir_menu.add_command(label="Limpiar lista lateral", command=self.clear_channel_list)
         reproducir_menu.add_separator()
@@ -424,9 +448,12 @@ class VideoPlayer:
 
     def _dismiss_track_menus(self):
         posted = getattr(self, '_posted_popup', None)
+        channel_menu = getattr(self, '_channel_menu', None)
         self._posted_popup = None
+        self._channel_menu = None
         for menu in (
             posted,
+            channel_menu,
             getattr(self, 'audio_popup', None),
             getattr(self, 'subs_popup', None),
             getattr(self, 'audio_menu', None),
@@ -442,6 +469,11 @@ class VideoPlayer:
                 menu.grab_release()
             except tk.TclError:
                 pass
+        if channel_menu is not None:
+            try:
+                channel_menu.destroy()
+            except tk.TclError:
+                pass
 
     def _on_press_dismiss_popup(self, event):
         if not self._widget_exists(getattr(self, 'window', None)):
@@ -450,6 +482,9 @@ class VideoPlayer:
             return
         widget = getattr(event, 'widget', None)
         if widget in (getattr(self, '_audio_btn', None), getattr(self, '_subs_btn', None)):
+            return
+        posted = getattr(self, '_posted_popup', None)
+        if self._event_on_menu(event, posted):
             return
         for attr in ('audio_menu', 'audio_popup', 'subs_menu', 'subs_popup'):
             if self._event_on_menu(event, getattr(self, attr, None)):
@@ -1214,21 +1249,24 @@ class VideoPlayer:
         sidebar = session.get('sidebar') or []
         items = []
         groups = []
+        tvg_ids = []
         for entry in sidebar:
             if isinstance(entry, dict) and entry.get('url'):
                 items.append((entry.get('name') or entry.get('url'), entry['url']))
                 groups.append(entry.get('group') or '')
+                tvg_ids.append(entry.get('tvg_id') or '')
         if kind == 'items' or (items and kind not in ('file', 'url')):
-            self._apply_sidebar_items(items, groups)
+            self._apply_sidebar_items(items, groups, tvg_ids)
             self._playlist_source = playlist
             self._playlist_kind = kind or 'items'
             self.restore_last_channel()
+            self._start_epg(session.get('epg_urls') or [])
             return
         if not playlist:
             return
         if kind == 'youtube_playlist':
             if items:
-                self._apply_sidebar_items(items, groups)
+                self._apply_sidebar_items(items, groups, tvg_ids)
                 self._playlist_source = playlist
                 self._playlist_kind = 'youtube_playlist'
                 self.restore_last_channel()
@@ -1242,7 +1280,7 @@ class VideoPlayer:
         else:
             self.restore_last_channel()
 
-    def _apply_sidebar_items(self, items, groups=None):
+    def _apply_sidebar_items(self, items, groups=None, tvg_ids=None):
         self.channels = list(items)
         self.all_channels = list(items)
         if groups is None or len(groups) != len(items):
@@ -1250,6 +1288,11 @@ class VideoPlayer:
         else:
             self._groups = list(groups)
         self._groups_all = list(self._groups)
+        if tvg_ids is None or len(tvg_ids) != len(items):
+            self._tvg_ids = [''] * len(items)
+        else:
+            self._tvg_ids = list(tvg_ids)
+        self._tvg_ids_all = list(self._tvg_ids)
         self._rebuild_sidebar()
 
     def _persist_sidebar(self):
@@ -1268,7 +1311,10 @@ class VideoPlayer:
             if source:
                 app_config.remember_playlist(source, kind or 'file')
             return
-        app_config.remember_sidebar(items, source, kind or 'items', self._groups_all)
+        app_config.remember_sidebar(
+            items, source, kind or 'items', self._groups_all, self._tvg_ids_all,
+            epg_urls=self._epg_urls,
+        )
 
     def restore_last_channel(self):
         if not app_config.get_remember_last_list():
@@ -1324,12 +1370,15 @@ class VideoPlayer:
         self.temp_channels = self.channels.copy()
         self.channels = list(self.favorites)
         self._groups = [''] * len(self.channels)
+        self._tvg_ids = [self._tvg_id_for_url(url) for _name, url in self.channels]
         self._rebuild_sidebar()
+        self._set_epg_label('')
 
     
     def restore_all_channels(self):
         self.channels = self.all_channels.copy()
         self._groups = list(self._groups_all)
+        self._tvg_ids = list(self._tvg_ids_all) if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
         self._rebuild_sidebar()
 
     def prompt_url(self):
@@ -1345,6 +1394,56 @@ class VideoPlayer:
         )
         if filename:
             self.load_m3u_file(filename)
+
+    def prompt_epg_url(self):
+        """Pide la URL HTTP de una guía XMLTV."""
+        self.ensure_window()
+        current = (self._epg_url_manual or app_config.get_epg_url() or '').strip()
+        if current and not current.lower().startswith(('http://', 'https://')):
+            current = ''
+        url = simpledialog.askstring(
+            "Guía EPG",
+            "URL de la guía XMLTV (http o https):",
+            parent=self.window,
+            initialvalue=current,
+        )
+        if url is None:
+            return
+        url = (url or '').strip()
+        if not url:
+            return
+        self._apply_manual_epg(url)
+
+    def prompt_epg_file(self):
+        """Elige un archivo XMLTV local como guía."""
+        self.ensure_window()
+        filename = filedialog.askopenfilename(
+            title="Selecciona una guía XMLTV",
+            filetypes=[
+                ("XMLTV", "*.xml *.xml.gz *.gz"),
+                ("Todos los archivos", "*"),
+            ],
+            parent=self.window,
+        )
+        if filename:
+            self._apply_manual_epg(filename)
+
+    def clear_manual_epg(self):
+        self._apply_manual_epg('', notify=False)
+
+    def _apply_manual_epg(self, value, notify=True):
+        text = epg.normalize_epg_source(value)
+        if text and not text.lower().startswith(('http://', 'https://', 'file://')) and not os.path.isfile(text):
+            messagebox.showerror(
+                "Guía EPG",
+                "Indica una URL http(s) o un archivo XMLTV que exista.",
+                parent=self.window,
+            )
+            return
+        self._epg_url_manual = text
+        app_config.set_epg_url(text)
+        self._start_epg(notify=notify and bool(text))
+        self._persist_sidebar()
 
     def _set_busy(self, text=None):
         if not self._widget_exists(self.window):
@@ -1386,8 +1485,10 @@ class VideoPlayer:
                 with open(filename, 'rb') as f:
                     content = decode_m3u_bytes(f.read())
                 parsed = parse_m3u_channels(content)
+                epg_urls = parse_m3u_epg_urls(content)
             except Exception as exc:
                 err = exc
+                epg_urls = []
 
             def apply():
                 if gen != self._load_gen:
@@ -1396,7 +1497,7 @@ class VideoPlayer:
                 if err:
                     messagebox.showerror("Error", f"No se pudo cargar el archivo M3U: {err}")
                     return
-                self._apply_parsed_channels(parsed, filename, 'file', notify)
+                self._apply_parsed_channels(parsed, filename, 'file', notify, epg_urls=epg_urls)
                 if on_done:
                     on_done()
 
@@ -1420,8 +1521,10 @@ class VideoPlayer:
                 with urllib.request.urlopen(url) as response:
                     content = decode_m3u_bytes(response.read())
                 parsed = parse_m3u_channels(content)
+                epg_urls = parse_m3u_epg_urls(content)
             except Exception as exc:
                 err = exc
+                epg_urls = []
 
             def apply():
                 if gen != self._load_gen:
@@ -1430,7 +1533,7 @@ class VideoPlayer:
                 if err:
                     messagebox.showerror("Error", f"No se pudo cargar la URL M3U: {err}")
                     return
-                self._apply_parsed_channels(parsed, url, 'url', notify)
+                self._apply_parsed_channels(parsed, url, 'url', notify, epg_urls=epg_urls)
                 if on_done:
                     on_done()
 
@@ -1467,20 +1570,159 @@ class VideoPlayer:
 
     def _process_m3u_content(self, content):
         """Procesa el contenido de un archivo M3U y carga los canales."""
-        self._apply_parsed_channels(parse_m3u_channels(content), '', 'file', notify=False)
+        self._apply_parsed_channels(
+            parse_m3u_channels(content),
+            '',
+            'file',
+            notify=False,
+            epg_urls=parse_m3u_epg_urls(content),
+        )
 
-    def _apply_parsed_channels(self, parsed, source, kind, notify=True):
+    def _unpack_parsed_channels(self, parsed):
+        channels = []
+        groups = []
+        tvg_ids = []
+        for row in parsed or []:
+            name = row[0] if row else ''
+            url = row[1] if len(row) > 1 else ''
+            group = row[2] if len(row) > 2 else ''
+            tvg_id = row[3] if len(row) > 3 else ''
+            channels.append((name, url))
+            groups.append(group or '')
+            tvg_ids.append(tvg_id or '')
+        return channels, groups, tvg_ids
+
+    def _apply_parsed_channels(self, parsed, source, kind, notify=True, epg_urls=None):
         self.ensure_window()
-        self.channels = [(name, url) for name, url, _group in parsed]
-        self._groups = [group for _name, _url, group in parsed]
+        channels, groups, tvg_ids = self._unpack_parsed_channels(parsed)
+        self.channels = channels
+        self._groups = groups
+        self._tvg_ids = tvg_ids
         self.all_channels = list(self.channels)
         self._groups_all = list(self._groups)
+        self._tvg_ids_all = list(self._tvg_ids)
         self._playlist_source = source
         self._playlist_kind = kind
         self._rebuild_sidebar()
+        self._start_epg(epg_urls)
         self._persist_sidebar()
         if notify:
             messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
+
+    def _merged_epg_urls(self):
+        urls = []
+        seen = set()
+        manual = (self._epg_url_manual or app_config.get_epg_url() or '').strip()
+        self._epg_url_manual = manual
+        for item in (manual, *(self._epg_urls_list or [])):
+            item = (item or '').strip()
+            if not item or item in seen:
+                continue
+            seen.add(item)
+            urls.append(item)
+        return urls[:3]
+
+    def _start_epg(self, urls=None, notify=False):
+        if urls is not None:
+            self._epg_urls_list = [item for item in urls if item]
+        self._epg_urls = self._merged_epg_urls()
+        wanted = [item for item in (self._tvg_ids_all or []) if item]
+        if not self._epg_urls or not wanted:
+            self._epg = None
+            self._set_epg_label('')
+            if notify and not wanted:
+                messagebox.showinfo(
+                    "Guía EPG",
+                    "La lista no trae tvg-id, así que no se puede asociar la guía a los canales. Se guardará para la próxima lista que sí los tenga.",
+                    parent=self.window,
+                )
+            return
+        self._epg_gen += 1
+        gen = self._epg_gen
+        window = self.window
+        sources = list(self._epg_urls)
+        self._set_epg_label('Cargando guía…')
+
+        def work():
+            try:
+                guide = epg.load_guide(sources, wanted)
+            except Exception:
+                guide = epg.Guide()
+
+            def apply():
+                if gen != self._epg_gen:
+                    return
+                self._epg = guide
+                self._listbox_tip_index = None
+                index = self._selected_channel_index()
+                if index is None:
+                    index = self.current_channel
+                if index is not None:
+                    self._refresh_epg_label(index)
+                else:
+                    self._set_epg_label('')
+                if notify and not guide.channel_count():
+                    messagebox.showinfo(
+                        "Guía EPG",
+                        "No se pudo aplicar la guía. Comprueba la dirección o que los tvg-id coincidan con el XMLTV.",
+                        parent=self.window,
+                    )
+
+            self._after_window(window, apply)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _epg_text_for_index(self, index):
+        if index is None or not (0 <= index < len(self._tvg_ids)):
+            return ''
+        if not self._epg:
+            return ''
+        current, nxt = self._epg.now_next(self._tvg_ids[index])
+        return epg.format_now_next(current, nxt)
+
+    def _set_epg_label(self, text):
+        label = getattr(self, '_epg_label', None)
+        if not self._widget_exists(label):
+            return
+        text = (text or '').strip()
+        try:
+            label.configure(text=text)
+        except tk.TclError:
+            return
+        sidebar = getattr(self, 'sidebar', None)
+        before = getattr(sidebar, 'outer', None) if sidebar else None
+        if text:
+            try:
+                if before and self._widget_exists(before):
+                    label.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 6), before=before)
+                elif not label.winfo_ismapped():
+                    label.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 6))
+            except tk.TclError:
+                pass
+        else:
+            try:
+                label.pack_forget()
+            except tk.TclError:
+                pass
+
+    def _refresh_epg_label(self, index):
+        self._set_epg_label(self._epg_text_for_index(index))
+
+    def _on_sidebar_select_epg(self, event=None):
+        sidebar = getattr(self, 'sidebar', None)
+        if sidebar and sidebar.ignore_play():
+            return
+        index = self._selected_channel_index()
+        self._refresh_epg_label(index)
+
+    def _tvg_id_for_url(self, url):
+        for i, (_name, item_url) in enumerate(self.all_channels):
+            if item_url != url:
+                continue
+            if i < len(self._tvg_ids_all):
+                return self._tvg_ids_all[i]
+            return ''
+        return ''
 
     def prompt_youtube_playlist(self):
         """Solicita URL de playlist de YouTube y la carga."""
@@ -1531,6 +1773,12 @@ class VideoPlayer:
                 self.all_channels = list(parsed)
                 self._groups = [''] * len(parsed)
                 self._groups_all = list(self._groups)
+                self._tvg_ids = [''] * len(parsed)
+                self._tvg_ids_all = list(self._tvg_ids)
+                self._epg = None
+                self._epg_urls = []
+                self._epg_urls_list = []
+                self._set_epg_label('')
                 self._playlist_source = playlist_url
                 self._playlist_kind = 'youtube_playlist'
                 self._rebuild_sidebar()
@@ -1556,6 +1804,7 @@ class VideoPlayer:
         if index is None and getattr(self, 'sidebar', None):
             index = self.sidebar.selected_index()
         if index is not None:
+            self._refresh_epg_label(index)
             self.play_channel(index)
             
     def play_channel(self, index):
@@ -1563,6 +1812,7 @@ class VideoPlayer:
             self.save_youtube_resume()
             name, url = self.channels[index]
             self.current_channel = index
+            self._refresh_epg_label(index)
             app_config.remember_channel(index, name, url)
             if self.instance is None:
                 self.instance = _make_vlc_instance()
@@ -2269,29 +2519,35 @@ class VideoPlayer:
         if not search_term:
             self.channels = list(self.all_channels)
             self._groups = list(self._groups_all) if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
+            self._tvg_ids = list(self._tvg_ids_all) if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
             self._rebuild_sidebar()
             return
         groups_all = self._groups_all if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
+        tvg_all = self._tvg_ids_all if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
         snapshot = self.all_channels
         groups_snap = groups_all
+        tvg_snap = tvg_all
 
-        def finish(filtered, filtered_groups):
+        def finish(filtered, filtered_groups, filtered_tvg):
             if gen != self._filter_gen:
                 return
             if not self._widget_exists(getattr(self, 'channels_listbox', None)):
                 return
             self.channels = filtered
             self._groups = filtered_groups
+            self._tvg_ids = filtered_tvg
             self._rebuild_sidebar()
 
         def scan():
             filtered = []
             filtered_groups = []
-            for (name, url), group in zip(snapshot, groups_snap):
+            filtered_tvg = []
+            for (name, url), group, tvg_id in zip(snapshot, groups_snap, tvg_snap):
                 if search_term in (name or '').lower() or search_term in (group or '').lower():
                     filtered.append((name, url))
                     filtered_groups.append(group)
-            return filtered, filtered_groups
+                    filtered_tvg.append(tvg_id)
+            return filtered, filtered_groups, filtered_tvg
 
         if len(snapshot) < 800:
             finish(*scan())
@@ -2300,8 +2556,8 @@ class VideoPlayer:
         window = self.window
 
         def work():
-            filtered, filtered_groups = scan()
-            self._after_window(window, lambda: finish(filtered, filtered_groups))
+            filtered, filtered_groups, filtered_tvg = scan()
+            self._after_window(window, lambda: finish(filtered, filtered_groups, filtered_tvg))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -2352,6 +2608,7 @@ class VideoPlayer:
         for name, url in added:
             self.all_channels.append((name, url))
             self._groups_all.append('YouTube')
+            self._tvg_ids_all.append('')
         if self._playlist_kind in ('file', 'url') and len(self.all_channels) <= 1500:
             self._playlist_kind = 'items'
         elif not self._playlist_kind:
@@ -2368,6 +2625,7 @@ class VideoPlayer:
             for name, url in added:
                 self.channels.append((name, url))
                 self._groups.append('YouTube')
+                self._tvg_ids.append('')
             self._rebuild_sidebar()
             if getattr(self, 'sidebar', None):
                 self.sidebar.see(len(self.channels) - 1)
@@ -2395,6 +2653,12 @@ class VideoPlayer:
         self.all_channels = canales.copy()
         self._groups = [''] * len(canales)
         self._groups_all = list(self._groups)
+        self._tvg_ids = [''] * len(canales)
+        self._tvg_ids_all = list(self._tvg_ids)
+        self._epg = None
+        self._epg_urls = []
+        self._epg_urls_list = []
+        self._set_epg_label('')
         self._playlist_kind = self._playlist_kind or 'items'
         self._rebuild_sidebar()
         self._persist_sidebar()
@@ -2575,6 +2839,12 @@ class VideoPlayer:
              self.all_channels = list(channels_list)
              self._groups = [''] * len(channels_list)
              self._groups_all = list(self._groups)
+             self._tvg_ids = [''] * len(channels_list)
+             self._tvg_ids_all = list(self._tvg_ids)
+             self._epg = None
+             self._epg_urls = []
+             self._epg_urls_list = []
+             self._set_epg_label('')
              self._playlist_kind = self._playlist_kind or 'youtube_playlist'
              self._rebuild_sidebar()
              self._persist_sidebar()
@@ -2641,18 +2911,23 @@ class VideoPlayer:
 
     def on_listbox_motion(self, event):
         """Muestra el título completo solo al pasar el ratón por esa fila."""
+        if getattr(self, '_posted_popup', None):
+            self._hide_listbox_tooltip()
+            return
         sidebar = getattr(self, 'sidebar', None)
         name = sidebar.name_at(event) if sidebar else None
         if not name:
             self._hide_listbox_tooltip()
             return
         index = sidebar.index_at(event) if sidebar else None
-        tip_key = index if index is not None else name
+        extra = self._epg_text_for_index(index) if index is not None else ''
+        text = f'{name}\n{extra}' if extra else name
+        tip_key = (index if index is not None else name, extra)
         if tip_key == self._listbox_tip_index and self.listbox_tooltip.tipwindow:
             return
         self._listbox_tip_index = tip_key
         self.listbox_tooltip.showtip(
-            name,
+            text,
             event.x_root + 14,
             event.y_root + 12,
             wraplength=360,
@@ -2904,12 +3179,16 @@ class VideoPlayer:
             del self.channels[index]
             if index < len(self._groups):
                 del self._groups[index]
+            if index < len(self._tvg_ids):
+                del self._tvg_ids[index]
             for i, (_n, item_url) in enumerate(list(self.all_channels)):
                 if item_url != url:
                     continue
                 del self.all_channels[i]
                 if i < len(self._groups_all):
                     del self._groups_all[i]
+                if i < len(self._tvg_ids_all):
+                    del self._tvg_ids_all[i]
                 break
             self._rebuild_sidebar()
             self._persist_sidebar()
@@ -2943,7 +3222,13 @@ class VideoPlayer:
             self.all_channels.clear()
             self._groups.clear()
             self._groups_all.clear()
+            self._tvg_ids.clear()
+            self._tvg_ids_all.clear()
+            self._epg = None
+            self._epg_urls = []
+            self._epg_urls_list = []
             self.current_channel = None
+            self._set_epg_label('')
             if self._widget_exists(self.search_entry):
                 self.search_var.set('')
             if getattr(self, 'sidebar', None):
@@ -2991,26 +3276,53 @@ class VideoPlayer:
 
     def show_channel_context_menu(self, event):
         selection = self._selected_channel_index(event)
+        self._hide_listbox_tooltip()
         if selection is None:
+            self._dismiss_track_menus()
             return
         if getattr(self, 'sidebar', None):
             self.sidebar.select(selection)
-        self._hide_listbox_tooltip()
+        self._dismiss_track_menus()
         menu = tk.Menu(self.window, tearoff=0)
         style_menu_tree(menu)
-        menu.add_command(label="Reproducir desde aquí", command=lambda: self.play_from_here(selection))
+        menu.add_command(
+            label="Reproducir desde aquí",
+            command=lambda: self._choose_from_menu(lambda: self.play_from_here(selection)),
+        )
         menu.add_separator()
-        menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
-        menu.add_command(label="Eliminar de Favoritos", command=self.remove_from_favorites)
+        menu.add_command(
+            label="Añadir a Favoritos",
+            command=lambda: self._choose_from_menu(self.add_to_favorites),
+        )
+        menu.add_command(
+            label="Eliminar de Favoritos",
+            command=lambda: self._choose_from_menu(self.remove_from_favorites),
+        )
         menu.add_separator()
-        menu.add_command(label="Descargar", command=lambda: self.download_channel(selection))
-        menu.add_command(label="Eliminar canal", command=lambda: self.remove_channel(selection))
+        menu.add_command(
+            label="Descargar",
+            command=lambda: self._choose_from_menu(lambda: self.download_channel(selection)),
+        )
+        menu.add_command(
+            label="Eliminar canal",
+            command=lambda: self._choose_from_menu(lambda: self.remove_channel(selection)),
+        )
         menu.add_separator()
-        menu.add_command(label="Limpiar lista", command=self.clear_channel_list)
+        menu.add_command(
+            label="Limpiar lista",
+            command=lambda: self._choose_from_menu(self.clear_channel_list),
+        )
         try:
-            menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            menu.grab_release()
+            menu.post(event.x_root, event.y_root)
+            self._channel_menu = menu
+            self._posted_popup = menu
+        except tk.TclError:
+            try:
+                menu.destroy()
+            except tk.TclError:
+                pass
+            self._channel_menu = None
+            self._posted_popup = None
 
     def toggle_playlist(self):
         """Muestra u oculta la lista de canales y el sizer"""

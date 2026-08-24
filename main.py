@@ -371,9 +371,7 @@ class M3UProcessor:
                 with open(input_path, 'r', encoding='utf-8') as infile, \
                      open(output_path, mode, encoding='utf-8') as outfile:
 
-                    if mode == 'w':
-                        outfile.write('#EXTM3U\n')
-
+                    wrote_header = False
                     line1 = None
                     for line in infile:
                         if self.stop_processing:
@@ -381,6 +379,13 @@ class M3UProcessor:
                             break
                         bytes_processed += len(line.encode('utf-8'))
                         lines_since_update += 1
+
+                        if mode == 'w' and not wrote_header:
+                            wrote_header = True
+                            if line.startswith('#EXTM3U'):
+                                outfile.write(line if line.endswith('\n') else line + '\n')
+                                continue
+                            outfile.write('#EXTM3U\n')
 
                         if line.startswith('#EXTINF'):
                             line1 = line
