@@ -9,6 +9,7 @@ from keyboard import show_keyboard_shortcuts
 from docs_viewer import show_documentation
 from tkinterdnd2 import DND_FILES, TkinterDnD
 import webbrowser
+import threading
 from bandejaSistema import IconoBandeja
 from ui_theme import (
     apply_theme, get_colors, style_window, style_menu_tree,
@@ -32,6 +33,7 @@ class M3UProcessor:
         self.patterns_list = ['tvg-name="ES"', 'group-title="', 'tvg-logo="']
         self.last_output_folder = None
         self.channels = []
+        self._processing = False
         self.video_player = None
         self.tema_oscuro = True
         self.save_mode = tk.StringVar(value="w")
@@ -227,9 +229,10 @@ class M3UProcessor:
         buttons_frame = ttk.Frame(body)
         buttons_frame.pack(fill=tk.X, pady=(4, 0))
 
-        ttk.Button(
+        self.process_button = ttk.Button(
             buttons_frame, text='Procesar', style='Accent.TButton', command=self.process_file
-        ).pack(side=tk.LEFT, padx=(0, 8))
+        )
+        self.process_button.pack(side=tk.LEFT, padx=(0, 8))
         self.stop_processing = False
         self.stop_button = ttk.Button(
             buttons_frame, text='Parar', style='Danger.TButton',
@@ -319,6 +322,8 @@ class M3UProcessor:
     
 
     def process_file(self):
+        if getattr(self, '_processing', False):
+            return
         if not self.input_file.get():
             messagebox.showerror('Error', 'Por favor, seleccione un archivo de entrada')
             return
@@ -326,77 +331,110 @@ class M3UProcessor:
             messagebox.showerror('Error', 'Por favor, seleccione un archivo de salida')
             return
 
-        mode = self.save_mode.get()  # Usar el valor del radiobutton
+        input_path = self.input_file.get()
+        output_path = self.output_file.get()
+        pattern = self.search_pattern.get()
+        mode = self.save_mode.get()
         self.stop_processing = False
+        self._processing = True
+        self.process_button['state'] = 'disabled'
         self.stop_button['state'] = 'normal'
+        self.progress['value'] = 0
         self.status_var.set('Procesando archivo…')
-        try:
-            self.channels = []
-            self.progress['value'] = 0
-            self.root.update()
 
-            file_size = os.path.getsize(self.input_file.get())
-            bytes_processed = 0
-            buffer = []
-            buffer_size = 2000  # Número de pares de líneas a acumular antes de escribir
-            update_interval = 2000  # Actualizar la barra de progreso cada N líneas
-            lines_since_update = 0
+        def report_progress(pct):
+            def apply():
+                if not getattr(self, '_processing', False):
+                    return
+                try:
+                    self.progress['value'] = pct
+                    self.status_var.set(f'Procesando archivo… {pct:.0f} %')
+                except tk.TclError:
+                    pass
+            try:
+                self.root.after(0, apply)
+            except tk.TclError:
+                pass
 
-            with open(self.input_file.get(), 'r', encoding='utf-8') as infile, \
-                 open(self.output_file.get(), mode, encoding='utf-8') as outfile:
+        def work():
+            channels = []
+            error = None
+            stopped = False
+            try:
+                file_size = os.path.getsize(input_path) or 1
+                bytes_processed = 0
+                buffer = []
+                buffer_size = 2000
+                update_interval = 2000
+                lines_since_update = 0
 
-                if mode == 'w':
-                    outfile.write('#EXTM3U\n')
+                with open(input_path, 'r', encoding='utf-8') as infile, \
+                     open(output_path, mode, encoding='utf-8') as outfile:
 
-                line1 = None
-                for line in infile:
-                    if self.stop_processing:
-                        break
-                    bytes_processed += len(line.encode('utf-8'))
-                    lines_since_update += 1
+                    if mode == 'w':
+                        outfile.write('#EXTM3U\n')
 
-                    if line.startswith('#EXTINF'):
-                        line1 = line
-                    elif line1 is not None:
-                        stripped = line.strip()
-                        if not stripped or stripped.startswith('#'):
-                            continue
-                        if self.search_pattern.get() in line1:
-                            buffer.append(line1)
-                            buffer.append(line if line.endswith('\n') else line + '\n')
-                            self.channels.append((line1.strip(), stripped))
-                        line1 = None
+                    line1 = None
+                    for line in infile:
+                        if self.stop_processing:
+                            stopped = True
+                            break
+                        bytes_processed += len(line.encode('utf-8'))
+                        lines_since_update += 1
 
-                    # Escribir buffer y actualizar progreso cada cierto número de líneas
-                    if len(buffer) >= buffer_size * 2:
+                        if line.startswith('#EXTINF'):
+                            line1 = line
+                        elif line1 is not None:
+                            stripped = line.strip()
+                            if not stripped or stripped.startswith('#'):
+                                continue
+                            if pattern in line1:
+                                buffer.append(line1)
+                                buffer.append(line if line.endswith('\n') else line + '\n')
+                                channels.append((line1.strip(), stripped))
+                            line1 = None
+
+                        if len(buffer) >= buffer_size * 2:
+                            outfile.writelines(buffer)
+                            buffer.clear()
+                        if lines_since_update >= update_interval:
+                            report_progress((bytes_processed / file_size) * 100)
+                            lines_since_update = 0
+
+                    if buffer:
                         outfile.writelines(buffer)
-                        buffer.clear()
-                    if lines_since_update >= update_interval:
-                        self.progress['value'] = (bytes_processed / file_size) * 100
-                        self.root.update()
-                        lines_since_update = 0
+            except Exception as exc:
+                error = exc
 
-                # Escribir lo que quede en el buffer antes de salir
-                if buffer:
-                    outfile.writelines(buffer)
+            def done():
+                self._processing = False
+                try:
+                    self.process_button['state'] = 'normal'
+                    self.stop_button['state'] = 'disabled'
+                except tk.TclError:
+                    return
+                if error:
+                    self.status_var.set('Error al procesar el archivo')
+                    messagebox.showerror('Error', f'Error al procesar el archivo: {error}')
+                    return
+                self.channels = channels
+                self.last_output_folder = output_path
+                self.open_folder_button['state'] = 'normal'
+                self.play_button['state'] = 'normal'
+                self.progress['value'] = 100
+                if stopped:
+                    self.status_var.set('Proceso detenido · El archivo contiene los datos filtrados hasta ese momento')
+                    messagebox.showinfo('Parado', 'El proceso de filtrado fue detenido por el usuario. El archivo contiene los datos filtrados hasta ese momento.')
+                else:
+                    self.status_var.set(f'Completado · {len(channels)} canales coincidentes')
+                    messagebox.showinfo('Éxito', 'Archivo procesado correctamente')
 
-            self.last_output_folder = self.output_file.get()
-            self.open_folder_button['state'] = 'normal'
-            self.play_button['state'] = 'normal'
-            self.progress['value'] = 100
-            self.root.update()
-            if self.stop_processing:
-                self.status_var.set('Proceso detenido · El archivo contiene los datos filtrados hasta ese momento')
-                messagebox.showinfo('Parado', 'El proceso de filtrado fue detenido por el usuario. El archivo contiene los datos filtrados hasta ese momento.')
-            else:
-                self.status_var.set(f'Completado · {len(self.channels)} canales coincidentes')
-                messagebox.showinfo('Éxito', 'Archivo procesado correctamente')
+            try:
+                self.root.after(0, done)
+            except tk.TclError:
+                pass
 
-        except Exception as e:
-            self.status_var.set('Error al procesar el archivo')
-            messagebox.showerror('Error', f'Error al procesar el archivo: {str(e)}')
-        finally:
-            self.stop_button['state'] = 'disabled'
+        threading.Thread(target=work, daemon=True).start()
 
     def stop_process(self):
         self.stop_processing = True
@@ -432,8 +470,7 @@ class M3UProcessor:
         player.run()
         output = self.output_file.get()
         if self.channels and output and os.path.isfile(output):
-            player.load_m3u_file(output, notify=False)
-            player.restore_last_channel()
+            player.load_m3u_file(output, notify=False, on_done=player.restore_last_channel)
         elif not player.channels:
             player.restore_session()
         self._refresh_recent_menu()
@@ -488,13 +525,12 @@ class M3UProcessor:
         player = self._ensure_player()
         player.run()
         if str(path).lower().startswith('http'):
-            player.load_m3u_url(path, notify=False)
+            player.load_m3u_url(path, notify=False, on_done=player.restore_last_channel)
         elif os.path.isfile(path):
-            player.load_m3u_file(path, notify=False)
+            player.load_m3u_file(path, notify=False, on_done=player.restore_last_channel)
         else:
             messagebox.showinfo('Lista reciente', 'Ese archivo ya no existe.')
             return
-        player.restore_last_channel()
         self._refresh_recent_menu()
 
     def _theme_button_label(self):

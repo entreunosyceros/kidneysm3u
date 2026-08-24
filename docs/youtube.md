@@ -14,7 +14,7 @@ Para buscar, ver y descargar hace falta estar **logueado en YouTube**. El progra
 
 1. Inicia sesión en YouTube en el navegador (el flujo más fiable es **Firefox**, con [browser-cookie3](https://pypi.org/project/browser-cookie3/)). En **Preferencias** puedes fijar el navegador de cookies o dejarlo en automático.
 2. Reproduce un vídeo desde el programa, o pulsa **Reexportar cookies**. Si hay login vigente, se escribe `cookies.txt`.
-3. A partir de ahí se reutiliza ese archivo. Si no existe, se sigue leyendo el navegador.
+3. A partir de ahí se reutiliza ese archivo. Si no existe, se sigue leyendo el navegador. El programa recorta tokens `ST-` caducados (muy habituales en Firefox): si se envían todos, YouTube responde **413 Request Entity Too Large** y la búsqueda falla.
 
 En el reproductor (abajo a la izquierda) y en la búsqueda verás **Sesión YouTube: OK** o **caducada**. Lo mismo aparece en el menú **Youtube**. Si YouTube pide captcha o «confirma que no eres un robot», el indicador pasa a caducada y puedes reexportar; no se traga el fallo en silencio.
 
@@ -57,7 +57,9 @@ Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short 
 
 ## Cómo se reproduce
 
-yt-dlp elige un stream que VLC pueda abrir (audio y vídeo juntos cuando es posible). Mientras carga, el reproductor muestra el título, la miniatura y una barra para que no parezca colgado. Si el directo falla, se retransmite por un servidor local. La barra de progreso es para YouTube y VOD, no para un directo IPTV.
+yt-dlp elige un stream que VLC pueda abrir (audio y vídeo juntos cuando es posible). Mientras carga, el reproductor muestra el título, la miniatura y una barra para que no parezca colgado. Extraer el stream y las playlists no bloquea la interfaz.
+
+Si el directo falla, se usa un archivo de la caché si ya es jugable (MP4, MKV, WebM, etc.) **sin remuxear** a MPEG-TS. Solo si hace falta se retransmite por un servidor local. La caché vive en el directorio temporal del sistema (`kidneysm3u_yt_cache`), se recorta a unos **500 MB** (borra lo más antiguo) y no se vacía al cerrar. Los temporales de retransmisión (`kidneys_yt_*`) sí se borran al cerrar o al cambiar de vídeo. La barra de progreso es para YouTube y VOD, no para un directo IPTV.
 
 Si cierras el reproductor o cambias de vídeo, se guarda el segundo. Al volver a abrirlo (también en una lista) continúa desde ahí, salvo que estuvieras al principio o casi al final. No se reproduce solo al restaurar la sesión.
 

@@ -1,5 +1,6 @@
-"""Lista lateral del reproductor: grupos bajo demanda y vista virtual."""
+"""Lista lateral del reproductor: grupos por group-title, pestañas o desplegable."""
 
+import time
 import tkinter as tk
 from tkinter import ttk
 
@@ -9,6 +10,8 @@ VIRTUAL_MIN = 2500
 CHUNK = 200
 ROW_HEIGHT = 26
 UNGROUPED = 'Sin grupo'
+ALL_GROUPS = ''
+TAB_MAX_GROUPS = 8
 
 
 def _group_buckets(groups):
@@ -23,19 +26,49 @@ def _group_buckets(groups):
     return order, buckets
 
 
+def _short_label(name, limit=22):
+    text = (name or '').strip() or UNGROUPED
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + '…'
+
+
 class ChannelSidebar:
-    def __init__(self, parent, scrollbar):
-        self.scrollbar = scrollbar
+    def __init__(self, parent):
+        self.outer = ttk.Frame(parent)
+        self.outer.pack(fill=tk.BOTH, expand=True)
+
+        self.picker_frame = ttk.Frame(self.outer)
+        self._tab_bar = ttk.Frame(self.picker_frame)
+        combo_row = ttk.Frame(self.picker_frame)
+        combo_row.pack(fill=tk.X)
+        ttk.Label(combo_row, text='Grupo', style='Muted.TLabel').pack(side=tk.LEFT, padx=(0, 8))
+        self.picker = ttk.Combobox(combo_row, state='readonly')
+        self.picker.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.picker.bind('<<ComboboxSelected>>', self._on_combo)
+        self._back_btn = ttk.Button(combo_row, text='← Grupos', command=self.show_all_groups)
+        self._combo_row = combo_row
+
+        self._body = ttk.Frame(self.outer)
+        self._body.pack(fill=tk.BOTH, expand=True)
+        self.scrollbar = ttk.Scrollbar(self._body, orient=tk.VERTICAL)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree = ttk.Treeview(
-            parent,
+            self._body,
             show='tree',
             selectmode='browse',
             takefocus=True,
         )
         self.tree.column('#0', width=220, minwidth=80, stretch=True)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
         self.mode = 'flat'
         self.channels = []
         self.groups = []
+        self._order = []
+        self._buckets = {}
+        self._active_group = ALL_GROUPS
+        self._view_indices = None
         self._virtual_start = 0
         self._pool = 0
         self._selected = None
@@ -43,10 +76,17 @@ class ChannelSidebar:
         self._group_items = {}
         self._fill_job = None
         self._rebuild_gen = 0
+        self._combo_keys = []
+        self._tab_keys = []
+        self._tab_buttons = []
+        self._updating_picker = False
+        self._ignore_play_until = 0
+
         self.tree.bind('<<TreeviewOpen>>', self._on_open)
         self.tree.bind('<<TreeviewClose>>', self._on_close)
         self.tree.bind('<<TreeviewSelect>>', self._on_select)
         self.tree.bind('<Configure>', self._on_configure)
+        self.tree.bind('<Button-1>', self._on_press, add='+')
         self.tree.bind('<Button-4>', self._on_wheel)
         self.tree.bind('<Button-5>', self._on_wheel)
         self.tree.bind('<MouseWheel>', self._on_wheel)
@@ -56,12 +96,23 @@ class ChannelSidebar:
     def _apply_tags(self):
         colors = get_colors()
         try:
-            self.tree.tag_configure('group', font=get_font(9, 'bold'), foreground=colors['text_muted'])
+            self.tree.tag_configure(
+                'group',
+                font=get_font(9, 'bold'),
+                foreground=colors['accent'],
+                background=colors.get('surface_alt') or colors['list_bg'],
+            )
         except tk.TclError:
             pass
 
     def refresh_theme(self):
         self._apply_tags()
+
+    def ignore_play(self):
+        return time.time() < self._ignore_play_until
+
+    def _block_play_briefly(self):
+        self._ignore_play_until = time.time() + 0.4
 
     def _cancel_fill(self):
         self._rebuild_gen += 1
@@ -101,6 +152,7 @@ class ChannelSidebar:
         self._sync_virtual_scrollbar()
 
     def rebuild(self, channels, groups=None):
+        previous = self._active_group
         self.channels = list(channels or [])
         if groups is None or len(groups) != len(self.channels):
             self.groups = [''] * len(self.channels)
@@ -109,13 +161,150 @@ class ChannelSidebar:
         self._selected = None
         self._virtual_start = 0
         self._clear_tree()
-        count = len(self.channels)
-        order, buckets = _group_buckets(self.groups)
-        if count >= 2 and len(order) >= 2:
-            self.mode = 'groups'
-            self._use_native_scroll()
-            self._build_groups(order, buckets)
+        self._order, self._buckets = _group_buckets(self.groups)
+        if previous and previous in self._buckets:
+            self._active_group = previous
+        else:
+            self._active_group = ALL_GROUPS
+        self._sync_picker()
+        self._render()
+
+    def show_all_groups(self):
+        self.set_active_group(ALL_GROUPS)
+
+    def set_active_group(self, name):
+        key = ALL_GROUPS if name in (None, ALL_GROUPS) else name
+        if key not in (ALL_GROUPS,) and key not in self._buckets:
+            key = ALL_GROUPS
+        if key == self._active_group and self.tree.get_children():
+            self._sync_picker_selection()
             return
+        self._active_group = key
+        self._block_play_briefly()
+        self._selected = None
+        self._virtual_start = 0
+        self._clear_tree()
+        self._sync_picker_selection()
+        self._render()
+
+    def _has_groups(self):
+        return len(self.channels) >= 2 and len(self._order) >= 2
+
+    def _sync_picker(self):
+        if not self._has_groups():
+            self._active_group = ALL_GROUPS
+            try:
+                self.picker_frame.pack_forget()
+            except tk.TclError:
+                pass
+            return
+        try:
+            self.picker_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 6), before=self._body)
+        except tk.TclError:
+            self.picker_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 6))
+        if len(self._order) <= TAB_MAX_GROUPS:
+            self._show_tabs()
+            self._combo_row.pack_forget()
+        else:
+            self._hide_tabs()
+            self._combo_row.pack(fill=tk.X)
+            self._fill_combo()
+        self._sync_picker_selection()
+
+    def _hide_tabs(self):
+        for btn in self._tab_buttons:
+            try:
+                btn.destroy()
+            except tk.TclError:
+                pass
+        self._tab_buttons = []
+        self._tab_keys = []
+        try:
+            self._tab_bar.pack_forget()
+        except tk.TclError:
+            pass
+
+    def _show_tabs(self):
+        self._hide_tabs()
+        self._tab_bar.pack(side=tk.TOP, fill=tk.X, pady=(0, 6))
+        total = len(self.channels)
+        keys = [ALL_GROUPS] + list(self._order)
+        for key in keys:
+            if key == ALL_GROUPS:
+                text = f'Todos ({total})'
+            else:
+                text = f'{_short_label(key, 16)} ({len(self._buckets.get(key) or [])})'
+            btn = ttk.Button(
+                self._tab_bar,
+                text=text,
+                command=lambda k=key: self.set_active_group(k),
+            )
+            btn.pack(side=tk.LEFT, padx=(0, 4), pady=(0, 4))
+            self._tab_buttons.append(btn)
+            self._tab_keys.append(key)
+
+    def _fill_combo(self):
+        self._updating_picker = True
+        try:
+            values = [f'Todos los grupos ({len(self.channels)})']
+            keys = [ALL_GROUPS]
+            for name in self._order:
+                values.append(f'{name} ({len(self._buckets[name])})')
+                keys.append(name)
+            self._combo_keys = keys
+            self.picker['values'] = values
+        finally:
+            self._updating_picker = False
+
+    def _sync_picker_selection(self):
+        self._updating_picker = True
+        try:
+            inside = bool(self._active_group)
+            if inside:
+                try:
+                    self._back_btn.pack(side=tk.LEFT, padx=(8, 0))
+                except tk.TclError:
+                    pass
+            else:
+                self._back_btn.pack_forget()
+            if self._combo_keys:
+                try:
+                    index = self._combo_keys.index(self._active_group)
+                except ValueError:
+                    index = 0
+                values = list(self.picker.cget('values') or ())
+                if 0 <= index < len(values):
+                    self.picker.set(values[index])
+            for key, btn in zip(self._tab_keys, self._tab_buttons):
+                try:
+                    btn.configure(style='Accent.TButton' if key == self._active_group else 'TButton')
+                except tk.TclError:
+                    pass
+        finally:
+            self._updating_picker = False
+
+    def _on_combo(self, event=None):
+        if self._updating_picker:
+            return
+        try:
+            index = self.picker.current()
+        except tk.TclError:
+            return
+        if 0 <= index < len(self._combo_keys):
+            self.set_active_group(self._combo_keys[index])
+
+    def _render(self):
+        if self._has_groups() and not self._active_group:
+            self.mode = 'catalog'
+            self._view_indices = None
+            self._use_native_scroll()
+            self._build_catalog()
+            return
+        if self._active_group and self._active_group in self._buckets:
+            self._view_indices = list(self._buckets[self._active_group])
+        else:
+            self._view_indices = None
+        count = self._view_count()
         if count >= VIRTUAL_MIN:
             self.mode = 'virtual'
             self._use_virtual_scroll()
@@ -125,27 +314,50 @@ class ChannelSidebar:
         self._use_native_scroll()
         self._fill_flat(0, self._rebuild_gen)
 
-    def _build_groups(self, order, buckets):
+    def _view_count(self):
+        if self._view_indices is not None:
+            return len(self._view_indices)
+        return len(self.channels)
+
+    def _index_at_row(self, row):
+        if self._view_indices is not None:
+            if 0 <= row < len(self._view_indices):
+                return self._view_indices[row]
+            return None
+        if 0 <= row < len(self.channels):
+            return row
+        return None
+
+    def _build_catalog(self):
         self._group_items = {}
-        for offset, name in enumerate(order):
+        for offset, name in enumerate(self._order):
             gid = f'g:{offset}'
-            indices = buckets[name]
+            indices = self._buckets[name]
             self._group_items[gid] = indices
-            label = f'{name} ({len(indices)})'
-            self.tree.insert('', 'end', iid=gid, text=label, tags=('group',), open=False)
-            self.tree.insert(gid, 'end', iid=f'{gid}:ph', text='…')
+            label = f'{name}  ·  {len(indices)}'
+            try:
+                self.tree.insert('', 'end', iid=gid, text=label, tags=('group',), open=False)
+            except tk.TclError:
+                return
+
+    def _build_groups(self, order, buckets):
+        self._build_catalog()
 
     def _fill_flat(self, start, gen):
         if gen != self._rebuild_gen:
             return
-        end = min(len(self.channels), start + CHUNK)
-        for index in range(start, end):
+        total = self._view_count()
+        end = min(total, start + CHUNK)
+        for row in range(start, end):
+            index = self._index_at_row(row)
+            if index is None:
+                continue
             name = self.channels[index][0]
             try:
                 self.tree.insert('', 'end', iid=f'c:{index}', text=name)
             except tk.TclError:
                 return
-        if end < len(self.channels):
+        if end < total:
             self._fill_job = self.tree.after(1, lambda: self._fill_flat(end, gen))
         else:
             self._fill_job = None
@@ -162,6 +374,25 @@ class ChannelSidebar:
             return iid
         return None
 
+    def _on_press(self, event):
+        gid = self.group_at(event)
+        if not gid:
+            return
+        name = self._group_name(gid)
+        if name is None:
+            return
+        self.set_active_group(name)
+        return 'break'
+
+    def _group_name(self, gid):
+        indices = self._group_items.get(gid) or []
+        if not indices:
+            return None
+        index = indices[0]
+        if 0 <= index < len(self.groups):
+            return (self.groups[index] or '').strip() or UNGROUPED
+        return None
+
     def _on_select(self, event=None):
         try:
             selection = self.tree.selection()
@@ -175,9 +406,11 @@ class ChannelSidebar:
 
     def _on_open(self, event=None):
         iid = self._group_iid(self.tree.focus())
-        if not iid or iid in self._loaded_groups:
+        if not iid:
             return
-        self._load_group(iid)
+        name = self._group_name(iid)
+        if name is not None:
+            self.set_active_group(name)
 
     def _on_close(self, event=None):
         iid = self._group_iid(self.tree.focus())
@@ -186,14 +419,9 @@ class ChannelSidebar:
         self.tree.after_idle(lambda group=iid: self._unload_group(group))
 
     def _load_group(self, gid):
-        indices = self._group_items.get(gid) or []
-        try:
-            for child in self.tree.get_children(gid):
-                self.tree.delete(child)
-        except tk.TclError:
-            return
-        self._loaded_groups.add(gid)
-        self._fill_group(gid, indices, 0, self._rebuild_gen)
+        name = self._group_name(gid)
+        if name is not None:
+            self.set_active_group(name)
 
     def _unload_group(self, gid):
         if gid not in self._loaded_groups:
@@ -225,15 +453,9 @@ class ChannelSidebar:
             self._fill_job = None
 
     def toggle_group(self, gid):
-        if not gid or not self.tree.exists(gid):
-            return
-        opened = bool(self.tree.item(gid, 'open'))
-        if opened:
-            self.tree.item(gid, open=False)
-            self._unload_group(gid)
-            return
-        self.tree.item(gid, open=True)
-        self._load_group(gid)
+        name = self._group_name(gid)
+        if name is not None:
+            self.set_active_group(name)
 
     def _visible_rows(self):
         try:
@@ -256,7 +478,7 @@ class ChannelSidebar:
         return 'break'
 
     def _virtual_scroll(self, *args):
-        n = len(self.channels)
+        n = self._view_count()
         vis = self._visible_rows()
         max_start = max(0, n - vis)
         if not args:
@@ -278,14 +500,14 @@ class ChannelSidebar:
         self._refresh_virtual()
 
     def _move_virtual(self, delta):
-        n = len(self.channels)
+        n = self._view_count()
         vis = self._visible_rows()
         max_start = max(0, n - vis)
         self._virtual_start = max(0, min(max_start, self._virtual_start + delta))
         self._refresh_virtual()
 
     def _sync_virtual_scrollbar(self):
-        n = max(1, len(self.channels))
+        n = max(1, self._view_count())
         vis = min(self._visible_rows(), n)
         start = self._virtual_start / n
         end = (self._virtual_start + vis) / n
@@ -295,14 +517,15 @@ class ChannelSidebar:
             pass
 
     def _refresh_virtual(self):
-        n = len(self.channels)
+        n = self._view_count()
         vis = self._visible_rows()
         max_start = max(0, n - vis)
         self._virtual_start = max(0, min(max_start, self._virtual_start))
         need = vis if n else 0
         for row in range(need):
-            index = self._virtual_start + row
-            text = self.channels[index][0] if index < n else ''
+            view_row = self._virtual_start + row
+            index = self._index_at_row(view_row)
+            text = self.channels[index][0] if index is not None else ''
             iid = f'v:{row}'
             try:
                 if self.tree.exists(iid):
@@ -329,16 +552,26 @@ class ChannelSidebar:
             except tk.TclError:
                 pass
             return
-        row = self._selected - self._virtual_start
+        row = self._virtual_row_of(self._selected)
         iid = f'v:{row}'
         try:
-            if 0 <= row < self._pool and self.tree.exists(iid):
+            if row is not None and 0 <= row < self._pool and self.tree.exists(iid):
                 self.tree.selection_set(iid)
                 self.tree.focus(iid)
             else:
                 self.tree.selection_remove(self.tree.selection())
         except tk.TclError:
             pass
+
+    def _virtual_row_of(self, index):
+        if self._view_indices is not None:
+            try:
+                view_row = self._view_indices.index(index)
+            except ValueError:
+                return None
+        else:
+            view_row = index
+        return view_row - self._virtual_start
 
     def _index_from_iid(self, iid):
         if not iid:
@@ -353,9 +586,7 @@ class ChannelSidebar:
                 row = int(iid.split(':', 1)[1])
             except ValueError:
                 return None
-            index = self._virtual_start + row
-            if 0 <= index < len(self.channels):
-                return index
+            return self._index_at_row(self._virtual_start + row)
         return None
 
     def index_at(self, event):
@@ -411,14 +642,18 @@ class ChannelSidebar:
             except tk.TclError:
                 pass
             return
+        if self.mode == 'catalog':
+            group = (self.groups[index] or '').strip() or UNGROUPED
+            self.set_active_group(group)
         self._selected = index
         if self.mode == 'virtual':
             self.see(index)
             self._paint_virtual_selection()
             return
         iid = f'c:{index}'
-        if self.mode == 'groups' and not self.tree.exists(iid):
-            self._expand_for_index(index)
+        if self._view_indices is not None and index not in self._view_indices:
+            group = (self.groups[index] or '').strip() or UNGROUPED
+            self.set_active_group(group)
         try:
             if self.tree.exists(iid):
                 self.tree.selection_set(iid)
@@ -430,17 +665,28 @@ class ChannelSidebar:
     def see(self, index):
         if index is None or not (0 <= index < len(self.channels)):
             return
+        if self.mode == 'catalog':
+            group = (self.groups[index] or '').strip() or UNGROUPED
+            self.set_active_group(group)
+        if self._view_indices is not None and index not in self._view_indices:
+            group = (self.groups[index] or '').strip() or UNGROUPED
+            self.set_active_group(group)
         if self.mode == 'virtual':
             vis = self._visible_rows()
-            if index < self._virtual_start:
-                self._virtual_start = index
-            elif index >= self._virtual_start + vis:
-                self._virtual_start = index - vis + 1
+            if self._view_indices is not None:
+                try:
+                    abs_row = self._view_indices.index(index)
+                except ValueError:
+                    return
+            else:
+                abs_row = index
+            if abs_row < self._virtual_start:
+                self._virtual_start = abs_row
+            elif abs_row >= self._virtual_start + vis:
+                self._virtual_start = abs_row - vis + 1
             self._refresh_virtual()
             return
         iid = f'c:{index}'
-        if self.mode == 'groups' and not self.tree.exists(iid):
-            self._expand_for_index(index)
         try:
             if self.tree.exists(iid):
                 self.tree.see(iid)
@@ -448,16 +694,10 @@ class ChannelSidebar:
             pass
 
     def _expand_for_index(self, index):
-        for gid, indices in self._group_items.items():
-            if index not in indices:
-                continue
-            try:
-                self.tree.item(gid, open=True)
-            except tk.TclError:
-                return
-            if gid not in self._loaded_groups:
-                self._load_group(gid)
+        if not (0 <= index < len(self.groups)):
             return
+        group = (self.groups[index] or '').strip() or UNGROUPED
+        self.set_active_group(group)
 
     def set_item_name(self, index, name):
         if not (0 <= index < len(self.channels)):
@@ -471,8 +711,8 @@ class ChannelSidebar:
         except tk.TclError:
             return
         if self.mode == 'virtual':
-            row = index - self._virtual_start
-            if 0 <= row < self._pool:
+            row = self._virtual_row_of(index)
+            if row is not None and 0 <= row < self._pool:
                 try:
                     self.tree.item(f'v:{row}', text=name)
                 except tk.TclError:
@@ -481,8 +721,16 @@ class ChannelSidebar:
     def clear(self):
         self.channels = []
         self.groups = []
+        self._order = []
+        self._buckets = {}
+        self._active_group = ALL_GROUPS
+        self._view_indices = None
         self._selected = None
         self._virtual_start = 0
         self.mode = 'flat'
         self._clear_tree()
         self._use_native_scroll()
+        try:
+            self.picker_frame.pack_forget()
+        except tk.TclError:
+            pass

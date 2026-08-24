@@ -20,6 +20,95 @@ import app_config
 
 
 YT_TEMP_PREFIX = 'kidneys_yt_'
+YT_CACHE_DIRNAME = 'kidneysm3u_yt_cache'
+YT_CACHE_MAX_BYTES = 500 * 1024 * 1024
+PLAYABLE_VIDEO_EXT = {'.mp4', '.m4v', '.mkv', '.webm', '.avi', '.mov', '.mpeg', '.mpg'}
+
+
+def youtube_cache_dir():
+    path = os.path.join(tempfile.gettempdir(), YT_CACHE_DIRNAME)
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        pass
+    return path
+
+
+def is_playable_local_video(path):
+    """True si es un archivo local que VLC puede abrir sin remux a MPEG-TS."""
+    if not path or str(path).startswith(('http://', 'https://', 'ftp://')):
+        return False
+    local = str(path).split('?', 1)[0]
+    ext = os.path.splitext(local)[1].lower()
+    if ext not in PLAYABLE_VIDEO_EXT:
+        return False
+    try:
+        return os.path.isfile(local) and os.path.getsize(local) > 1024
+    except OSError:
+        return False
+
+
+def find_cached_youtube_video(video_id, quality=None):
+    video_id = str(video_id or '').strip()
+    if len(video_id) != 11:
+        return None
+    try:
+        quality = int(quality or app_config.get_youtube_quality())
+    except (TypeError, ValueError):
+        quality = 720
+    prefix = f'{video_id}_{quality}.'
+    root = youtube_cache_dir()
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return None
+    for name in names:
+        if not name.startswith(prefix):
+            continue
+        path = os.path.join(root, name)
+        if is_playable_local_video(path):
+            try:
+                os.utime(path, None)
+            except OSError:
+                pass
+            return path
+    return None
+
+
+def enforce_youtube_cache_limit(max_bytes=YT_CACHE_MAX_BYTES, keep=None):
+    """Borra los archivos más antiguos de la caché hasta quedar por debajo del tope."""
+    root = youtube_cache_dir()
+    keep_path = os.path.abspath(keep) if keep else None
+    files = []
+    total = 0
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return
+    for name in names:
+        path = os.path.join(root, name)
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        if not os.path.isfile(path):
+            continue
+        files.append((st.st_mtime, st.st_size, path))
+        total += st.st_size
+    if total <= max_bytes:
+        return
+    files.sort()
+    for _mtime, size, path in files:
+        if total <= max_bytes:
+            break
+        if keep_path and os.path.abspath(path) == keep_path:
+            continue
+        try:
+            os.remove(path)
+            total -= size
+            print(f'[YouTube] Caché: eliminado {os.path.basename(path)} ({size // (1024 * 1024)} MB)')
+        except OSError:
+            pass
 
 
 def cleanup_youtube_temp_dirs(keep=None):
@@ -37,6 +126,7 @@ def cleanup_youtube_temp_dirs(keep=None):
                 shutil.rmtree(path, ignore_errors=True)
     except OSError:
         pass
+    enforce_youtube_cache_limit(keep=keep)
 
 
 atexit.register(cleanup_youtube_temp_dirs)
@@ -107,6 +197,7 @@ def youtube_ydl_opts(**extra):
     if browser:
         opts['cookiesfrombrowser'] = (browser,)
     elif use_cookiefile and os.path.exists(cookies_path):
+        slim_youtube_cookies_file(cookies_path)
         opts['cookiefile'] = cookies_path
 
     opts.update(extra)
@@ -253,6 +344,11 @@ _YT_AUTH_COOKIES = {
     '__Secure-1PSID', '__Secure-3PSID',
     '__Secure-1PAPISID', '__Secure-3PAPISID',
 }
+_YT_COOKIE_DOMAINS = (
+    'youtube.com', 'google.com', 'youtu.be', 'youtube-nocookie.com',
+)
+_YT_COOKIE_MAX_VALUE = 4096
+_cookies_slim_mtime = None
 _YT_AUTH_ERROR_MARKERS = (
     'sign in',
     'not a bot',
@@ -268,6 +364,103 @@ _YT_AUTH_ERROR_MARKERS = (
 
 def cookies_file_path():
     return COOKIES_PATH
+
+
+def _normalize_cookie_expiry(expires):
+    """Unix en segundos. Firefox 142+ guarda milisegundos y yt-dlp acaba enviando cookies caducadas (HTTP 413)."""
+    if expires in (None, '', 0, '0'):
+        return None
+    try:
+        exp = float(expires)
+    except (TypeError, ValueError):
+        return None
+    if exp > 1e12:
+        exp /= 1000.0
+    return int(exp)
+
+
+def _cookie_domain_ok(domain):
+    host = (domain or '').lstrip('.').lower()
+    return any(host == item or host.endswith('.' + item) for item in _YT_COOKIE_DOMAINS)
+
+
+def _youtube_cookie_keep(cookie, now=None):
+    name = getattr(cookie, 'name', '') or ''
+    value = getattr(cookie, 'value', '') or ''
+    domain = getattr(cookie, 'domain', '') or ''
+    if not name or not value or name.startswith('ST-'):
+        return False
+    if len(value) > _YT_COOKIE_MAX_VALUE:
+        return False
+    if not _cookie_domain_ok(domain):
+        return False
+    exp = _normalize_cookie_expiry(getattr(cookie, 'expires', None))
+    if exp is not None and exp < int(now or time.time()):
+        return False
+    return True
+
+
+def slim_youtube_cookies_file(path=None):
+    """Quita de cookies.txt tokens ST caducados y caducidades en ms. Evita HTTP 413 en búsquedas."""
+    global _cookies_slim_mtime
+    path = path or cookies_file_path()
+    if not os.path.isfile(path):
+        return 0
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return 0
+    if _cookies_slim_mtime is not None and mtime == _cookies_slim_mtime:
+        return 0
+    now = int(time.time())
+    kept = []
+    dropped = 0
+    changed = False
+    try:
+        with open(path, encoding='utf-8') as handle:
+            for line in handle:
+                raw = line.rstrip('\n')
+                if not raw.strip() or raw.startswith('#'):
+                    continue
+                fields = raw.split('\t')
+                if len(fields) < 7:
+                    dropped += 1
+                    continue
+                domain, expiry, name, value = fields[0], fields[4], fields[5], fields[6]
+                if not name or name.startswith('ST-') or not _cookie_domain_ok(domain):
+                    dropped += 1
+                    continue
+                if len(value or '') > _YT_COOKIE_MAX_VALUE:
+                    dropped += 1
+                    continue
+                exp = _normalize_cookie_expiry(expiry)
+                if exp is not None and exp < now:
+                    dropped += 1
+                    continue
+                if exp is not None and str(exp) != str(expiry).strip():
+                    fields[4] = str(exp)
+                    changed = True
+                kept.append('\t'.join(fields))
+    except OSError:
+        return 0
+    if dropped == 0 and not changed:
+        _cookies_slim_mtime = mtime
+        return 0
+    header = (
+        '# Netscape HTTP Cookie File\n'
+        '# This file was generated by Kidneys M3U. Do not share it.\n\n'
+    )
+    try:
+        with open(path, 'w', encoding='utf-8') as handle:
+            handle.write(header)
+            if kept:
+                handle.write('\n'.join(kept) + '\n')
+        _cookies_slim_mtime = os.path.getmtime(path)
+    except OSError:
+        return 0
+    if dropped:
+        print(f'[YouTube] Cookies recortadas: se omitieron {dropped} caducadas o ST (evita error 413)')
+    return dropped
 
 
 def inspect_youtube_session(path=None):
@@ -292,10 +485,7 @@ def inspect_youtube_session(path=None):
                 if name not in _YT_AUTH_COOKIES or not value:
                     continue
                 has_auth = True
-                try:
-                    exp = int(expiry)
-                except (TypeError, ValueError):
-                    exp = 0
+                exp = _normalize_cookie_expiry(expiry) or 0
                 if exp > 0 and exp < now:
                     expired_auth = True
     except OSError:
@@ -330,10 +520,7 @@ def _jar_has_live_youtube_login(cookies):
         domain = (getattr(cookie, 'domain', '') or '').lower()
         if 'youtube' not in domain and 'google' not in domain:
             continue
-        try:
-            exp = int(getattr(cookie, 'expires', None) or 0)
-        except (TypeError, ValueError):
-            exp = 0
+        exp = _normalize_cookie_expiry(getattr(cookie, 'expires', None)) or 0
         if exp == 0 or exp >= now:
             return True
     return False
@@ -555,7 +742,14 @@ class YouTubeHandler:
                 self._set_loading_status("Abriendo el vídeo…")
 
             def fallback():
-                print("[YouTubeHandler] VLC no pudo abrir el stream directo; retransmitiendo la URL ya extraída")
+                print("[YouTubeHandler] VLC no pudo abrir el stream directo; probando archivo local")
+                if self._play_playable_file(
+                    url, force_pulse, show_progress, is_sequential,
+                    duration=stream.get('duration'),
+                    start_s=resume_s,
+                ):
+                    return
+                print("[YouTubeHandler] Retransmitiendo la URL ya extraída")
                 if not self._play_via_pipe(
                     url, force_pulse, show_progress, is_sequential,
                     duration=stream.get('duration'),
@@ -582,6 +776,13 @@ class YouTubeHandler:
         if stream:
             print("[YouTubeHandler] Retransmitiendo la URL extraída (sin volver a pedir el vídeo a YouTube)")
         duration = (stream or {}).get('duration')
+        if self._play_playable_file(
+            url, force_pulse, show_progress, is_sequential,
+            duration=duration,
+            start_s=resume_s,
+        ):
+            self.video_player.set_youtube_subtitles(subs)
+            return
         if self._play_via_pipe(
             url, force_pulse, show_progress, is_sequential,
             duration=duration,
@@ -954,6 +1155,31 @@ class YouTubeHandler:
         """Si hay URL, VLC la prueba. Los filtros antiguos mandaban todo al relevo y YouTube lo cortaba."""
         return bool((stream or {}).get('url'))
 
+    def _play_local_video(self, path, force_pulse, show_progress, is_sequential, duration=None, start_s=0):
+        print(f"[YouTubeHandler] Reproduciendo archivo local (sin remux): {path}")
+        self.video_player._yt_via_pipe = False
+        self.video_player._yt_start_offset_ms = 0
+        self.video_player.play_video_url(
+            path,
+            force_pulse=force_pulse,
+            show_progress=show_progress,
+            is_sequential=is_sequential,
+            local_file=True,
+            duration_s=duration,
+            start_s=start_s,
+        )
+
+    def _play_playable_file(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None, start_s=0):
+        """Usa la caché si el formato ya es jugable. No remuxea a MPEG-TS."""
+        path = find_cached_youtube_video(self.extract_youtube_id(youtube_url))
+        if not path:
+            return False
+        self._play_local_video(
+            path, force_pulse, show_progress, is_sequential,
+            duration=duration, start_s=start_s,
+        )
+        return True
+
     def replay_from(self, start_s):
         """Reinicia la retransmisión local desde un instante (el MPEG-TS no admite seek)."""
         url = self._current_url
@@ -969,6 +1195,15 @@ class YouTubeHandler:
             duration = None
         if float(start_s or 0) < 0.5 and int(getattr(self.video_player, '_yt_start_offset_ms', 0) or 0) < 500:
             return False
+        if self._play_playable_file(
+            url,
+            kwargs.get('force_pulse', True),
+            kwargs.get('show_progress', True),
+            kwargs.get('is_sequential', False),
+            duration=duration,
+            start_s=max(0.0, float(start_s or 0)),
+        ):
+            return True
         self.video_player._yt_via_pipe = True
         return self._play_via_pipe(
             url,
@@ -982,10 +1217,21 @@ class YouTubeHandler:
         )
 
     def _play_via_pipe(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None, start_s=0, source_url=None, http_headers=None):
-        """Retransmite a MPEG-TS. Prefiere la URL ya extraída para no volver a golpear YouTube."""
+        """Retransmite a MPEG-TS solo si hace falta. Un MP4/MKV local se abre tal cual."""
+        source_url = source_url or self._direct_url
+        http_headers = http_headers or self._direct_headers
+        if is_playable_local_video(source_url):
+            self._play_local_video(
+                source_url, force_pulse, show_progress, is_sequential,
+                duration=duration, start_s=start_s,
+            )
+            return True
         ffmpeg = shutil.which('ffmpeg')
         if not ffmpeg:
-            return self._play_via_download(youtube_url, force_pulse, show_progress, is_sequential, duration=duration)
+            return self._play_via_download(
+                youtube_url, force_pulse, show_progress, is_sequential,
+                duration=duration, start_s=start_s,
+            )
 
         self._current_url = youtube_url
         self._play_kwargs = {
@@ -998,8 +1244,6 @@ class YouTubeHandler:
         tmpdir = tempfile.mkdtemp(prefix='kidneys_yt_')
         ts_path = os.path.join(tmpdir, 'stream.ts')
         self._yt_tmpdir = tmpdir
-        source_url = source_url or self._direct_url
-        http_headers = http_headers or self._direct_headers
 
         def producer():
             try:
@@ -1105,36 +1349,57 @@ class YouTubeHandler:
         print(f"[YouTubeHandler] Retransmitiendo a {ts_path}")
         return True
 
-    def _play_via_download(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None):
-        """Si no hay ffmpeg, descarga a un temporal y luego reproduce en VLC."""
+    def _play_via_download(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None, start_s=0):
+        """Descarga a la caché un formato jugable y lo abre en VLC, sin remux."""
+        video_id = self.extract_youtube_id(youtube_url)
+        cached = find_cached_youtube_video(video_id)
+        if cached:
+            self._play_local_video(
+                cached, force_pulse, show_progress, is_sequential,
+                duration=duration, start_s=start_s,
+            )
+            return True
         self.stop_pipeline()
         self._show_status("Descargando vídeo para reproducirlo…")
-        tmpdir = tempfile.mkdtemp(prefix='kidneys_yt_')
-        self._yt_tmpdir = tmpdir
-        outtmpl = os.path.join(tmpdir, 'video.%(ext)s')
+        try:
+            quality = int(app_config.get_youtube_quality())
+        except (TypeError, ValueError):
+            quality = 720
+        outtmpl = os.path.join(youtube_cache_dir(), f'{video_id or "video"}_{quality}.%(ext)s')
 
         def work():
             try:
                 opts = youtube_ydl_opts(
                     outtmpl=outtmpl,
-                    format='best[ext=mp4][acodec!=none][vcodec!=none]/best',
+                    format=(
+                        f'best[height<={quality}][ext=mp4][acodec!=none][vcodec!=none]/'
+                        f'best[height<={quality}][acodec!=none][vcodec!=none]/'
+                        'best[ext=mp4][acodec!=none][vcodec!=none]/best'
+                    ),
                     quiet=True,
                 )
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(youtube_url, download=True)
                     path = ydl.prepare_filename(info)
+                requested = (info or {}).get('requested_downloads') or []
+                if requested and requested[0].get('filepath'):
+                    path = requested[0]['filepath']
+                if not path or not os.path.exists(path):
+                    path = find_cached_youtube_video(video_id, quality)
                 if not path or not os.path.exists(path):
                     raise FileNotFoundError('No se descargó el archivo')
-                self.video_player.window.after(
-                    0,
-                    lambda: self.video_player.play_video_url(
-                        path,
-                        force_pulse=force_pulse,
-                        show_progress=show_progress,
-                        is_sequential=is_sequential,
-                        duration_s=duration or info.get('duration'),
-                    ),
-                )
+                enforce_youtube_cache_limit(keep=path)
+                if not is_playable_local_video(path):
+                    raise FileNotFoundError(f'El formato descargado no es jugable: {path}')
+
+                def start():
+                    self._play_local_video(
+                        path, force_pulse, show_progress, is_sequential,
+                        duration=duration or info.get('duration'),
+                        start_s=start_s,
+                    )
+
+                self.video_player.window.after(0, start)
             except Exception as exc:
                 print(f"[YouTubeHandler] Descarga para reproducción fallida: {exc}")
                 self.video_player.window.after(0, lambda: self._show_playback_error(youtube_url))
@@ -1702,7 +1967,16 @@ class YouTubeHandler:
             return None
         try:
             cj = MozillaCookieJar(output_path)
+            now = time.time()
             for cookie in cookies:
+                if not _youtube_cookie_keep(cookie, now=now):
+                    continue
+                exp = _normalize_cookie_expiry(getattr(cookie, 'expires', None))
+                if exp is not None:
+                    try:
+                        cookie.expires = exp
+                    except Exception:
+                        pass
                 try:
                     cj.set_cookie(cookie)
                 except Exception:
@@ -1714,6 +1988,9 @@ class YouTubeHandler:
                 )
                 return None
             cj.save(ignore_discard=True, ignore_expires=True)
+            global _cookies_slim_mtime
+            _cookies_slim_mtime = None
+            slim_youtube_cookies_file(output_path)
             print(f"[YouTube] Cookies exportadas desde {source} → {output_path}")
             return output_path
         except Exception as e:
