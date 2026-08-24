@@ -23,6 +23,8 @@ Desde aquí filtras o abres listas y lanzas el reproductor. El flujo habitual:
 3. Elige si **sustituyes** el archivo de salida o **añades** los resultados al final.
 4. Abre el [reproductor](reproductor.md) con la lista resultante.
 
+El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras corre.
+
 En **Archivo → Preferencias** (también **Reproducir → Preferencias** en el reproductor) unificas tema, volumen por defecto, carpeta de descargas, navegador de cookies, calidad de YouTube y si se recuerda la última lista. El botón **Tema claro/oscuro** de la cabecera sigue sirviendo para cambiar solo el tema.
 
 Detalle del filtro y de la herramienta de ordenar: [listas M3U](listas-m3u.md).

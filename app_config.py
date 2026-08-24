@@ -184,19 +184,25 @@ def remember_playlist(path, kind='file'):
     save(updates)
 
 
-def remember_sidebar(items, source='', kind='items'):
+def remember_sidebar(items, source='', kind='items', groups=None):
     if not get_remember_last_list():
         return
     snapshot = []
-    for entry in items or []:
+    for index, entry in enumerate(items or []):
+        group = ''
+        if groups is not None and index < len(groups):
+            group = groups[index] or ''
         if isinstance(entry, dict):
             name, url = entry.get('name'), entry.get('url')
+            group = entry.get('group') or group
         elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
             name, url = entry[0], entry[1]
+            if len(entry) >= 3:
+                group = entry[2] or group
         else:
             continue
         if url:
-            snapshot.append({'name': name or '', 'url': url})
+            snapshot.append({'name': name or '', 'url': url, 'group': group or ''})
     save({
         'session': {
             'playlist': source or '',

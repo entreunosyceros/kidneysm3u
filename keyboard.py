@@ -74,6 +74,7 @@ def show_keyboard_shortcuts(root):
     shortcuts = [
         ("Reproducción", [
             ("Espacio", "Reproducir/Pausar"),
+            ("Clic en el vídeo", "Reproducir/Pausar"),
             ("F1", "Pantalla Completa"),
             ("M", "Silenciar/Activar sonido"),
             ("←", "Retroceder 2 segundos"),

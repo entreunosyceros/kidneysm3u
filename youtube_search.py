@@ -9,7 +9,9 @@ import re
 import subprocess
 from datetime import datetime, timedelta
 from urllib.parse import quote, quote_plus
-from youtube_player import youtube_ydl_opts, youtube_auth_blocked, youtube_auth_help
+from youtube_player import (
+    youtube_ydl_opts, youtube_auth_blocked, youtube_auth_help, slim_youtube_cookies_file,
+)
 from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window
 import app_config
 
@@ -438,74 +440,104 @@ class YouTubeSearchDialog:
                     f"&hl=es&gl=ES&sp={sp}"
                 )
 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(search_url, download=False)
-                    results_count = 0
-                    found_playlist = False
-                    
-                    def update_ui():
-                        nonlocal results_count, found_playlist
-                        for entry in info.get('entries') or []:
-                            if not entry or results_count >= max_results:
-                                break
-                                
-                            title = entry.get('title', 'Sin título')
-                            duration = entry.get('duration')
-                            duration_str = self.format_duration(duration) if duration else ""
-                            
-                            if tipo == "Listas de reproducción":
-                                playlist_id = None
-                                if entry.get('url') and 'list=' in entry.get('url'):
-                                    playlist_id = re.search(r'list=([^&]+)', entry.get('url'))
-                                    if playlist_id:
-                                        playlist_id = playlist_id.group(1)
-                                        playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
-                                        self.result_types.append("playlist")
-                                        self.results.append(playlist_url)
-                                        self.result_details.append({
-                                            'title': title,
-                                            'id': playlist_id,
-                                            'duration': duration
-                                        })
-                                        self.results_listbox.insert(tk.END, f"[Lista] {title}")
-                                        found_playlist = True
-                                        results_count += 1
-                            elif tipo == "Vídeos":
-                                if entry.get('id'):
-                                    url = f"https://www.youtube.com/watch?v={entry.get('id')}"
-                                    self.result_types.append("video")
-                                    self.results.append(url)
+                def extract_search(opts):
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        return ydl.extract_info(search_url, download=False)
+
+                try:
+                    info = extract_search(ydl_opts)
+                except Exception as err:
+                    if '413' not in str(err):
+                        raise
+                    slim_youtube_cookies_file()
+                    retry_opts = youtube_ydl_opts(
+                        extract_flat=True,
+                        skip_download=True,
+                        force_generic_extractor=False,
+                        noplaylist=False,
+                        playlistend=max_results + 5,
+                    )
+                    try:
+                        info = extract_search(retry_opts)
+                    except Exception as err2:
+                        if '413' not in str(err2):
+                            raise
+                        print('[YouTube] Búsqueda 413: reintentando sin cookies.txt hinchado')
+                        info = extract_search(youtube_ydl_opts(
+                            extract_flat=True,
+                            skip_download=True,
+                            force_generic_extractor=False,
+                            noplaylist=False,
+                            playlistend=max_results + 5,
+                            use_cookiefile=False,
+                        ))
+
+                results_count = 0
+                found_playlist = False
+
+                def update_ui():
+                    nonlocal results_count, found_playlist
+                    for entry in info.get('entries') or []:
+                        if not entry or results_count >= max_results:
+                            break
+
+                        title = entry.get('title', 'Sin título')
+                        duration = entry.get('duration')
+                        duration_str = self.format_duration(duration) if duration else ""
+
+                        if tipo == "Listas de reproducción":
+                            playlist_id = None
+                            if entry.get('url') and 'list=' in entry.get('url'):
+                                playlist_id = re.search(r'list=([^&]+)', entry.get('url'))
+                                if playlist_id:
+                                    playlist_id = playlist_id.group(1)
+                                    playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
+                                    self.result_types.append("playlist")
+                                    self.results.append(playlist_url)
                                     self.result_details.append({
                                         'title': title,
-                                        'id': entry.get('id'),
+                                        'id': playlist_id,
                                         'duration': duration
                                     })
-                                    display_text = f"[Vídeo] {title}"
-                                    if duration_str:
-                                        display_text += f" [{duration_str}]"
-                                    self.results_listbox.insert(tk.END, display_text)
+                                    self.results_listbox.insert(tk.END, f"[Lista] {title}")
+                                    found_playlist = True
                                     results_count += 1
-                            
-                            elif tipo == "Canales":
-                                channel_id = entry.get('channel_id') or entry.get('uploader_id') or entry.get('id')
-                                if channel_id:
-                                    url = f"https://www.youtube.com/channel/{channel_id}"
-                                    self.result_types.append("channel")
-                                    self.results.append(url)
-                                    self.result_details.append({
-                                        'title': title,
-                                        'id': channel_id
-                                    })
-                                    self.results_listbox.insert(tk.END, f"[Canal] {title}")
-                                    results_count += 1
-                        
-                        if tipo == "Listas de reproducción" and not found_playlist:
-                            messagebox.showinfo("Info", "No se encontraron listas de reproducción con ese nombre.")
+                        elif tipo == "Vídeos":
+                            if entry.get('id'):
+                                url = f"https://www.youtube.com/watch?v={entry.get('id')}"
+                                self.result_types.append("video")
+                                self.results.append(url)
+                                self.result_details.append({
+                                    'title': title,
+                                    'id': entry.get('id'),
+                                    'duration': duration
+                                })
+                                display_text = f"[Vídeo] {title}"
+                                if duration_str:
+                                    display_text += f" [{duration_str}]"
+                                self.results_listbox.insert(tk.END, display_text)
+                                results_count += 1
 
-                        self.progress_bar.stop()
-                        self.progress_bar.pack_forget()
-                    
-                    self.window.after(0, update_ui)
+                        elif tipo == "Canales":
+                            channel_id = entry.get('channel_id') or entry.get('uploader_id') or entry.get('id')
+                            if channel_id:
+                                url = f"https://www.youtube.com/channel/{channel_id}"
+                                self.result_types.append("channel")
+                                self.results.append(url)
+                                self.result_details.append({
+                                    'title': title,
+                                    'id': channel_id
+                                })
+                                self.results_listbox.insert(tk.END, f"[Canal] {title}")
+                                results_count += 1
+
+                    if tipo == "Listas de reproducción" and not found_playlist:
+                        messagebox.showinfo("Info", "No se encontraron listas de reproducción con ese nombre.")
+
+                    self.progress_bar.stop()
+                    self.progress_bar.pack_forget()
+
+                self.window.after(0, update_ui)
                     
             except Exception as e:
                 err = e
@@ -515,6 +547,12 @@ class YouTubeSearchDialog:
                         self.youtube_handler.mark_session_from_error(exc)
                     if youtube_auth_blocked(exc):
                         messagebox.showerror("Sesión YouTube", youtube_auth_help())
+                    elif '413' in str(exc):
+                        messagebox.showerror(
+                            "Error",
+                            "YouTube rechazó la búsqueda (petición demasiado grande).\n"
+                            "Suele ser cookies.txt hinchado. Pulsa «Reexportar cookies» e inténtalo de nuevo.",
+                        )
                     else:
                         messagebox.showerror("Error", f"No se pudo realizar la búsqueda: {exc}")
                     self.progress_bar.stop()
@@ -573,8 +611,7 @@ class YouTubeSearchDialog:
                 self.play_callback(url, title=label)
                 self.window.destroy()
             elif tipo == "playlist":
-                self.load_playlist_videos(url)
-                self.window.destroy()
+                self.load_playlist_videos(url, close_after=True)
             elif tipo == "channel":
                 webbrowser.open_new(url)
                 self.window.destroy()
@@ -773,21 +810,60 @@ class YouTubeSearchDialog:
                 except OSError:
                     pass
 
-    def load_playlist_videos(self, playlist_url):
-        try:
-            channels = self._fetch_playlist_videos(playlist_url)
-            if not channels:
-                messagebox.showinfo("Info", "No se encontraron vídeos en la playlist.")
-                return
-            if self.load_playlist_callback:
-                self.load_playlist_callback(channels)
-        except Exception as e:
-            if self.youtube_handler:
-                self.youtube_handler.mark_session_from_error(e)
-            if youtube_auth_blocked(e):
-                messagebox.showerror("Sesión YouTube", youtube_auth_help())
-            else:
-                messagebox.showerror("Error", f"No se pudo obtener la playlist: {e}")
+    def load_playlist_videos(self, playlist_url, close_after=False):
+        if getattr(self, '_loading_playlist', False):
+            return
+        self._loading_playlist = True
+        self._set_queue_status('Cargando lista…')
+        self.progress_bar.pack(fill=tk.X, expand=True)
+        self.progress_bar.start(10)
+        window = self.window
+
+        def work():
+            err = None
+            channels = None
+            try:
+                channels = self._fetch_playlist_videos(playlist_url)
+            except Exception as exc:
+                err = exc
+
+            def done():
+                self._loading_playlist = False
+                try:
+                    self.progress_bar.stop()
+                    self.progress_bar.pack_forget()
+                except tk.TclError:
+                    pass
+                if err:
+                    if self.youtube_handler:
+                        self.youtube_handler.mark_session_from_error(err)
+                    if youtube_auth_blocked(err):
+                        messagebox.showerror("Sesión YouTube", youtube_auth_help())
+                    else:
+                        messagebox.showerror("Error", f"No se pudo obtener la playlist: {err}")
+                    return
+                if not channels:
+                    messagebox.showinfo("Info", "No se encontraron vídeos en la playlist.")
+                    return
+                if self.load_playlist_callback:
+                    self.load_playlist_callback(channels)
+                if close_after:
+                    try:
+                        self.window.destroy()
+                    except tk.TclError:
+                        pass
+
+            try:
+                window.after(0, done)
+            except tk.TclError:
+                self._loading_playlist = False
+                if channels and self.load_playlist_callback:
+                    try:
+                        self.parent.after(0, lambda: self.load_playlist_callback(channels))
+                    except tk.TclError:
+                        pass
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _fetch_playlist_videos(self, playlist_url):
         ydl_opts = youtube_ydl_opts(

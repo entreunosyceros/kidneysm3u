@@ -4,13 +4,13 @@
 
 ## Carga y filtrado
 
-La ventana principal puede leer listas locales o por URL, también si son muy grandes (se ha probado con más de dos millones de líneas).
+La ventana principal puede leer listas locales o por URL, también si son muy grandes (se ha probado con más de dos millones de líneas). El filtrado corre en segundo plano: la ventana sigue respondiendo, puedes pulsar **Parar** y la barra de progreso se actualiza sin congelar el programa.
 
 - Escribe un **patrón** (nombre, país, `tvg-name`, etc.).
 - Puedes **sustituir** el archivo de salida o **añadir** la nueva búsqueda al final del existente.
 - Los comentarios entre `#EXTINF` y la URL se ignoran; no se tratan como canales las imágenes sueltas.
 
-Después abre el [reproductor](reproductor.md) con esa lista. También puedes cargar un M3U directo desde **Reproducir → Cargar archivo local** o **Cargar URL**. En el reproductor, una lista enorme no carga los 10.000 canales de golpe: se ven los grupos y cada uno se rellena al abrirlo.
+Después abre el [reproductor](reproductor.md) con esa lista. También puedes cargar un M3U directo desde **Reproducir → Cargar archivo local** o **Cargar URL**. Leer y parsear el archivo va en segundo plano; pintar una lista enorme en la barra lateral aún puede tardar un momento. En el reproductor, `group-title` se ve como pestañas o un desplegable **Grupo**: primero las categorías y, al entrar, los canales.
 
 Los enlaces que guardes en el gestor de enlaces quedan en `enlaces.json` dentro de la carpeta del programa.
 

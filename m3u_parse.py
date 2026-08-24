@@ -13,7 +13,10 @@ _HLS_EXT = re.compile(r'\.m3u8?(\?.*)?$', re.I)
 IPTV_USER_AGENT = 'VLC/3.0.21'
 
 
-_GROUP_RE = re.compile(r'group-title="([^"]*)"', re.I)
+_GROUP_RE = re.compile(
+    r'group-title=(?:"([^"]*)"|\'([^\']*)\'|([^\s,]+))',
+    re.I,
+)
 
 
 def _channel_name(extinf):
@@ -24,7 +27,9 @@ def _channel_name(extinf):
 
 def _channel_group(extinf):
     match = _GROUP_RE.search(extinf or '')
-    return (match.group(1).strip() if match else '') or ''
+    if not match:
+        return ''
+    return (match.group(1) or match.group(2) or match.group(3) or '').strip()
 
 
 def parse_m3u_channels(content):

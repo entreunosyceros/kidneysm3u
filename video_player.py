@@ -116,6 +116,8 @@ class VideoPlayer:
         self._groups = []
         self._groups_all = []
         self._filter_job = None
+        self._filter_gen = 0
+        self._load_gen = 0
         self.channels_frame_visible = True
         self.is_fullscreen = False
         self.controls_visible = True
@@ -154,6 +156,7 @@ class VideoPlayer:
         self._active_spu_id = -1
         self._active_yt_sub = None
         self._track_poll_gen = 0
+        self._last_video_click_at = 0
         self._yt_sub_dir = None
         self._audio_choice = None
         self._subs_choice = None
@@ -221,11 +224,8 @@ class VideoPlayer:
             command=self.reexport_youtube_cookies,
         ).pack(anchor=tk.W, pady=(4, 0))
 
-        scrollbar = ttk.Scrollbar(self.channels_frame, orient=tk.VERTICAL)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.sidebar = ChannelSidebar(self.channels_frame, scrollbar)
+        self.sidebar = ChannelSidebar(self.channels_frame)
         self.channels_listbox = self.sidebar.tree
-        self.channels_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.channels_listbox.bind('<Double-Button-1>', self.play_selected)
         self.channels_listbox.bind('<Button-3>', self.show_channel_context_menu)
 
@@ -380,7 +380,7 @@ class VideoPlayer:
 
     def setup_keyboard_shortcuts(self):
         # Atajos generales
-        self.window.bind('<space>', lambda e: self.toggle_play())
+        self.window.bind('<space>', self._on_space_toggle_play)
         self.window.bind('<F1>', lambda e: self.toggle_fullscreen())
         self.window.bind('<m>', lambda e: self.toggle_mute())
         self.window.bind('<Left>', lambda e: self.seek_relative(-2))
@@ -865,14 +865,8 @@ class VideoPlayer:
         # self.controls_frame.bind('<Enter>', self.on_mouse_enter)
         # self.controls_frame.bind('<Leave>', self.on_mouse_leave)
 
-        # Nuevo: mostrar controles solo al hacer clic en pantalla completa
-        def on_video_click(event=None):
-            self._dismiss_track_menus()
-            if self.is_fullscreen:
-                self.show_controls_and_menu()
-            return 'break'
-
-        self.video_frame.bind('<Button-1>', on_video_click)
+        # Clic en el vídeo: pausa/reanuda. VLC no debe tragarse el ratón (si no, el clic no llega a Tk).
+        self.video_frame.bind('<Button-1>', self._on_video_click)
 
         # Eventos para el sizer
         self.sizer.bind('<Button-1>', self.start_resize)
@@ -887,6 +881,37 @@ class VideoPlayer:
 
     def on_mouse_leave(self, event=None):
         pass  # Ya no se usa para ocultar controles
+
+    def _on_space_toggle_play(self, event=None):
+        widget = getattr(event, 'widget', None) if event is not None else None
+        try:
+            if widget and widget.winfo_class() in ('Entry', 'TEntry', 'Text'):
+                return
+        except tk.TclError:
+            pass
+        self.toggle_play()
+        return 'break'
+
+    def _on_video_click(self, event=None):
+        """Un clic en el vídeo pausa o reanuda, como Espacio. Sin redibujar el frame."""
+        widget = getattr(event, 'widget', None) if event is not None else None
+        if widget is not None and widget is not self.video_frame:
+            return
+        if self._posted_popup or self._any_track_menu_mapped():
+            self._dismiss_track_menus()
+            return 'break'
+        now = time.time()
+        if now - getattr(self, '_last_video_click_at', 0) < 0.28:
+            return 'break'
+        self._last_video_click_at = now
+        self.toggle_play()
+        if self.is_fullscreen:
+            self.show_controls_and_menu()
+        try:
+            self.window.focus_set()
+        except tk.TclError:
+            pass
+        return 'break'
 
     def hide_controls_and_menu(self):
         """Oculta controles y menú superior juntos (solo en fullscreen el menú)."""
@@ -1058,6 +1083,28 @@ class VideoPlayer:
         except Exception as e:
             print(f"Error durante el cierre del reproductor: {e}")
 
+    def _embed_vlc_in_frame(self):
+        """Enchufa VLC al frame y deja el clic para Tk (pausa sin OSD ni parpadeo)."""
+        if not self.player or not self._widget_exists(self.video_frame):
+            return
+        try:
+            self.player.video_set_mouse_input(False)
+            self.player.video_set_key_input(False)
+        except Exception:
+            pass
+        try:
+            self.window.update_idletasks()
+            self.video_frame.update_idletasks()
+            wid = self.video_frame.winfo_id()
+        except tk.TclError:
+            return
+        if sys.platform.startswith('win'):
+            self.player.set_hwnd(wid)
+        elif sys.platform == 'darwin':
+            self.player.set_nsobject(wid)
+        else:
+            self.player.set_xwindow(wid)
+
     def _cleanup_vlc_player(self):
         """Limpia de forma segura el reproductor VLC y sus event managers."""
         self._stop_iptv_relay()
@@ -1166,11 +1213,13 @@ class VideoPlayer:
         kind = session.get('playlist_kind') or ''
         sidebar = session.get('sidebar') or []
         items = []
+        groups = []
         for entry in sidebar:
             if isinstance(entry, dict) and entry.get('url'):
                 items.append((entry.get('name') or entry.get('url'), entry['url']))
+                groups.append(entry.get('group') or '')
         if kind == 'items' or (items and kind not in ('file', 'url')):
-            self._apply_sidebar_items(items)
+            self._apply_sidebar_items(items, groups)
             self._playlist_source = playlist
             self._playlist_kind = kind or 'items'
             self.restore_last_channel()
@@ -1179,21 +1228,27 @@ class VideoPlayer:
             return
         if kind == 'youtube_playlist':
             if items:
-                self._apply_sidebar_items(items)
+                self._apply_sidebar_items(items, groups)
                 self._playlist_source = playlist
                 self._playlist_kind = 'youtube_playlist'
+                self.restore_last_channel()
             else:
-                self.load_youtube_playlist(playlist, notify=False)
-        elif kind == 'url' or playlist.lower().startswith('http'):
-            self.load_m3u_url(playlist, notify=False)
+                self.load_youtube_playlist(playlist, notify=False, on_done=self.restore_last_channel)
+            return
+        if kind == 'url' or playlist.lower().startswith('http'):
+            self.load_m3u_url(playlist, notify=False, on_done=self.restore_last_channel)
         elif os.path.isfile(playlist):
-            self.load_m3u_file(playlist, notify=False)
-        self.restore_last_channel()
+            self.load_m3u_file(playlist, notify=False, on_done=self.restore_last_channel)
+        else:
+            self.restore_last_channel()
 
-    def _apply_sidebar_items(self, items):
+    def _apply_sidebar_items(self, items, groups=None):
         self.channels = list(items)
         self.all_channels = list(items)
-        self._groups = [''] * len(items)
+        if groups is None or len(groups) != len(items):
+            self._groups = [''] * len(items)
+        else:
+            self._groups = list(groups)
         self._groups_all = list(self._groups)
         self._rebuild_sidebar()
 
@@ -1213,7 +1268,7 @@ class VideoPlayer:
             if source:
                 app_config.remember_playlist(source, kind or 'file')
             return
-        app_config.remember_sidebar(items, source, kind or 'items')
+        app_config.remember_sidebar(items, source, kind or 'items', self._groups_all)
 
     def restore_last_channel(self):
         if not app_config.get_remember_last_list():
@@ -1291,36 +1346,97 @@ class VideoPlayer:
         if filename:
             self.load_m3u_file(filename)
 
-    def load_m3u_file(self, filename, notify=True):
-        """Carga un archivo M3U local y procesa sus canales."""
+    def _set_busy(self, text=None):
+        if not self._widget_exists(self.window):
+            return
         try:
-            self.ensure_window()
-            with open(filename, 'rb') as f:
-                content = decode_m3u_bytes(f.read())
-            self._process_m3u_content(content)
-            self._playlist_source = filename
-            self._playlist_kind = 'file'
-            self._persist_sidebar()
-            if notify:
-                messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo cargar el archivo M3U: {e}")
+            self.window.config(cursor='watch')
+            if text:
+                self.window.title(f'Reproductor de vídeo · {text}')
+        except tk.TclError:
+            pass
 
-    def load_m3u_url(self, url, notify=True):
-        """Carga una lista M3U desde una URL y procesa sus canales."""
+    def _clear_busy(self):
+        if not self._widget_exists(self.window):
+            return
         try:
-            self.ensure_window()
-            import urllib.request
-            with urllib.request.urlopen(url) as response:
-                content = decode_m3u_bytes(response.read())
-            self._process_m3u_content(content)
-            self._playlist_source = url
-            self._playlist_kind = 'url'
-            self._persist_sidebar()
-            if notify:
-                messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo cargar la URL M3U: {e}")
+            self.window.config(cursor='')
+            self.window.title('Reproductor de vídeo')
+        except tk.TclError:
+            pass
+
+    def _after_window(self, window, callback):
+        try:
+            window.after(0, callback)
+        except tk.TclError:
+            pass
+
+    def load_m3u_file(self, filename, notify=True, on_done=None):
+        """Carga un archivo M3U local en segundo plano y procesa sus canales."""
+        self.ensure_window()
+        gen = self._load_gen + 1
+        self._load_gen = gen
+        self._set_busy('Cargando lista…')
+        window = self.window
+
+        def work():
+            err = None
+            parsed = None
+            try:
+                with open(filename, 'rb') as f:
+                    content = decode_m3u_bytes(f.read())
+                parsed = parse_m3u_channels(content)
+            except Exception as exc:
+                err = exc
+
+            def apply():
+                if gen != self._load_gen:
+                    return
+                self._clear_busy()
+                if err:
+                    messagebox.showerror("Error", f"No se pudo cargar el archivo M3U: {err}")
+                    return
+                self._apply_parsed_channels(parsed, filename, 'file', notify)
+                if on_done:
+                    on_done()
+
+            self._after_window(window, apply)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def load_m3u_url(self, url, notify=True, on_done=None):
+        """Carga una lista M3U desde una URL en segundo plano."""
+        self.ensure_window()
+        gen = self._load_gen + 1
+        self._load_gen = gen
+        self._set_busy('Descargando lista…')
+        window = self.window
+
+        def work():
+            err = None
+            parsed = None
+            try:
+                import urllib.request
+                with urllib.request.urlopen(url) as response:
+                    content = decode_m3u_bytes(response.read())
+                parsed = parse_m3u_channels(content)
+            except Exception as exc:
+                err = exc
+
+            def apply():
+                if gen != self._load_gen:
+                    return
+                self._clear_busy()
+                if err:
+                    messagebox.showerror("Error", f"No se pudo cargar la URL M3U: {err}")
+                    return
+                self._apply_parsed_channels(parsed, url, 'url', notify)
+                if on_done:
+                    on_done()
+
+            self._after_window(window, apply)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def update_sidebar_title(self, url, title):
         updated = False
@@ -1351,13 +1467,20 @@ class VideoPlayer:
 
     def _process_m3u_content(self, content):
         """Procesa el contenido de un archivo M3U y carga los canales."""
+        self._apply_parsed_channels(parse_m3u_channels(content), '', 'file', notify=False)
+
+    def _apply_parsed_channels(self, parsed, source, kind, notify=True):
         self.ensure_window()
-        parsed = parse_m3u_channels(content)
         self.channels = [(name, url) for name, url, _group in parsed]
         self._groups = [group for _name, _url, group in parsed]
         self.all_channels = list(self.channels)
         self._groups_all = list(self._groups)
+        self._playlist_source = source
+        self._playlist_kind = kind
         self._rebuild_sidebar()
+        self._persist_sidebar()
+        if notify:
+            messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
 
     def prompt_youtube_playlist(self):
         """Solicita URL de playlist de YouTube y la carga."""
@@ -1365,28 +1488,45 @@ class VideoPlayer:
         if playlist_url:
             self.load_youtube_playlist(playlist_url)
 
-    def load_youtube_playlist(self, playlist_url, notify=True):
-        """Carga todos los vídeos de una playlist de YouTube y los muestra en la lista de canales."""
-        try:
-            import yt_dlp
-            ydl_opts = youtube_ydl_opts(
-                extract_flat=True,
-                skip_download=True,
-                force_generic_extractor=False,
-                noplaylist=False,
-            )
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(playlist_url, download=False)
-                videos = info.get('entries', [])
-                if not videos:
+    def load_youtube_playlist(self, playlist_url, notify=True, on_done=None):
+        """Extrae la playlist de YouTube en segundo plano y la muestra en la lista."""
+        self.ensure_window()
+        gen = self._load_gen + 1
+        self._load_gen = gen
+        self._set_busy('Extrayendo playlist…')
+        window = self.window
+
+        def work():
+            err = None
+            parsed = []
+            try:
+                ydl_opts = youtube_ydl_opts(
+                    extract_flat=True,
+                    skip_download=True,
+                    force_generic_extractor=False,
+                    noplaylist=False,
+                )
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(playlist_url, download=False)
+                    videos = info.get('entries', []) or []
+                for video in videos:
+                    if not video or not video.get('id'):
+                        continue
+                    title = video.get('title', 'Sin título')
+                    parsed.append((title, f"https://www.youtube.com/watch?v={video.get('id')}"))
+            except Exception as exc:
+                err = exc
+
+            def apply():
+                if gen != self._load_gen:
+                    return
+                self._clear_busy()
+                if err:
+                    messagebox.showerror("Error", f"No se pudo cargar la playlist: {err}")
+                    return
+                if not parsed:
                     messagebox.showinfo("Info", "No se encontraron vídeos en la playlist.")
                     return
-
-                parsed = []
-                for video in videos:
-                    title = video.get('title', 'Sin título')
-                    video_url = f"https://www.youtube.com/watch?v={video.get('id')}"
-                    parsed.append((title, video_url))
                 self.channels = parsed
                 self.all_channels = list(parsed)
                 self._groups = [''] * len(parsed)
@@ -1396,14 +1536,20 @@ class VideoPlayer:
                 self._rebuild_sidebar()
                 self._persist_sidebar()
                 if notify:
-                    messagebox.showinfo("Éxito", f"Playlist cargada: {len(videos)} vídeos")
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo cargar la playlist: {e}")
+                    messagebox.showinfo("Éxito", f"Playlist cargada: {len(parsed)} vídeos")
+                if on_done:
+                    on_done()
+
+            self._after_window(window, apply)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def play_selected(self, event=None):
         """Reproduce el canal seleccionado de la lista al hacer doble clic."""
         index = None
         if event is not None and getattr(self, 'sidebar', None):
+            if self.sidebar.ignore_play():
+                return
             if self.sidebar.group_at(event):
                 return
             index = self.sidebar.index_at(event)
@@ -1527,14 +1673,7 @@ class VideoPlayer:
         for option in self._iptv_remote_options(kind, force_ts=force_ts):
             media.add_option(option)
         self.player.set_media(media)
-        self.window.update_idletasks()
-        self.video_frame.update_idletasks()
-        if sys.platform.startswith('win'):
-            self.player.set_hwnd(self.video_frame.winfo_id())
-        elif sys.platform.startswith('linux'):
-            self.player.set_xwindow(self.video_frame.winfo_id())
-        elif sys.platform == 'darwin':
-            self.player.set_nsobject(self.video_frame.winfo_id())
+        self._embed_vlc_in_frame()
         self.player.play()
         self.adjust_video_settings()
         self.start_update_time()
@@ -1603,14 +1742,7 @@ class VideoPlayer:
         for option in self._iptv_local_options():
             media.add_option(option)
         self.player.set_media(media)
-        self.window.update_idletasks()
-        self.video_frame.update_idletasks()
-        if sys.platform.startswith('win'):
-            self.player.set_hwnd(self.video_frame.winfo_id())
-        elif sys.platform.startswith('linux'):
-            self.player.set_xwindow(self.video_frame.winfo_id())
-        elif sys.platform == 'darwin':
-            self.player.set_nsobject(self.video_frame.winfo_id())
+        self._embed_vlc_in_frame()
         self.player.play()
         self.adjust_video_settings()
         self.start_update_time()
@@ -1806,7 +1938,9 @@ class VideoPlayer:
                 start_s = float(start_s or 0)
             except (TypeError, ValueError):
                 start_s = 0
-            self._yt_resume_s = start_s if start_s >= 0.5 and not local_file else 0
+            self._yt_resume_s = start_s if start_s >= 0.5 else 0
+            if local_file and '127.0.0.1' in str(url):
+                self._yt_resume_s = 0
             if self._yt_resume_s:
                 self._set_progress_ui(int(self._yt_resume_s * 1000))
             elif local_file:
@@ -1874,15 +2008,7 @@ class VideoPlayer:
             for option in options:
                 media.add_option(option)
             self.player.set_media(media)
-            self.window.update_idletasks()
-            self.video_frame.update_idletasks()
-            import sys
-            if sys.platform.startswith('win'):
-                self.player.set_hwnd(self.video_frame.winfo_id())
-            elif sys.platform.startswith('linux'):
-                self.player.set_xwindow(self.video_frame.winfo_id())
-            elif sys.platform == 'darwin':
-                self.player.set_nsobject(self.video_frame.winfo_id())
+            self._embed_vlc_in_frame()
             self.player.play()
             self.adjust_video_settings()
             self.start_update_time()
@@ -2138,21 +2264,46 @@ class VideoPlayer:
                 search_term = (self.search_var.get() or '').strip().lower()
             except tk.TclError:
                 search_term = ''
+        gen = self._filter_gen + 1
+        self._filter_gen = gen
         if not search_term:
             self.channels = list(self.all_channels)
             self._groups = list(self._groups_all) if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
             self._rebuild_sidebar()
             return
         groups_all = self._groups_all if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
-        filtered = []
-        filtered_groups = []
-        for (name, url), group in zip(self.all_channels, groups_all):
-            if search_term in (name or '').lower() or search_term in (group or '').lower():
-                filtered.append((name, url))
-                filtered_groups.append(group)
-        self.channels = filtered
-        self._groups = filtered_groups
-        self._rebuild_sidebar()
+        snapshot = self.all_channels
+        groups_snap = groups_all
+
+        def finish(filtered, filtered_groups):
+            if gen != self._filter_gen:
+                return
+            if not self._widget_exists(getattr(self, 'channels_listbox', None)):
+                return
+            self.channels = filtered
+            self._groups = filtered_groups
+            self._rebuild_sidebar()
+
+        def scan():
+            filtered = []
+            filtered_groups = []
+            for (name, url), group in zip(snapshot, groups_snap):
+                if search_term in (name or '').lower() or search_term in (group or '').lower():
+                    filtered.append((name, url))
+                    filtered_groups.append(group)
+            return filtered, filtered_groups
+
+        if len(snapshot) < 800:
+            finish(*scan())
+            return
+
+        window = self.window
+
+        def work():
+            filtered, filtered_groups = scan()
+            self._after_window(window, lambda: finish(filtered, filtered_groups))
+
+        threading.Thread(target=work, daemon=True).start()
 
     def seek_relative(self, seconds):
         """Avanza o retrocede el video en segundos"""

@@ -10,11 +10,13 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 
 - **★ Favoritos** / **Todos** — filtra o restaura el listado.
 - **Limpiar** — vacía la lista de esta sesión (pide confirmación). El aviso queda sobre esta ventana; no pasa al frente la principal. Si en **Preferencias** está activa «recordar última lista», al volver a abrir el programa se restaura lo último que había; si no había lista, no se muestra nada. No reproduce solo.
-- Cuadro de **búsqueda** — filtra por nombre.
+- Cuadro de **búsqueda** — filtra por nombre o grupo.
+- Si el M3U trae `group-title`, arriba aparecen **pestañas** (pocos grupos) o un desplegable **Grupo** (muchos). En **Todos** ves las categorías (Deportes, Películas, España…); un clic entra en ese grupo. **← Grupos** o la pestaña **Todos** vuelve al listado de categorías.
 - Abajo: **Sesión YouTube: OK / caducada** y **Reexportar cookies** (también en el menú **Youtube**). Si YouTube pide login o un bot-check, el indicador pasa a caducada.
 - Al pasar el ratón por un título se ve el nombre completo; al salir, el aviso desaparece.
-- Las listas grandes se agrupan por `group-title` y cada grupo se rellena al abrirlo. Si no hay grupos y hay miles de canales, la lista es virtual: solo se pintan las filas visibles.
-- Doble clic — reproduce un canal. Los grupos se abren con el triángulo; cada uno carga sus canales en ese momento.
+- Si no hay `group-title` y hay miles de canales, la lista es virtual: solo se pintan las filas visibles.
+- Cargar un M3U o una playlist de YouTube no bloquea la ventana: se leen en segundo plano. El cuadro de búsqueda de una lista enorme recorre los nombres fuera del hilo de la interfaz; al aplicar el resultado, pintar miles de filas aún puede congelar un instante.
+- Doble clic — reproduce un canal. Un clic en una categoría abre ese grupo.
 - Clic derecho — reproducir desde aquí, favoritos, descargar, eliminar un ítem o vaciar la lista.
 
 Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeos se concatenan a esta lista sin cerrar la búsqueda.
@@ -25,7 +27,7 @@ Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 
 ## Controles
 
-Play/pausa, stop, salto atrás/adelante, **calidad / audio**, **subtítulos**, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
+Play/pausa (también **un clic en el vídeo** o `Espacio`), stop, salto atrás/adelante, **calidad / audio**, **subtítulos**, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
 
 **Calidad / audio** (botón y menú): en YouTube eliges **360p** o **720p** (también en **Preferencias**; si cambias con el vídeo en marcha, se recarga desde el segundo actual). En IPTV, si el stream trae varias pistas de audio, aparecen debajo para cambiar de idioma. YouTube solo trae una pista de audio (no hay doblajes).
 
@@ -44,6 +46,7 @@ Al abrir un vídeo de YouTube, el área de vídeo muestra el título, la miniatu
 | Tecla | Acción |
 | --- | --- |
 | `Espacio` | Play / pausa |
+| Clic en el vídeo | Play / pausa |
 | `F1` | Pantalla completa |
 | `Esc` | Salir de pantalla completa |
 | `M` | Silencio |
