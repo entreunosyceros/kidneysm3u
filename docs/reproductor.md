@@ -20,9 +20,11 @@ Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 
 ## Controles
 
-Play/pausa, stop, salto atrás/adelante, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
+Play/pausa, stop, salto atrás/adelante, **audio**, **subtítulos**, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
 
-En **pantalla completa**, menú y controles se ocultan a los 3 segundos sin usarlos.
+Los botones de audio y subtítulos (y los menús **Audio** / **Subtítulos**) listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC (hace falta más de una de audio para poder elegir). En YouTube los subtítulos oficiales o automáticos se descargan al elegirlos; el audio extra (doblajes) no está, porque el vídeo llega en una sola pista.
+
+En **pantalla completa**, menú y controles se ocultan a los 3 segundos sin usarlos. Los botones de la barra siguen sirviendo para cambiar pista.
 
 La barra de progreso aparece en YouTube y en VOD; no en un canal en directo. Los botones de ±2 s / ±10 s y el arrastre de la barra saltan a ese punto. En YouTube retransmitido (MPEG-TS local) un salto lejano puede tardar un momento: se reinicia el vídeo desde ahí.
 

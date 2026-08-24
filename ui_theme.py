@@ -616,6 +616,27 @@ def make_control_icons(color, size=20):
 
     img = blank()
     d = ImageDraw.Draw(img)
+    cy = size // 2
+    bar(d, p, cy - 3, p + 3, cy + 3)
+    triangle(d, [(p + 2, cy - 6), (p + 2, cy + 6), (p + 8, cy)])
+    d.arc([p + 9, cy - 4, p + 15, cy + 4], start=-55, end=55, fill=fill, width=2)
+    d.arc([p + 11, cy - 7, p + 19, cy + 7], start=-55, end=55, fill=fill, width=2)
+    icons['audio'] = photo(img)
+
+    img = blank()
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle(
+        [p, p + 2, size - p, size - p - 2],
+        radius=max(2, size // 8),
+        outline=fill,
+        width=max(1, size // 12),
+    )
+    bar(d, p + 4, cy - 3, size - p - 4, cy - 1)
+    bar(d, p + 4, cy + 2, size - p - 6, cy + 4)
+    icons['subtitles'] = photo(img)
+
+    img = blank()
+    d = ImageDraw.Draw(img)
     d.polygon(
         [
             (size // 2, p),
