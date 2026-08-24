@@ -34,6 +34,7 @@ _DEFAULTS = {
         'channel_url': '',
     },
     'youtube_resume': {},
+    'youtube_quality': 720,
 }
 
 _cache = None
@@ -96,6 +97,18 @@ def set_volume(value):
         save({'volume': max(0, min(100, int(value)))})
     except (TypeError, ValueError):
         pass
+
+
+def get_youtube_quality():
+    try:
+        value = int(load().get('youtube_quality', 720))
+    except (TypeError, ValueError):
+        value = 720
+    return 360 if value <= 360 else 720
+
+
+def set_youtube_quality(height):
+    save({'youtube_quality': 360 if int(height) == 360 else 720})
 
 
 def remember_playlist(path, kind='file'):

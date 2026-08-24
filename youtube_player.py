@@ -295,6 +295,7 @@ class YouTubeHandler:
         self._sub_429_until = 0
         self._direct_url = ''
         self._direct_headers = {}
+        self._pending_resume_s = None
         self._play_gen = 0
         self._loading_frame = None
         self._loading_bar = None
@@ -344,7 +345,7 @@ class YouTubeHandler:
         if url:
             self.play_youtube_url(url)
 
-    def play_youtube_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, title=None):
+    def play_youtube_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, title=None, resume_s=None):
         """Reproduce un vídeo de YouTube dentro del reproductor integrado."""
         save_resume = getattr(self.video_player, 'save_youtube_resume', None)
         if save_resume:
@@ -362,7 +363,14 @@ class YouTubeHandler:
             'show_progress': show_progress,
             'is_sequential': is_sequential,
         }
-        resume_s = app_config.youtube_resume_seconds(video_id)
+        if resume_s is None:
+            resume_s = app_config.youtube_resume_seconds(video_id)
+        else:
+            try:
+                resume_s = max(0.0, float(resume_s))
+            except (TypeError, ValueError):
+                resume_s = 0.0
+        self._pending_resume_s = resume_s
         if resume_s:
             status = f"Reanudando en {self._resume_clock(resume_s)}…"
         else:
@@ -401,12 +409,17 @@ class YouTubeHandler:
         threading.Thread(target=work, daemon=True).start()
 
     def _begin_playback(self, url, stream, force_pulse, show_progress, is_sequential):
-        subs = (stream or {}).get('subtitles') or []
         video_id = self.extract_youtube_id(url)
-        resume_s = app_config.youtube_resume_seconds(
-            video_id,
-            (stream or {}).get('duration'),
-        )
+        duration = (stream or {}).get('duration')
+        pending = getattr(self, '_pending_resume_s', None)
+        self._pending_resume_s = None
+        if pending is None:
+            resume_s = app_config.youtube_resume_seconds(video_id, duration)
+        else:
+            resume_s = float(pending or 0)
+            if app_config._yt_resume_near_end(resume_s, duration):
+                resume_s = 0
+        subs = (stream or {}).get('subtitles') or []
         if stream:
             self._direct_url = stream.get('url') or ''
             self._direct_headers = stream.get('headers') or {}
@@ -1250,7 +1263,10 @@ class YouTubeHandler:
 
     def get_best_vlc_url(self, youtube_url):
         """Obtiene una URL de stream que VLC pueda reproducir dentro de la ventana."""
+        max_height = app_config.get_youtube_quality()
         format_sel = (
+            f'best[height<={max_height}][ext=mp4][acodec!=none][vcodec!=none]/'
+            f'best[height<={max_height}][acodec!=none][vcodec!=none]/'
             'best[ext=mp4][acodec!=none][vcodec!=none]/'
             'best[acodec!=none][vcodec!=none]/'
             'best'
@@ -1285,7 +1301,7 @@ class YouTubeHandler:
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(youtube_url, download=False)
-                    stream = self._pick_playable_stream(info)
+                    stream = self._pick_playable_stream(info, max_height=max_height)
                     if stream:
                         stream['headers'] = self._headers_for_vlc(stream.get('headers'))
                         stream['duration'] = info.get('duration')
@@ -1330,9 +1346,17 @@ class YouTubeHandler:
             return None
         return '; '.join(parts) if parts else None
 
-    def _pick_playable_stream(self, info):
+    def _pick_playable_stream(self, info, max_height=None):
         formats = list(info.get('formats') or [])
         headers = dict(info.get('http_headers') or {})
+        try:
+            preferred = int(max_height or app_config.get_youtube_quality())
+        except (TypeError, ValueError):
+            preferred = 720
+        if preferred <= 360:
+            preferred = 360
+        else:
+            preferred = 720
 
         def protocol_of(fmt):
             return (fmt.get('protocol') or '').lower()
@@ -1359,23 +1383,32 @@ class YouTubeHandler:
             url = fmt.get('url') or ''
             return 'm3u8' in proto or '.m3u8' in url
 
-        progressive = [f for f in formats if is_playable(f) and is_progressive(f) and not is_hls(f)]
-        hls = [f for f in formats if is_playable(f) and is_hls(f)]
-        mp4_prog = [
-            f for f in progressive
-            if (f.get('ext') == 'mp4' or str(f.get('vcodec', '')).startswith('avc1'))
-            and (f.get('height') or 0) <= 720
-        ]
-        other_prog = [f for f in progressive if f not in mp4_prog]
+        def height_score(fmt):
+            height = int(fmt.get('height') or 0)
+            if height <= 0:
+                return 1
+            if height <= preferred:
+                return 10000 + height
+            return max(0, 800 - (height - preferred))
+
         candidates = []
-        for group, score_base in ((hls, 4000), (mp4_prog, 2000), (other_prog, 1000)):
-            for fmt in group:
-                url = fmt.get('url') or ''
-                score = score_base + (fmt.get('height') or 0)
-                # rqh=1 en clientes WEB suele devolver HTTP 403 en VLC
-                if 'rqh=1' in url:
-                    score -= 5000
-                candidates.append((score, fmt))
+        for fmt in formats:
+            if not is_playable(fmt):
+                continue
+            score = height_score(fmt)
+            if is_progressive(fmt) and not is_hls(fmt):
+                ext = (fmt.get('ext') or '').lower()
+                vcodec = str(fmt.get('vcodec') or '')
+                if ext == 'mp4' or vcodec.startswith('avc1'):
+                    score += 80
+                else:
+                    score += 40
+            elif is_hls(fmt):
+                score += 20
+            url = fmt.get('url') or ''
+            if 'rqh=1' in url:
+                score -= 5000
+            candidates.append((score, fmt))
 
         usable = [item for item in candidates if item[0] > 0]
         ranked = usable or candidates
@@ -1385,13 +1418,15 @@ class YouTubeHandler:
             print(
                 f"[yt-dlp] Stream: id={best.get('format_id')} ext={best.get('ext')} "
                 f"vcodec={best.get('vcodec')} acodec={best.get('acodec')} "
-                f"proto={best.get('protocol')} height={best.get('height')}"
+                f"proto={best.get('protocol')} height={best.get('height')} "
+                f"prefer={preferred}p"
             )
             return {
                 'url': best['url'],
                 'headers': fmt_headers,
                 'ext': best.get('ext'),
                 'format_id': best.get('format_id'),
+                'height': best.get('height'),
             }
 
         url = info.get('url')

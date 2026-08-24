@@ -256,7 +256,7 @@ class VideoPlayer:
             ('forward', 'Avanzar 2 segundos', lambda: self.seek_relative(2)),
             ('skip_forward', 'Avanzar 10 segundos', lambda: self.seek_relative(10)),
             ('stop', 'Detener reproducción', self.stop),
-            ('audio', 'Pistas de audio', self._popup_audio_menu),
+            ('quality', 'Calidad / audio', self._popup_audio_menu),
             ('subtitles', 'Subtítulos', self._popup_subs_menu),
             ('volume', 'Silenciar / Activar sonido', self.toggle_mute),
             ('fullscreen', 'Pantalla completa', self.toggle_fullscreen),
@@ -264,6 +264,8 @@ class VideoPlayer:
         ]
         self._audio_btn = None
         self._subs_btn = None
+        self._posted_popup = None
+        self._menu_rebuild_job = None
         for key, tip_text, command in buttons_info:
             btn = ttk.Button(
                 self.controls_buttons_frame,
@@ -276,7 +278,7 @@ class VideoPlayer:
             tip = Tooltip(btn)
             btn.bind('<Enter>', lambda e, t=tip, txt=tip_text: t.showtip(txt))
             btn.bind('<Leave>', lambda e, t=tip: t.hidetip())
-            if key == 'audio':
+            if key == 'quality':
                 self._audio_btn = btn
             elif key == 'subtitles':
                 self._subs_btn = btn
@@ -324,14 +326,17 @@ class VideoPlayer:
         self.subs_popup = tk.Menu(self.window, tearoff=0)
         self._audio_choice = tk.StringVar(value='')
         self._subs_choice = tk.StringVar(value='off')
+        self._quality_choice = tk.StringVar(value=str(app_config.get_youtube_quality()))
         self.menubar.add_cascade(label="Reproducir", menu=reproducir_menu)
         self.menubar.add_cascade(label="Youtube", menu=youtube_menu)
         self.menubar.add_cascade(label="Favoritos", menu=favoritos_menu)
-        self.menubar.add_cascade(label="Audio", menu=self.audio_menu)
+        self.menubar.add_cascade(label="Calidad / audio", menu=self.audio_menu)
         self.menubar.add_cascade(label="Subtítulos", menu=self.subs_menu)
         self.window.config(menu=self.menubar)
         style_menu_tree(self.menubar)
         self._rebuild_track_menus()
+        self.window.bind_all('<ButtonPress-1>', self._on_press_dismiss_popup, add='+')
+        self.window.bind_all('<Escape>', self._on_escape_dismiss_popup, add='+')
 
     def setup_keyboard_shortcuts(self):
         # Atajos generales
@@ -349,19 +354,99 @@ class VideoPlayer:
         self.channels_listbox.bind('<Control-s>', self.handle_add_favorite)
         self.channels_listbox.bind('<Control-d>', self.handle_remove_favorite)
 
-    def _popup_track_menu(self, button, menu):
-        self._rebuild_track_menus()
-        if not button or not self._widget_exists(button):
-            return
+    def _menu_is_mapped(self, menu):
         try:
-            x = button.winfo_rootx()
-            y = button.winfo_rooty() + button.winfo_height()
-            menu.tk_popup(x, y)
-        finally:
+            return bool(menu) and menu.winfo_ismapped()
+        except tk.TclError:
+            return False
+
+    def _any_track_menu_mapped(self):
+        if getattr(self, '_posted_popup', None):
+            return True
+        for attr in ('audio_menu', 'subs_menu', 'audio_popup', 'subs_popup'):
+            menu = getattr(self, attr, None)
+            try:
+                if menu and menu.winfo_ismapped() and menu.winfo_height() > 8:
+                    return True
+            except tk.TclError:
+                continue
+        return False
+
+    def _event_on_menu(self, event, menu):
+        if not self._menu_is_mapped(menu):
+            return False
+        try:
+            x, y = menu.winfo_rootx(), menu.winfo_rooty()
+            w, h = menu.winfo_width(), menu.winfo_height()
+            return x <= event.x_root <= x + w and y <= event.y_root <= y + h
+        except tk.TclError:
+            return False
+
+    def _dismiss_track_menus(self):
+        posted = getattr(self, '_posted_popup', None)
+        self._posted_popup = None
+        for menu in (
+            posted,
+            getattr(self, 'audio_popup', None),
+            getattr(self, 'subs_popup', None),
+            getattr(self, 'audio_menu', None),
+            getattr(self, 'subs_menu', None),
+        ):
+            if menu is None:
+                continue
+            try:
+                menu.unpost()
+            except tk.TclError:
+                pass
             try:
                 menu.grab_release()
             except tk.TclError:
                 pass
+
+    def _on_press_dismiss_popup(self, event):
+        if not self._widget_exists(getattr(self, 'window', None)):
+            return
+        if not self._posted_popup and not self._any_track_menu_mapped():
+            return
+        widget = getattr(event, 'widget', None)
+        if widget in (getattr(self, '_audio_btn', None), getattr(self, '_subs_btn', None)):
+            return
+        for attr in ('audio_menu', 'audio_popup', 'subs_menu', 'subs_popup'):
+            if self._event_on_menu(event, getattr(self, attr, None)):
+                return
+        self._dismiss_track_menus()
+
+    def _on_escape_dismiss_popup(self, event=None):
+        if not self._widget_exists(getattr(self, 'window', None)):
+            return
+        if self._posted_popup or self._any_track_menu_mapped():
+            self._dismiss_track_menus()
+            return 'break'
+
+    def _choose_from_menu(self, action):
+        def run():
+            self._dismiss_track_menus()
+            action()
+        if self._widget_exists(self.window):
+            self.window.after_idle(run)
+        else:
+            action()
+
+    def _popup_track_menu(self, button, menu):
+        if not button or not self._widget_exists(button) or menu is None:
+            return
+        if self._posted_popup is menu and self._menu_is_mapped(menu):
+            self._dismiss_track_menus()
+            return
+        self._dismiss_track_menus()
+        self._rebuild_track_menus()
+        try:
+            x = button.winfo_rootx()
+            y = button.winfo_rooty() + button.winfo_height()
+            menu.post(x, y)
+            self._posted_popup = menu
+        except tk.TclError:
+            self._posted_popup = None
         if self.is_fullscreen:
             self.reset_hide_controls_timer()
 
@@ -464,17 +549,38 @@ class VideoPlayer:
             return
         self._read_vlc_tracks()
         self._rebuild_track_menus()
-        if len(self._audio_tracks) > 1 or self._spu_tracks or attempt >= 7:
+        has_choice = len(self._audio_tracks) > 1 or self._spu_tracks
+        if has_choice and attempt >= 2:
+            return
+        if attempt >= 10:
             return
         self.window.after(900, lambda g=gen, a=attempt: self._poll_vlc_tracks(g, a + 1))
 
     def _rebuild_track_menus(self):
+        if self._any_track_menu_mapped() or getattr(self, '_posted_popup', None):
+            if not getattr(self, '_menu_rebuild_job', None) and self._widget_exists(self.window):
+                self._menu_rebuild_job = self.window.after(200, self._rebuild_track_menus_later)
+            return
+        self._rebuild_track_menus_now()
+
+    def _rebuild_track_menus_later(self):
+        self._menu_rebuild_job = None
+        if self._any_track_menu_mapped() or getattr(self, '_posted_popup', None):
+            if self._widget_exists(self.window):
+                self._menu_rebuild_job = self.window.after(200, self._rebuild_track_menus_later)
+            return
+        self._rebuild_track_menus_now()
+
+    def _rebuild_track_menus_now(self):
         menus_audio = [getattr(self, 'audio_menu', None), getattr(self, 'audio_popup', None)]
         menus_subs = [getattr(self, 'subs_menu', None), getattr(self, 'subs_popup', None)]
         if not any(menus_audio) and not any(menus_subs):
             return
         if self._audio_choice is None:
             return
+        if getattr(self, '_quality_choice', None) is None:
+            self._quality_choice = tk.StringVar(value=str(app_config.get_youtube_quality()))
+        self._quality_choice.set(str(app_config.get_youtube_quality()))
         current_audio = '' if self._active_audio_id is None else str(self._active_audio_id)
         if any(str(tid) == current_audio for tid, _name in self._audio_tracks):
             self._audio_choice.set(current_audio)
@@ -501,9 +607,27 @@ class VideoPlayer:
         if menu is None:
             return
         self._clear_menu_items(menu)
+        if getattr(self, '_quality_choice', None) is None:
+            self._quality_choice = tk.StringVar(value=str(app_config.get_youtube_quality()))
+        menu.add_radiobutton(
+            label='360p',
+            variable=self._quality_choice,
+            value='360',
+            command=lambda: self._choose_from_menu(lambda: self._apply_youtube_quality(360)),
+        )
+        menu.add_radiobutton(
+            label='720p',
+            variable=self._quality_choice,
+            value='720',
+            command=lambda: self._choose_from_menu(lambda: self._apply_youtube_quality(720)),
+        )
+        menu.add_separator()
         tracks = self._audio_tracks
         if len(tracks) <= 1:
-            label = 'Solo hay una pista de audio' if tracks else 'Sin pistas de audio'
+            if getattr(self, '_playing_youtube', False):
+                label = 'YouTube trae una sola pista de audio'
+            else:
+                label = 'Solo hay una pista de audio' if tracks else 'Sin pistas de audio'
             menu.add_command(label=label, state='disabled')
             return
         for tid, name in tracks:
@@ -511,8 +635,32 @@ class VideoPlayer:
                 label=name,
                 variable=self._audio_choice,
                 value=str(tid),
-                command=lambda i=tid: self._apply_audio_track(i),
+                command=lambda i=tid: self._choose_from_menu(lambda t=i: self._apply_audio_track(t)),
             )
+
+    def _apply_youtube_quality(self, height):
+        height = 360 if int(height) == 360 else 720
+        previous = app_config.get_youtube_quality()
+        app_config.set_youtube_quality(height)
+        if getattr(self, '_quality_choice', None) is not None:
+            self._quality_choice.set(str(height))
+        if previous == height or not getattr(self, '_playing_youtube', False):
+            return
+        handler = getattr(self, 'youtube_handler', None)
+        url = getattr(handler, '_current_url', '') or ''
+        if not handler or not url:
+            return
+        elapsed_s = self._playback_elapsed_ms() / 1000.0
+        kwargs = dict(getattr(handler, '_play_kwargs', {}) or {})
+        print(f"[YouTube] Calidad {previous}p → {height}p")
+        handler.play_youtube_url(
+            url,
+            force_pulse=kwargs.get('force_pulse', True),
+            show_progress=kwargs.get('show_progress', True),
+            is_sequential=kwargs.get('is_sequential', False),
+            title=getattr(handler, '_loading_title_text', None),
+            resume_s=elapsed_s,
+        )
 
     def _fill_subs_menu(self, menu):
         if menu is None:
@@ -527,7 +675,7 @@ class VideoPlayer:
             label='Desactivar',
             variable=self._subs_choice,
             value='off',
-            command=self._disable_subtitles,
+            command=lambda: self._choose_from_menu(self._disable_subtitles),
         )
         if has_vlc:
             if has_yt:
@@ -537,7 +685,7 @@ class VideoPlayer:
                     label=name,
                     variable=self._subs_choice,
                     value=f'vlc:{tid}',
-                    command=lambda i=tid: self._apply_spu_track(i),
+                    command=lambda i=tid: self._choose_from_menu(lambda t=i: self._apply_spu_track(t)),
                 )
         if has_yt:
             if has_vlc:
@@ -548,7 +696,7 @@ class VideoPlayer:
                     label=item['label'],
                     variable=self._subs_choice,
                     value=key,
-                    command=lambda it=item: self._apply_youtube_subtitle(it),
+                    command=lambda it=item: self._choose_from_menu(lambda s=it: self._apply_youtube_subtitle(s)),
                 )
 
     def _apply_audio_track(self, track_id):
@@ -679,6 +827,7 @@ class VideoPlayer:
 
         # Nuevo: mostrar controles solo al hacer clic en pantalla completa
         def on_video_click(event=None):
+            self._dismiss_track_menus()
             if self.is_fullscreen:
                 self.show_controls_and_menu()
             return 'break'
@@ -701,6 +850,7 @@ class VideoPlayer:
 
     def hide_controls_and_menu(self):
         """Oculta controles y menú superior juntos (solo en fullscreen el menú)."""
+        self._dismiss_track_menus()
         if self.controls_visible:
             self.controls_frame.pack_forget()
             self.controls_visible = False
@@ -772,6 +922,9 @@ class VideoPlayer:
         SOLUCIÓN AL TIMEOUT: Solo se activa con clics intencionales, no con
         movimientos de mouse, permitiendo que el timeout de 3 segundos funcione.
         """
+        widget = getattr(event, 'widget', None) if event is not None else None
+        if widget not in (getattr(self, '_audio_btn', None), getattr(self, '_subs_btn', None)):
+            self._dismiss_track_menus()
         if self.is_fullscreen:
             self.reset_hide_controls_timer()
 
@@ -830,6 +983,7 @@ class VideoPlayer:
                     pass
 
             # Guardar datos y limpiar temporizadores
+            self._dismiss_track_menus()
             self.save_youtube_resume()
             self._save_window_geometry()
             app_config.set_volume(self.volume)
@@ -1578,7 +1732,7 @@ class VideoPlayer:
                 start_s = float(start_s or 0)
             except (TypeError, ValueError):
                 start_s = 0
-            self._yt_resume_s = start_s if start_s >= app_config.YT_RESUME_MIN_S and not local_file else 0
+            self._yt_resume_s = start_s if start_s >= 0.5 and not local_file else 0
             if self._yt_resume_s:
                 self._set_progress_ui(int(self._yt_resume_s * 1000))
             elif local_file:
@@ -1776,7 +1930,7 @@ class VideoPlayer:
     def _apply_pending_youtube_resume(self):
         pending = float(getattr(self, '_yt_resume_s', 0) or 0)
         self._yt_resume_s = 0
-        if pending < app_config.YT_RESUME_MIN_S:
+        if pending < 0.5:
             return
         target_ms = int(pending * 1000)
         elapsed = self._playback_elapsed_ms()

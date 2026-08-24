@@ -57,7 +57,7 @@ yt-dlp elige un stream que VLC pueda abrir (audio y vídeo juntos cuando es posi
 
 Si cierras el reproductor o cambias de vídeo, se guarda el segundo. Al volver a abrirlo (también en una lista) continúa desde ahí, salvo que estuvieras al principio o casi al final. No se reproduce solo al restaurar la sesión.
 
-Si el vídeo tiene subtítulos, el reproductor los ofrece en **Subtítulos** (oficiales primero; los automáticos llevan «auto»). Los doblajes de YouTube no se pueden elegir: el stream solo trae una pista de audio. Detalle en [reproductor](reproductor.md#controles).
+Si el vídeo tiene subtítulos, el reproductor los ofrece en **Subtítulos** (oficiales primero; los automáticos llevan «auto»). En **Calidad / audio** puedes pedir 360p o 720p; los doblajes de YouTube no se pueden elegir (el stream solo trae una pista de audio). Detalle en [reproductor](reproductor.md#controles).
 
 Si un vídeo no está disponible (restricción de YouTube o sin stream compatible), no hay alternativa dentro del programa. Ver [notas](notas.md#problemas-conocidos).
 
