@@ -1,4 +1,5 @@
 import os
+import pathlib
 import time
 import shutil
 import subprocess
@@ -123,6 +124,16 @@ class VideoPlayer:
         self._iptv_attempts = []
         self._iptv_source_url = ''
         self._iptv_check_gen = 0
+        self._audio_tracks = []
+        self._spu_tracks = []
+        self._yt_subtitles = []
+        self._active_audio_id = None
+        self._active_spu_id = -1
+        self._active_yt_sub = None
+        self._track_poll_gen = 0
+        self._yt_sub_dir = None
+        self._audio_choice = None
+        self._subs_choice = None
 
         # Inicializar el manejador de YouTube
         self.youtube_handler = YouTubeHandler(self)
@@ -242,10 +253,14 @@ class VideoPlayer:
             ('forward', 'Avanzar 2 segundos', lambda: self.seek_relative(2)),
             ('skip_forward', 'Avanzar 10 segundos', lambda: self.seek_relative(10)),
             ('stop', 'Detener reproducción', self.stop),
+            ('audio', 'Pistas de audio', self._popup_audio_menu),
+            ('subtitles', 'Subtítulos', self._popup_subs_menu),
             ('volume', 'Silenciar / Activar sonido', self.toggle_mute),
             ('fullscreen', 'Pantalla completa', self.toggle_fullscreen),
             ('playlist', 'Mostrar / Ocultar lista', self.toggle_playlist),
         ]
+        self._audio_btn = None
+        self._subs_btn = None
         for key, tip_text, command in buttons_info:
             btn = ttk.Button(
                 self.controls_buttons_frame,
@@ -258,6 +273,10 @@ class VideoPlayer:
             tip = Tooltip(btn)
             btn.bind('<Enter>', lambda e, t=tip, txt=tip_text: t.showtip(txt))
             btn.bind('<Leave>', lambda e, t=tip: t.hidetip())
+            if key == 'audio':
+                self._audio_btn = btn
+            elif key == 'subtitles':
+                self._subs_btn = btn
         self.add_volume_control()
         #self.setup_performance_monitoring()
         self.window.protocol("WM_DELETE_WINDOW", self.close)
@@ -296,11 +315,21 @@ class VideoPlayer:
         favoritos_menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
         favoritos_menu.add_command(label="Eliminar de Favoritos", command=self.remove_from_favorites)
 
+        self.audio_menu = tk.Menu(self.menubar, tearoff=0)
+        self.subs_menu = tk.Menu(self.menubar, tearoff=0)
+        self.audio_popup = tk.Menu(self.window, tearoff=0)
+        self.subs_popup = tk.Menu(self.window, tearoff=0)
+        self._audio_choice = tk.StringVar(value='')
+        self._subs_choice = tk.StringVar(value='off')
         self.menubar.add_cascade(label="Reproducir", menu=reproducir_menu)
         self.menubar.add_cascade(label="Youtube", menu=youtube_menu)
         self.menubar.add_cascade(label="Favoritos", menu=favoritos_menu)
+        self.menubar.add_cascade(label="Audio", menu=self.audio_menu)
+        self.menubar.add_cascade(label="Subtítulos", menu=self.subs_menu)
         self.window.config(menu=self.menubar)
-        style_menu_tree(self.menubar)      
+        style_menu_tree(self.menubar)
+        self._rebuild_track_menus()
+
     def setup_keyboard_shortcuts(self):
         # Atajos generales
         self.window.bind('<space>', lambda e: self.toggle_play())
@@ -316,6 +345,327 @@ class VideoPlayer:
         # Asegurarse de que el listbox también recibe los eventos
         self.channels_listbox.bind('<Control-s>', self.handle_add_favorite)
         self.channels_listbox.bind('<Control-d>', self.handle_remove_favorite)
+
+    def _popup_track_menu(self, button, menu):
+        self._rebuild_track_menus()
+        if not button or not self._widget_exists(button):
+            return
+        try:
+            x = button.winfo_rootx()
+            y = button.winfo_rooty() + button.winfo_height()
+            menu.tk_popup(x, y)
+        finally:
+            try:
+                menu.grab_release()
+            except tk.TclError:
+                pass
+        if self.is_fullscreen:
+            self.reset_hide_controls_timer()
+
+    def _popup_audio_menu(self):
+        self._popup_track_menu(self._audio_btn, self.audio_popup)
+
+    def _popup_subs_menu(self):
+        self._popup_track_menu(self._subs_btn, self.subs_popup)
+
+    def _clear_menu_items(self, menu):
+        if menu is None:
+            return
+        try:
+            last = menu.index('end')
+        except tk.TclError:
+            return
+        if last is not None:
+            menu.delete(0, last)
+
+    def _vlc_track_list(self, getter):
+        try:
+            desc = getter() if self.player else None
+        except Exception:
+            return []
+        if not desc:
+            return []
+        items = []
+        for item in desc:
+            tid = getattr(item, 'id', None)
+            name = getattr(item, 'name', None)
+            if tid is None and isinstance(item, (tuple, list)) and len(item) >= 2:
+                tid, name = item[0], item[1]
+            if tid is None:
+                continue
+            try:
+                tid = int(tid)
+            except (TypeError, ValueError):
+                continue
+            if tid == -1:
+                continue
+            if isinstance(name, bytes):
+                name = name.decode('utf-8', errors='replace')
+            name = (name or '').strip() or f'Pista {tid}'
+            items.append((tid, name))
+        return items
+
+    def _read_vlc_tracks(self):
+        if not self.player:
+            return
+        self._audio_tracks = self._vlc_track_list(self.player.audio_get_track_description)
+        if getattr(self, '_yt_via_pipe', False):
+            self._spu_tracks = []
+        else:
+            self._spu_tracks = self._vlc_track_list(self.player.video_get_spu_description)
+        try:
+            self._active_audio_id = self.player.audio_get_track()
+        except Exception:
+            pass
+        try:
+            if self._active_yt_sub is None:
+                self._active_spu_id = self.player.video_get_spu()
+        except Exception:
+            pass
+
+    def _reset_vlc_tracks(self):
+        self._audio_tracks = []
+        self._spu_tracks = []
+        self._active_audio_id = None
+        self._active_spu_id = -1
+        self._track_poll_gen = getattr(self, '_track_poll_gen', 0) + 1
+
+    def clear_youtube_subtitles(self):
+        self._yt_subtitles = []
+        self._active_yt_sub = None
+        self._clear_yt_sub_files()
+        if getattr(self, '_subs_choice', None) is not None:
+            self._subs_choice.set('off')
+        self._rebuild_track_menus()
+
+    def set_youtube_subtitles(self, items):
+        self._yt_subtitles = list(items or [])
+        self._rebuild_track_menus()
+
+    def _clear_yt_sub_files(self):
+        path = getattr(self, '_yt_sub_dir', None)
+        self._yt_sub_dir = None
+        if path and os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+
+    def _schedule_track_refresh(self):
+        self._track_poll_gen = getattr(self, '_track_poll_gen', 0) + 1
+        gen = self._track_poll_gen
+        if self._widget_exists(self.window):
+            self.window.after(700, lambda g=gen: self._poll_vlc_tracks(g, 0))
+
+    def _poll_vlc_tracks(self, gen, attempt):
+        if gen != getattr(self, '_track_poll_gen', 0):
+            return
+        if not self.player or not self._widget_exists(self.window):
+            return
+        self._read_vlc_tracks()
+        self._rebuild_track_menus()
+        if len(self._audio_tracks) > 1 or self._spu_tracks or attempt >= 7:
+            return
+        self.window.after(900, lambda g=gen, a=attempt: self._poll_vlc_tracks(g, a + 1))
+
+    def _rebuild_track_menus(self):
+        menus_audio = [getattr(self, 'audio_menu', None), getattr(self, 'audio_popup', None)]
+        menus_subs = [getattr(self, 'subs_menu', None), getattr(self, 'subs_popup', None)]
+        if not any(menus_audio) and not any(menus_subs):
+            return
+        if self._audio_choice is None:
+            return
+        current_audio = '' if self._active_audio_id is None else str(self._active_audio_id)
+        if any(str(tid) == current_audio for tid, _name in self._audio_tracks):
+            self._audio_choice.set(current_audio)
+        elif self._audio_tracks:
+            self._audio_choice.set(str(self._audio_tracks[0][0]))
+        else:
+            self._audio_choice.set('')
+        if self._active_yt_sub:
+            kind, lang = self._active_yt_sub
+            self._subs_choice.set(f'{kind}:{lang}')
+        elif self._active_spu_id not in (None, -1):
+            self._subs_choice.set(f'vlc:{self._active_spu_id}')
+        else:
+            self._subs_choice.set('off')
+        for menu in menus_audio:
+            self._fill_audio_menu(menu)
+        for menu in menus_subs:
+            self._fill_subs_menu(menu)
+        style_menu_tree(getattr(self, 'menubar', None))
+        style_menu_tree(getattr(self, 'audio_popup', None))
+        style_menu_tree(getattr(self, 'subs_popup', None))
+
+    def _fill_audio_menu(self, menu):
+        if menu is None:
+            return
+        self._clear_menu_items(menu)
+        tracks = self._audio_tracks
+        if len(tracks) <= 1:
+            label = 'Solo hay una pista de audio' if tracks else 'Sin pistas de audio'
+            menu.add_command(label=label, state='disabled')
+            return
+        for tid, name in tracks:
+            menu.add_radiobutton(
+                label=name,
+                variable=self._audio_choice,
+                value=str(tid),
+                command=lambda i=tid: self._apply_audio_track(i),
+            )
+
+    def _fill_subs_menu(self, menu):
+        if menu is None:
+            return
+        self._clear_menu_items(menu)
+        has_vlc = bool(self._spu_tracks) and not getattr(self, '_yt_via_pipe', False)
+        has_yt = bool(self._yt_subtitles)
+        if not has_vlc and not has_yt:
+            menu.add_command(label='Sin subtítulos', state='disabled')
+            return
+        menu.add_radiobutton(
+            label='Desactivar',
+            variable=self._subs_choice,
+            value='off',
+            command=self._disable_subtitles,
+        )
+        if has_vlc:
+            if has_yt:
+                menu.add_separator()
+            for tid, name in self._spu_tracks:
+                menu.add_radiobutton(
+                    label=name,
+                    variable=self._subs_choice,
+                    value=f'vlc:{tid}',
+                    command=lambda i=tid: self._apply_spu_track(i),
+                )
+        if has_yt:
+            if has_vlc:
+                menu.add_separator()
+            for item in self._yt_subtitles:
+                key = f"{item['kind']}:{item['lang']}"
+                menu.add_radiobutton(
+                    label=item['label'],
+                    variable=self._subs_choice,
+                    value=key,
+                    command=lambda it=item: self._apply_youtube_subtitle(it),
+                )
+
+    def _apply_audio_track(self, track_id):
+        if not self.player:
+            return
+        try:
+            self.player.audio_set_track(int(track_id))
+            self._active_audio_id = int(track_id)
+        except Exception as exc:
+            print(f"[VLC] No se pudo cambiar la pista de audio: {exc}")
+
+    def _apply_spu_track(self, track_id):
+        if not self.player or getattr(self, '_yt_via_pipe', False):
+            return
+        self._active_yt_sub = None
+        try:
+            self.player.video_set_spu(int(track_id))
+            self._active_spu_id = int(track_id)
+        except Exception as exc:
+            print(f"[VLC] No se pudo cambiar el subtítulo: {exc}")
+
+    def _disable_subtitles(self):
+        self._active_yt_sub = None
+        if self.player:
+            try:
+                self.player.video_set_spu(-1)
+            except Exception:
+                pass
+        self._active_spu_id = -1
+
+    def _apply_youtube_subtitle(self, item):
+        self._active_yt_sub = (item.get('kind'), item.get('lang'))
+        threading.Thread(
+            target=self._download_and_load_youtube_sub,
+            args=(item,),
+            daemon=True,
+        ).start()
+
+    def _download_and_load_youtube_sub(self, item):
+        try:
+            path = self.youtube_handler.fetch_subtitle_file(
+                item.get('lang'),
+                auto=item.get('kind') == 'auto',
+                url=item.get('url'),
+                ext=item.get('ext') or 'vtt',
+                path=item.get('path'),
+            )
+            if path:
+                item['path'] = path
+        except Exception as exc:
+            print(f"[YouTube] Subtítulo no disponible: {exc}")
+            path = None
+        def apply():
+            if not path or not os.path.isfile(path):
+                print('[YouTube] No hay archivo de subtítulos para cargar')
+                return
+            handler = self.youtube_handler
+            if getattr(self, '_yt_via_pipe', False) or not self.player:
+                direct = getattr(handler, '_direct_url', '') or ''
+                if not direct:
+                    print('[YouTube] Los subtítulos no se pueden aplicar al relevo MPEG-TS')
+                    return
+                keep_ms = self._playback_elapsed_ms()
+                self.play_video_url(
+                    direct,
+                    force_pulse=True,
+                    show_progress=True,
+                    http_headers=getattr(handler, '_direct_headers', None),
+                    duration_s=(self._known_duration_ms / 1000.0) if self._known_duration_ms else None,
+                    subtitle_path=path,
+                    fail_after_s=20,
+                )
+                self._hold_progress_ms = keep_ms
+                self._hold_progress_until = time.time() + 2.5
+                return
+            keep_ms = self._playback_elapsed_ms()
+            try:
+                uri = pathlib.Path(path).resolve().as_uri()
+                loaded = self.player.add_slave(vlc.MediaSlaveType.subtitle, uri, True)
+                print(f"[VLC] Subtítulo esclavo ({loaded}): {uri}")
+            except Exception as exc:
+                print(f"[VLC] No se pudo añadir el subtítulo: {exc}")
+                return
+            self._hold_progress_ms = keep_ms
+            self._hold_progress_until = time.time() + 2.5
+            self._restore_after_subtitle(keep_ms)
+        if self._widget_exists(self.window):
+            self.window.after(0, apply)
+
+    def _restore_after_subtitle(self, keep_ms):
+        if not self.player:
+            return
+        try:
+            state = self.player.get_state()
+            if state in (vlc.State.Ended, vlc.State.Stopped, vlc.State.Error):
+                self.player.play()
+            elapsed = self._playback_elapsed_ms()
+            length = self._media_length_ms()
+            jumped = length > 0 and elapsed >= max(0, length - 1200) and keep_ms < length - 1500
+            if jumped or abs(elapsed - keep_ms) > 1500:
+                offset = int(getattr(self, '_yt_start_offset_ms', 0) or 0)
+                self.player.set_time(max(0, int(keep_ms) - offset))
+        except Exception as exc:
+            print(f"[VLC] No se pudo conservar la posición: {exc}")
+
+    def _select_external_spu(self):
+        if not self.player:
+            return
+        try:
+            keep_ms = getattr(self, '_hold_progress_ms', None)
+            self._read_vlc_tracks()
+            if self._spu_tracks:
+                track_id = self._spu_tracks[-1][0]
+                self.player.video_set_spu(track_id)
+                self._active_spu_id = track_id
+            if keep_ms is not None:
+                self._restore_after_subtitle(keep_ms)
+            self._rebuild_track_menus()
+        except Exception as exc:
+            print(f"[VLC] No se pudo activar el subtítulo: {exc}")
 
     def setup_mouse_tracking(self):
         # Eliminar eventos de hover para mostrar/ocultar controles
@@ -487,6 +837,7 @@ class VideoPlayer:
                     self.youtube_handler.stop_pipeline()
                 except Exception:
                     pass
+            self._clear_yt_sub_files()
 
             # Liberar recursos de VLC
             self._cleanup_vlc_player()
@@ -836,6 +1187,8 @@ class VideoPlayer:
             app_config.remember_channel(index, name, url)
             if self.instance is None:
                 self.instance = _make_vlc_instance()
+            self.clear_youtube_subtitles()
+            self._reset_vlc_tracks()
             # Limpiar reproductor anterior de forma segura
             self._cleanup_vlc_player()
 
@@ -949,6 +1302,7 @@ class VideoPlayer:
         self.player.play()
         self.adjust_video_settings()
         self.start_update_time()
+        self._schedule_track_refresh()
         self._iptv_retry_name = name
 
     def _watch_iptv_start(self, check_gen, name, url, kind, ticks=0):
@@ -1024,6 +1378,7 @@ class VideoPlayer:
         self.player.play()
         self.adjust_video_settings()
         self.start_update_time()
+        self._schedule_track_refresh()
         self._iptv_retry_name = name
 
     def _check_iptv_stream(self, check_gen=None, waited=0):
@@ -1194,7 +1549,7 @@ class VideoPlayer:
         threading.Thread(target=producer, daemon=True).start()
         threading.Thread(target=wait_and_play, daemon=True).start()
 
-    def play_video_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, http_headers=None, on_fail=None, fail_after_s=8, local_file=False, duration_s=None):
+    def play_video_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, http_headers=None, on_fail=None, fail_after_s=8, local_file=False, duration_s=None, subtitle_path=None):
         try:
             for widget in self.video_frame.winfo_children():
                 widget.destroy()
@@ -1263,6 +1618,9 @@ class VideoPlayer:
             else:
                 options.append(':aout=alsa')
                 print("[AUDIO] Forzando salida de audio: alsa (M3U)")
+            if subtitle_path and os.path.isfile(subtitle_path):
+                options.append(f':sub-file={subtitle_path}')
+                print(f"[VLC] sub-file={subtitle_path}")
             for option in options:
                 media.add_option(option)
             self.player.set_media(media)
@@ -1278,6 +1636,7 @@ class VideoPlayer:
             self.player.play()
             self.adjust_video_settings()
             self.start_update_time()
+            self._schedule_track_refresh()
             self._youtube_fail_cb = on_fail
             self._youtube_fail_deadline = time.time() + max(8, int(fail_after_s))
             if on_fail:
@@ -1410,10 +1769,25 @@ class VideoPlayer:
             if self.player:
                 state = self.player.get_state()
                 active = state in (vlc.State.Playing, vlc.State.Paused, vlc.State.Buffering)
+                hold = getattr(self, '_hold_progress_ms', None)
+                hold_until = getattr(self, '_hold_progress_until', 0)
+                holding = hold is not None and time.time() < hold_until
+                if holding and state in (vlc.State.Ended, vlc.State.Stopped):
+                    self._restore_after_subtitle(hold)
+                    try:
+                        state = self.player.get_state()
+                    except Exception:
+                        pass
+                    active = state in (vlc.State.Playing, vlc.State.Paused, vlc.State.Buffering)
                 if active:
                     self._media_started = True
                 if active and not self.is_seeking and self.progress_frame.winfo_ismapped():
                     elapsed = self._playback_elapsed_ms()
+                    if holding:
+                        length = self._media_length_ms()
+                        if length > 0 and elapsed >= max(0, length - 1200) and hold < length - 1500:
+                            self._restore_after_subtitle(hold)
+                            elapsed = hold
                     hint = getattr(self, '_seek_hint_ms', None)
                     until = getattr(self, '_seek_hint_until', 0)
                     if hint is not None and time.time() < until:

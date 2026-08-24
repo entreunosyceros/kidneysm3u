@@ -1,6 +1,8 @@
 import yt_dlp
 import re
 import webbrowser
+import urllib.request
+import urllib.error
 import os
 import shutil
 import sys
@@ -72,6 +74,7 @@ def _merge_extractor_args(base, extra):
 def youtube_ydl_opts(**extra):
     """Opciones comunes de yt-dlp: runtime JS + cookies de navegador/archivo."""
     extra_extractor = extra.pop('extractor_args', None)
+    silent = extra.pop('silent', False)
     opts = {
         'quiet': True,
         'no_warnings': False,
@@ -90,8 +93,9 @@ def youtube_ydl_opts(**extra):
     runtimes = detect_js_runtimes()
     if runtimes:
         opts['js_runtimes'] = runtimes
-        print("[yt-dlp] Runtimes JS: " + ", ".join(f"{n}={info.get('path')}" for n, info in runtimes.items()))
-    else:
+        if not silent:
+            print("[yt-dlp] Runtimes JS: " + ", ".join(f"{n}={info.get('path')}" for n, info in runtimes.items()))
+    elif not silent:
         print("[yt-dlp] No se encontró Deno ni Node. YouTube puede bloquear la extracción.")
 
     cookies_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
@@ -108,6 +112,92 @@ def youtube_ydl_opts(**extra):
         extra_extractor,
     )
     return opts
+
+
+_YT_LANG_NAMES = {
+    'es': 'Español',
+    'es-ES': 'Español (España)',
+    'es-419': 'Español (Latinoamérica)',
+    'en': 'English',
+    'en-US': 'English (US)',
+    'en-GB': 'English (UK)',
+    'fr': 'Français',
+    'de': 'Deutsch',
+    'it': 'Italiano',
+    'pt': 'Português',
+    'pt-BR': 'Português (Brasil)',
+    'ca': 'Català',
+    'eu': 'Euskara',
+    'gl': 'Galego',
+    'ja': '日本語',
+    'ko': '한국어',
+    'zh': '中文',
+    'zh-Hans': '中文 (简体)',
+    'ar': 'العربية',
+    'ru': 'Русский',
+}
+
+
+def _subtitle_file_url(entries):
+    """Elige una URL de subtítulo que VLC pueda abrir (vtt/srt), sin relanzar yt-dlp."""
+    if not entries:
+        return None, None
+    by_ext = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        url = entry.get('url')
+        ext = (entry.get('ext') or '').lower()
+        if url and ext:
+            by_ext[ext] = url
+    for ext in ('vtt', 'srt', 'ttml'):
+        if ext in by_ext:
+            return by_ext[ext], ext
+    return None, None
+
+
+def collect_youtube_subs(info):
+    """Lista subtítulos oficiales y automáticos, priorizando es/en."""
+    official = info.get('subtitles') or {}
+    automatic = info.get('automatic_captions') or {}
+
+    def pretty(code, auto=False):
+        base = _YT_LANG_NAMES.get(code) or _YT_LANG_NAMES.get(str(code).split('-')[0]) or code
+        return f'{base} (auto)' if auto else base
+
+    def add(code, entries, kind, auto=False):
+        url, ext = _subtitle_file_url(entries)
+        if not url:
+            return False
+        items.append({
+            'lang': code,
+            'kind': kind,
+            'label': pretty(code, auto),
+            'url': url,
+            'ext': ext or 'vtt',
+        })
+        return True
+
+    items = []
+    seen = set()
+    for code in ('es', 'es-ES', 'es-419', 'en', 'en-US', 'en-GB'):
+        if code not in seen and add(code, official.get(code), 'official'):
+            seen.add(code)
+    for code, entries in official.items():
+        if code in seen or code == 'live_chat':
+            continue
+        if add(code, entries, 'official'):
+            seen.add(code)
+        if len(items) >= 14:
+            break
+    bases = {str(item['lang']).split('-')[0] for item in items}
+    for code in ('es', 'es-ES', 'es-419', 'en', 'en-US'):
+        if code in seen or str(code).split('-')[0] in bases:
+            continue
+        if add(code, automatic.get(code), 'auto', auto=True):
+            seen.add(code)
+            bases.add(str(code).split('-')[0])
+    return items
 
 
 def preferred_youtube_browser():
@@ -199,6 +289,9 @@ class YouTubeHandler:
         self._yt_server = None
         self._current_url = ''
         self._play_kwargs = {}
+        self._sub_429_until = 0
+        self._direct_url = ''
+        self._direct_headers = {}
         cleanup_youtube_temp_dirs()
 
     def stop_pipeline(self):
@@ -260,14 +353,24 @@ class YouTubeHandler:
             }
             self._show_status("Obteniendo vídeo de YouTube…")
             self.stop_pipeline()
+            self.video_player.clear_youtube_subtitles()
             stream = self.get_best_vlc_url(url)
+            subs = (stream or {}).get('subtitles') or []
+            if stream:
+                self._direct_url = stream.get('url') or ''
+                self._direct_headers = stream.get('headers') or {}
             if stream and self._stream_ok_for_vlc(stream):
                 print(f"[YouTubeHandler] Reproduciendo en el reproductor: {stream['url'][:80]}…")
                 self._clear_video_surface()
 
                 def fallback():
-                    print("[YouTubeHandler] VLC no pudo abrir el stream directo; retransmitiendo con yt-dlp")
-                    if not self._play_via_pipe(url, force_pulse, show_progress, is_sequential, duration=stream.get('duration')):
+                    print("[YouTubeHandler] VLC no pudo abrir el stream directo; retransmitiendo la URL ya extraída")
+                    if not self._play_via_pipe(
+                        url, force_pulse, show_progress, is_sequential,
+                        duration=stream.get('duration'),
+                        source_url=stream.get('url'),
+                        http_headers=stream.get('headers'),
+                    ):
                         self._show_playback_error(url)
 
                 self.video_player.play_video_url(
@@ -277,14 +380,22 @@ class YouTubeHandler:
                     is_sequential=is_sequential,
                     http_headers=stream.get('headers'),
                     duration_s=stream.get('duration'),
+                    fail_after_s=20,
                     on_fail=fallback,
                 )
+                self.video_player.set_youtube_subtitles(subs)
                 return
 
             if stream:
-                print("[YouTubeHandler] El stream directo no es compatible con VLC; retransmitiendo con yt-dlp")
+                print("[YouTubeHandler] Retransmitiendo la URL extraída (sin volver a pedir el vídeo a YouTube)")
             duration = (stream or {}).get('duration')
-            if self._play_via_pipe(url, force_pulse, show_progress, is_sequential, duration=duration):
+            if self._play_via_pipe(
+                url, force_pulse, show_progress, is_sequential,
+                duration=duration,
+                source_url=(stream or {}).get('url'),
+                http_headers=(stream or {}).get('headers'),
+            ):
+                self.video_player.set_youtube_subtitles(subs)
                 return
 
             self._show_playback_error(url)
@@ -326,7 +437,7 @@ class YouTubeHandler:
         ).pack(pady=(50, 10))
         tk.Label(
             info_frame,
-            text="YouTube bloquea el acceso directo. Abre el vídeo en el navegador o revisa que ffmpeg esté instalado.",
+            text="YouTube está limitando el acceso (a menudo un 429). Espera un minuto y prueba otra vez, o ábrelo en el navegador.",
             font=get_font(10),
             bg=colors['bg'],
             fg=colors['text_muted'],
@@ -347,13 +458,16 @@ class YouTubeHandler:
             relief=tk.FLAT,
         ).pack(pady=10)
 
+    def _ffmpeg_header_block(self, headers):
+        parts = []
+        for key, value in (headers or {}).items():
+            if value:
+                parts.append(f'{key}: {value}')
+        return ('\r\n'.join(parts) + '\r\n') if parts else ''
+
     def _stream_ok_for_vlc(self, stream):
-        url = (stream or {}).get('url') or ''
-        if 'rqh=1' in url:
-            return False
-        if 'googlevideo.com/videoplayback' in url and 'c=WEB' in url:
-            return False
-        return bool(url)
+        """Si hay URL, VLC la prueba. Los filtros antiguos mandaban todo al relevo y YouTube lo cortaba."""
+        return bool((stream or {}).get('url'))
 
     def replay_from(self, start_s):
         """Reinicia la retransmisión local desde un instante (el MPEG-TS no admite seek)."""
@@ -378,10 +492,12 @@ class YouTubeHandler:
             kwargs.get('is_sequential', False),
             duration=duration,
             start_s=max(0.0, float(start_s or 0)),
+            source_url=self._direct_url,
+            http_headers=self._direct_headers,
         )
 
-    def _play_via_pipe(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None, start_s=0):
-        """Retransmite el vídeo con yt-dlp (+ ffmpeg) a un MPEG-TS y lo abre en VLC."""
+    def _play_via_pipe(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None, start_s=0, source_url=None, http_headers=None):
+        """Retransmite a MPEG-TS. Prefiere la URL ya extraída para no volver a golpear YouTube."""
         ffmpeg = shutil.which('ffmpeg')
         if not ffmpeg:
             return self._play_via_download(youtube_url, force_pulse, show_progress, is_sequential, duration=duration)
@@ -397,28 +513,48 @@ class YouTubeHandler:
         tmpdir = tempfile.mkdtemp(prefix='kidneys_yt_')
         ts_path = os.path.join(tmpdir, 'stream.ts')
         self._yt_tmpdir = tmpdir
-
-        ytdlp_cmd = self._ytdlp_argv(youtube_url, start_s=start_s)
-        ffmpeg_cmd = [
-            ffmpeg, '-hide_banner', '-loglevel', 'error',
-            '-fflags', '+genpts+discardcorrupt',
-            '-i', 'pipe:0',
-            '-c', 'copy', '-bsf:v', 'h264_mp4toannexb',
-            '-f', 'mpegts', ts_path,
-        ]
+        source_url = source_url or self._direct_url
+        http_headers = http_headers or self._direct_headers
 
         def producer():
             try:
-                ytdlp = subprocess.Popen(ytdlp_cmd, stdout=subprocess.PIPE)
-                ffproc = subprocess.Popen(
-                    ffmpeg_cmd, stdin=ytdlp.stdout, stderr=subprocess.PIPE
-                )
-                ytdlp.stdout.close()
-                self._yt_procs = [ytdlp, ffproc]
-                if self._yt_server:
-                    self._yt_server.yt_procs = self._yt_procs
-                ff_err = ffproc.communicate()[1]
-                ytdlp.wait()
+                if source_url:
+                    ffmpeg_cmd = [
+                        ffmpeg, '-hide_banner', '-loglevel', 'error',
+                        '-fflags', '+genpts+discardcorrupt',
+                    ]
+                    header_block = self._ffmpeg_header_block(http_headers)
+                    if header_block:
+                        ffmpeg_cmd.extend(['-headers', header_block])
+                    ffmpeg_cmd.extend([
+                        '-i', source_url,
+                        '-c', 'copy', '-bsf:v', 'h264_mp4toannexb',
+                        '-f', 'mpegts', ts_path,
+                    ])
+                    ffproc = subprocess.Popen(ffmpeg_cmd, stderr=subprocess.PIPE)
+                    self._yt_procs = [ffproc]
+                    if self._yt_server:
+                        self._yt_server.yt_procs = self._yt_procs
+                    ff_err = ffproc.communicate()[1]
+                else:
+                    ytdlp_cmd = self._ytdlp_argv(youtube_url, start_s=start_s)
+                    ffmpeg_cmd = [
+                        ffmpeg, '-hide_banner', '-loglevel', 'error',
+                        '-fflags', '+genpts+discardcorrupt',
+                        '-i', 'pipe:0',
+                        '-c', 'copy', '-bsf:v', 'h264_mp4toannexb',
+                        '-f', 'mpegts', ts_path,
+                    ]
+                    ytdlp = subprocess.Popen(ytdlp_cmd, stdout=subprocess.PIPE)
+                    ffproc = subprocess.Popen(
+                        ffmpeg_cmd, stdin=ytdlp.stdout, stderr=subprocess.PIPE
+                    )
+                    ytdlp.stdout.close()
+                    self._yt_procs = [ytdlp, ffproc]
+                    if self._yt_server:
+                        self._yt_server.yt_procs = self._yt_procs
+                    ff_err = ffproc.communicate()[1]
+                    ytdlp.wait()
                 if ffproc.returncode not in (0, -15, None) and ff_err:
                     print(f"[ffmpeg] {ff_err.decode('utf-8', errors='replace')[-1500:]}")
             except Exception as exc:
@@ -663,6 +799,103 @@ class YouTubeHandler:
                     pass  # No hacer nada si no se puede borrar
 
 
+    def _sub_cache_dir(self):
+        player = self.video_player
+        current = getattr(player, '_yt_sub_dir', None)
+        if current and os.path.isdir(current):
+            return current
+        tmpdir = tempfile.mkdtemp(prefix='kidneys_yt_sub_')
+        player._yt_sub_dir = tmpdir
+        return tmpdir
+
+    def _find_sub_file(self, directory, lang=None):
+        if not directory or not os.path.isdir(directory):
+            return None
+        lang = (lang or '').lower()
+        matches = []
+        others = []
+        for name in os.listdir(directory):
+            lower = name.lower()
+            if not lower.endswith(('.vtt', '.srt')):
+                continue
+            full = os.path.join(directory, name)
+            if lang and lang in lower:
+                matches.append(full)
+            else:
+                others.append(full)
+        if matches:
+            return sorted(matches)[0]
+        if len(others) == 1:
+            return others[0]
+        return None
+
+    def _write_subs_from_info(self, ydl, info, items):
+        """Guarda el VTT español (o el primero) con la misma sesión de extract_info."""
+        if not items:
+            return
+        preferred = next(
+            (item for item in items if str(item.get('lang') or '').split('-')[0] == 'es'),
+            items[0],
+        )
+        tmpdir = self._sub_cache_dir()
+        ydl.params['writesubtitles'] = True
+        ydl.params['writeautomaticsub'] = True
+        ydl.params['subtitleslangs'] = [preferred['lang']]
+        ydl.params['subtitlesformat'] = 'vtt'
+        ydl.params['ignoreerrors'] = True
+        info = dict(info)
+        try:
+            info['requested_subtitles'] = ydl.process_subtitles(
+                info.get('id'),
+                info.get('subtitles'),
+                info.get('automatic_captions'),
+            )
+            ydl._write_subtitles(info, os.path.join(tmpdir, 'vid'))
+        except Exception as exc:
+            print(f"[YouTube] No se pudieron guardar subtítulos en la extracción: {exc}")
+            self._sub_429_until = time.time() + 90
+            return
+        requested = info.get('requested_subtitles') or {}
+        for lang, sub_info in requested.items():
+            path = sub_info.get('filepath')
+            if not path or not os.path.isfile(path):
+                continue
+            for item in items:
+                if item.get('lang') == lang:
+                    item['path'] = path
+            print(f"[YouTube] Subtítulo listo {lang} → {path}")
+
+    def _dl_sub_url(self, url, lang, ext='vtt'):
+        if not url:
+            return None
+        if time.time() < getattr(self, '_sub_429_until', 0):
+            wait = int(self._sub_429_until - time.time())
+            print(f"[YouTube] YouTube limita subtítulos; espera {wait}s y prueba otra vez")
+            return None
+        dest = os.path.join(self._sub_cache_dir(), f'caption_{lang}.{ext or "vtt"}')
+        opts = youtube_ydl_opts(silent=True, quiet=True, no_warnings=True, ignoreerrors=True)
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.dl(dest, {'url': url, 'http_headers': ydl.params.get('http_headers')}, subtitle=True)
+        except Exception as exc:
+            text = str(exc)
+            if '429' in text:
+                self._sub_429_until = time.time() + 90
+                print('[YouTube] YouTube ha limitado los subtítulos (429). Espera un minuto.')
+            else:
+                print(f"[YouTube] Subtítulo no disponible: {exc}")
+            return None
+        return dest if os.path.isfile(dest) else None
+
+    def fetch_subtitle_file(self, lang, auto=False, url=None, ext='vtt', path=None):
+        """Usa el VTT de la primera extracción. No relanza yt-dlp (eso provoca 429)."""
+        if path and os.path.isfile(path):
+            return path
+        found = self._find_sub_file(getattr(self.video_player, '_yt_sub_dir', None), lang)
+        if found:
+            return found
+        return self._dl_sub_url(url, lang, ext)
+
     def get_best_vlc_url(self, youtube_url):
         """Obtiene una URL de stream que VLC pueda reproducir dentro de la ventana."""
         format_sel = (
@@ -700,11 +933,13 @@ class YouTubeHandler:
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(youtube_url, download=False)
-                stream = self._pick_playable_stream(info)
-                if stream:
-                    stream['headers'] = self._headers_for_vlc(stream.get('headers'))
-                    stream['duration'] = info.get('duration')
-                    return stream
+                    stream = self._pick_playable_stream(info)
+                    if stream:
+                        stream['headers'] = self._headers_for_vlc(stream.get('headers'))
+                        stream['duration'] = info.get('duration')
+                        stream['subtitles'] = collect_youtube_subs(info)
+                        self._write_subs_from_info(ydl, info, stream['subtitles'])
+                        return stream
             except Exception as e:
                 last_error = e
                 print(f"Error al obtener la URL compatible para VLC: {e}")
@@ -799,7 +1034,12 @@ class YouTubeHandler:
                 f"vcodec={best.get('vcodec')} acodec={best.get('acodec')} "
                 f"proto={best.get('protocol')} height={best.get('height')}"
             )
-            return {'url': best['url'], 'headers': fmt_headers}
+            return {
+                'url': best['url'],
+                'headers': fmt_headers,
+                'ext': best.get('ext'),
+                'format_id': best.get('format_id'),
+            }
 
         url = info.get('url')
         if url:

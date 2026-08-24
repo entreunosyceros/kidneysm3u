@@ -7,6 +7,7 @@
 - **VLC embebido** (`python-vlc`): decodificación por software (`avcodec-hw=none`) para evitar ruido de VA-API en NVIDIA. Audio: ALSA en IPTV, Pulse en YouTube cuando hace falta.
 - **YouTube**: [yt-dlp](https://github.com/yt-dlp/yt-dlp) elige un stream que VLC pueda abrir (audio+vídeo juntos si existe; se evitan DASH/HLS difíciles). Preferencia habitual: MP4/AVC1 hasta 720p. Si falla, hay un relevo local.
 - **IPTV**: se usa la URL del M3U. No se inventan rutas Xtream. Un 302 del panel lo sigue VLC; si el nodo de vídeo cierra la conexión, no hay imagen. Ver [listas M3U](listas-m3u.md#reproducción-iptv).
+- **Audio y subtítulos**: VLC lista las pistas del stream (típico en IPTV/HLS). YouTube aporta subtítulos descargados (oficiales o auto); no hay cambio de idioma de audio.
 - No se usa `--no-hw-dec`: en VLC 3.0.20 esa opción puede hacer que `vlc.Instance()` falle.
 
 ## Archivos en la carpeta del programa
