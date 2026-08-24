@@ -42,8 +42,9 @@ Al abrir un vídeo de YouTube, el área de vídeo muestra el título, la miniatu
 Si un canal IPTV no arranca (error de VLC, pantalla negra o el servidor no entrega vídeo), en unos segundos aparece el nombre y **Este canal por el momento no funciona**. No es un fallo del programa: el enlace de esa lista no está disponible ahora.
 
 ## Atajos de teclado
-
-![kidneys-help](https://github.com/user-attachments/assets/8d40f720-c424-4e1b-a965-d0796f1a93af)
+<p align="center">
+<img width="768" height="916" alt="atajo-teclado" src="https://github.com/user-attachments/assets/5e9f075c-2e89-4e44-ae4b-76b6f96619b9" />
+</p>
 
 | Tecla | Acción |
 | --- | --- |
