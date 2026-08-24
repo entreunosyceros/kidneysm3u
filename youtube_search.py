@@ -9,7 +9,7 @@ import re
 import subprocess
 from datetime import datetime, timedelta
 from urllib.parse import quote, quote_plus
-from youtube_player import youtube_ydl_opts
+from youtube_player import youtube_ydl_opts, youtube_auth_blocked, youtube_auth_help
 from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window
 
 
@@ -112,11 +112,12 @@ def _search_youtube_shorts(query, max_results, extra_query=''):
 
 
 class YouTubeSearchDialog:
-    def __init__(self, parent, play_callback, load_playlist_callback=None, enqueue_callback=None):
+    def __init__(self, parent, play_callback, load_playlist_callback=None, enqueue_callback=None, youtube_handler=None):
         self.parent = parent
         self.play_callback = play_callback
         self.load_playlist_callback = load_playlist_callback
         self.enqueue_callback = enqueue_callback
+        self.youtube_handler = youtube_handler
         self.window = tk.Toplevel(parent)
         self.window.title("Buscar en YouTube")
         self.window.geometry("780x560")
@@ -125,6 +126,10 @@ class YouTubeSearchDialog:
         set_window_icon(self.window)
         center_window(self.window, 780, 560)
         self.create_widgets()
+        if self.youtube_handler:
+            self.youtube_handler.add_session_listener(self.update_youtube_session_ui)
+            self.update_youtube_session_ui(self.youtube_handler.session_view())
+        self.window.protocol('WM_DELETE_WINDOW', self._on_close)
 
     def create_widgets(self):
         main_frame = ttk.Frame(self.window, padding=16)
@@ -135,7 +140,17 @@ class YouTubeSearchDialog:
             main_frame,
             text='Vídeos, Shorts, listas y canales. Añade a la cola sin cerrar esta ventana.',
             style='Muted.TLabel',
-        ).pack(anchor=tk.W, pady=(0, 12))
+        ).pack(anchor=tk.W, pady=(0, 8))
+
+        session_frame = ttk.Frame(main_frame)
+        session_frame.pack(fill=tk.X, pady=(0, 12))
+        self._yt_session_label = ttk.Label(session_frame, text='Sesión YouTube: …', style='Muted.TLabel')
+        self._yt_session_label.pack(side=tk.LEFT)
+        ttk.Button(
+            session_frame,
+            text="Reexportar cookies",
+            command=self.reexport_youtube_cookies,
+        ).pack(side=tk.LEFT, padx=(10, 0))
         
         search_frame = ttk.Frame(main_frame)
         search_frame.pack(fill=tk.X, pady=(0, 10))
@@ -252,7 +267,7 @@ class YouTubeSearchDialog:
                                       command=lambda: self.download_selected(True))
         download_audio_btn.pack(side=tk.LEFT, padx=5)
         
-        close_btn = ttk.Button(button_frame, text="Cerrar", command=self.window.destroy)
+        close_btn = ttk.Button(button_frame, text="Cerrar", command=self._on_close)
         close_btn.pack(side=tk.RIGHT)
 
         self.queue_status = ttk.Label(main_frame, text='', style='Muted.TLabel')
@@ -261,6 +276,34 @@ class YouTubeSearchDialog:
         self.results = []
         self.result_types = []
         self.result_details = []
+
+    def _on_close(self):
+        if self.youtube_handler:
+            self.youtube_handler.remove_session_listener(self.update_youtube_session_ui)
+        self.window.destroy()
+
+    def update_youtube_session_ui(self, info=None):
+        if not getattr(self, '_yt_session_label', None):
+            return
+        if info is None and self.youtube_handler:
+            info = self.youtube_handler.session_view()
+        info = info or {'ok': False, 'label': 'caducada'}
+        ok = bool(info.get('ok'))
+        text = f"Sesión YouTube: {'OK' if ok else 'caducada'}"
+        style = 'SessionOk.TLabel' if ok else 'SessionBad.TLabel'
+        try:
+            self._yt_session_label.configure(text=text, style=style)
+        except tk.TclError:
+            pass
+
+    def reexport_youtube_cookies(self):
+        if self.youtube_handler:
+            self.youtube_handler.reexport_youtube_cookies()
+            return
+        messagebox.showinfo(
+            'Cookies de YouTube',
+            'Abre el reproductor para exportar cookies.txt desde el navegador.',
+        )
 
     def _on_type_change(self, event=None):
         shorts = self.type_var.get() == "Shorts"
@@ -464,11 +507,18 @@ class YouTubeSearchDialog:
                     self.window.after(0, update_ui)
                     
             except Exception as e:
-                def show_error():
-                    messagebox.showerror("Error", f"No se pudo realizar la búsqueda: {e}")
+                err = e
+
+                def show_error(exc=err):
+                    if self.youtube_handler:
+                        self.youtube_handler.mark_session_from_error(exc)
+                    if youtube_auth_blocked(exc):
+                        messagebox.showerror("Sesión YouTube", youtube_auth_help())
+                    else:
+                        messagebox.showerror("Error", f"No se pudo realizar la búsqueda: {exc}")
                     self.progress_bar.stop()
                     self.progress_bar.pack_forget()
-                
+
                 self.window.after(0, show_error)
 
         threading.Thread(target=perform_search, daemon=True).start()
@@ -663,7 +713,12 @@ class YouTubeSearchDialog:
                               f"Iniciando descarga del {tipo_descarga} de '{title}'. Se te notificará cuando termine.")
                 
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo iniciar la descarga: {str(e)}")
+            if self.youtube_handler:
+                self.youtube_handler.mark_session_from_error(e)
+            if youtube_auth_blocked(e):
+                messagebox.showerror("Sesión YouTube", youtube_auth_help())
+            else:
+                messagebox.showerror("Error", f"No se pudo iniciar la descarga: {str(e)}")
 
     def _execute_download(self, url, filepath, title, audio_only=False):
         """Ejecuta la descarga del vídeo de YouTube."""
@@ -693,14 +748,22 @@ class YouTubeSearchDialog:
             ))
             
         except Exception as e:
-            error_message = str(e)
-            self.window.after(0, lambda msg=error_message: messagebox.showerror(
-                "Error de descarga", 
-                f"No se pudo descargar '{title}':\n{msg}\n\nPosibles soluciones:\n"
-                f"1. Verifica que el enlace sea accesible\n"
-                f"2. Prueba con otro vídeo\n"
-                f"3. Comprueba tu conexión a internet"
-            ))
+            if self.youtube_handler:
+                self.youtube_handler.mark_session_from_error(e)
+            if youtube_auth_blocked(e):
+                self.window.after(0, lambda: messagebox.showerror(
+                    "Sesión YouTube",
+                    youtube_auth_help(),
+                ))
+            else:
+                error_message = str(e)
+                self.window.after(0, lambda msg=error_message: messagebox.showerror(
+                    "Error de descarga",
+                    f"No se pudo descargar '{title}':\n{msg}\n\nPosibles soluciones:\n"
+                    f"1. Verifica que el enlace sea accesible\n"
+                    f"2. Prueba con otro vídeo\n"
+                    f"3. Comprueba tu conexión a internet"
+                ))
             
             if os.path.exists(filepath):
                 try:
@@ -717,7 +780,12 @@ class YouTubeSearchDialog:
             if self.load_playlist_callback:
                 self.load_playlist_callback(channels)
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo obtener la playlist: {e}")
+            if self.youtube_handler:
+                self.youtube_handler.mark_session_from_error(e)
+            if youtube_auth_blocked(e):
+                messagebox.showerror("Sesión YouTube", youtube_auth_help())
+            else:
+                messagebox.showerror("Error", f"No se pudo obtener la playlist: {e}")
 
     def _fetch_playlist_videos(self, playlist_url):
         ydl_opts = youtube_ydl_opts(

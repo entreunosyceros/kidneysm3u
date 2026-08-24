@@ -226,6 +226,98 @@ def preferred_youtube_browser():
         except Exception:
             continue
     return 'firefox'
+
+
+COOKIES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookies.txt')
+_YT_AUTH_COOKIES = {
+    'LOGIN_INFO', 'SID', 'SAPISID',
+    '__Secure-1PSID', '__Secure-3PSID',
+    '__Secure-1PAPISID', '__Secure-3PAPISID',
+}
+_YT_AUTH_ERROR_MARKERS = (
+    'sign in',
+    'not a bot',
+    'bot check',
+    'login required',
+    'please log in',
+    'cookies are no longer valid',
+    'use --cookies',
+    'confirm you’re not a bot',
+    "confirm you're not a bot",
+)
+
+
+def cookies_file_path():
+    return COOKIES_PATH
+
+
+def inspect_youtube_session(path=None):
+    """Revisa cookies.txt: OK si hay cookies de login vigentes."""
+    path = path or cookies_file_path()
+    now = int(time.time())
+    if not os.path.isfile(path) or os.path.getsize(path) < 40:
+        return {'ok': False, 'label': 'caducada', 'reason': 'no hay cookies.txt'}
+    has_auth = False
+    expired_auth = False
+    try:
+        with open(path, encoding='utf-8') as handle:
+            for line in handle:
+                if not line.strip() or line.startswith('#'):
+                    continue
+                fields = line.rstrip('\n').split('\t')
+                if len(fields) < 7:
+                    continue
+                domain, expiry, name, value = fields[0], fields[4], fields[5], fields[6]
+                if 'youtube' not in domain and 'google' not in domain:
+                    continue
+                if name not in _YT_AUTH_COOKIES or not value:
+                    continue
+                has_auth = True
+                try:
+                    exp = int(expiry)
+                except (TypeError, ValueError):
+                    exp = 0
+                if exp > 0 and exp < now:
+                    expired_auth = True
+    except OSError:
+        return {'ok': False, 'label': 'caducada', 'reason': 'no se pudo leer cookies.txt'}
+    if not has_auth:
+        return {'ok': False, 'label': 'caducada', 'reason': 'no hay cookies de login'}
+    if expired_auth:
+        return {'ok': False, 'label': 'caducada', 'reason': 'cookies caducadas'}
+    return {'ok': True, 'label': 'OK', 'reason': ''}
+
+
+def youtube_auth_blocked(exc):
+    text = str(exc or '').lower()
+    return any(marker in text for marker in _YT_AUTH_ERROR_MARKERS)
+
+
+def youtube_auth_help():
+    return (
+        "YouTube pide iniciar sesión (bot-check o cookies caducadas).\n"
+        "Inicia sesión en el navegador y pulsa «Reexportar cookies»."
+    )
+
+
+def _jar_has_live_youtube_login(cookies):
+    """True si el jar tiene cookies de login de YouTube que no han caducado."""
+    now = int(time.time())
+    for cookie in cookies or []:
+        name = getattr(cookie, 'name', '') or ''
+        value = getattr(cookie, 'value', '') or ''
+        if name not in _YT_AUTH_COOKIES or not value:
+            continue
+        domain = (getattr(cookie, 'domain', '') or '').lower()
+        if 'youtube' not in domain and 'google' not in domain:
+            continue
+        try:
+            exp = int(getattr(cookie, 'expires', None) or 0)
+        except (TypeError, ValueError):
+            exp = 0
+        if exp == 0 or exp >= now:
+            return True
+    return False
  
 class _GrowingTSHandler(BaseHTTPRequestHandler):
     """Sirve un MPEG-TS que ffmpeg sigue escribiendo."""
@@ -305,6 +397,9 @@ class YouTubeHandler:
         self._loading_title_text = ''
         self._loading_video_id = None
         self._thumb_photos = {}
+        self._session_override = None
+        self._session_override_reason = ''
+        self._session_listeners = []
         cleanup_youtube_temp_dirs()
 
     def stop_pipeline(self):
@@ -388,7 +483,11 @@ class YouTubeHandler:
             stream = None
             try:
                 try:
-                    self.export_cookies_from_browser(silent=True)
+                    path = self.export_cookies_from_browser(silent=True)
+                    if path:
+                        self._session_override = None
+                        self._session_override_reason = ''
+                    self.notify_session()
                 except Exception as exc:
                     print(f"[YouTubeHandler] No se pudieron exportar cookies: {exc}")
                 stream = self.get_best_vlc_url(url)
@@ -399,9 +498,12 @@ class YouTubeHandler:
                 if gen != self._play_gen:
                     return
                 if err:
+                    self.mark_session_from_error(err)
                     messagebox.showerror("Error", f"Error al procesar el vídeo: {err}")
                     self.open_in_browser(url)
                     return
+                if not stream:
+                    self.mark_session_from_error(getattr(self, '_last_extract_error', None))
                 self._begin_playback(url, stream, force_pulse, show_progress, is_sequential)
 
             self._ui_after(cont)
@@ -794,9 +896,17 @@ class YouTubeHandler:
             bg=colors['bg'],
             fg=colors['text'],
         ).pack(pady=(50, 10))
+        session = self.session_view()
+        if not session.get('ok'):
+            detail = youtube_auth_help().replace('\n', ' ')
+        else:
+            detail = (
+                "YouTube está limitando el acceso (a menudo un 429). "
+                "Espera un minuto y prueba otra vez, o ábrelo en el navegador."
+            )
         tk.Label(
             info_frame,
-            text="YouTube está limitando el acceso (a menudo un 429). Espera un minuto y prueba otra vez, o ábrelo en el navegador.",
+            text=detail,
             font=get_font(10),
             bg=colors['bg'],
             fg=colors['text_muted'],
@@ -816,6 +926,20 @@ class YouTubeHandler:
             activeforeground=colors['text'],
             relief=tk.FLAT,
         ).pack(pady=10)
+        if not session.get('ok'):
+            tk.Button(
+                info_frame,
+                text="Reexportar cookies",
+                font=get_font(10),
+                command=self.reexport_youtube_cookies,
+                padx=12,
+                pady=6,
+                bg=colors['surface_alt'],
+                fg=colors['text'],
+                activebackground=colors['border'],
+                activeforeground=colors['text'],
+                relief=tk.FLAT,
+            ).pack(pady=(0, 10))
 
     def _ffmpeg_header_block(self, headers):
         parts = []
@@ -1078,7 +1202,11 @@ class YouTubeHandler:
                     channels.append((title, video_url))
                 return channels
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo obtener la playlist: {e}")
+            self.mark_session_from_error(e)
+            if youtube_auth_blocked(e):
+                messagebox.showerror("Sesión YouTube", youtube_auth_help())
+            else:
+                messagebox.showerror("Error", f"No se pudo obtener la playlist: {e}")
             return None
            
     def download_youtube_video(self, url=None):
@@ -1124,7 +1252,11 @@ class YouTubeHandler:
                                f"Iniciando descarga de '{video_title}'.\nSe te notificará cuando termine.")
                 
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo iniciar la descarga: {str(e)}")
+            self.mark_session_from_error(e)
+            if youtube_auth_blocked(e):
+                messagebox.showerror("Sesión YouTube", youtube_auth_help())
+            else:
+                messagebox.showerror("Error", f"No se pudo iniciar la descarga: {str(e)}")
             
     def _execute_download(self, url, filepath, title):
         """Ejecuta la descarga del vídeo de YouTube."""
@@ -1146,15 +1278,21 @@ class YouTubeHandler:
             ))
             
         except Exception as e:
-            # Capturar el error y mostrarlo
-            error_message = str(e)
-            self.video_player.window.after(0, lambda msg=error_message: messagebox.showerror(
-                "Error de descarga", 
-                f"No se pudo descargar '{title}':\n{msg}\n\nPosibles soluciones:\n"
-                f"1. Verifica que el enlace sea accesible\n"
-                f"2. Prueba con otro vídeo\n"
-                f"3. Comprueba tu conexión a internet"
-            ))
+            self.mark_session_from_error(e)
+            if youtube_auth_blocked(e):
+                self.video_player.window.after(0, lambda: messagebox.showerror(
+                    "Sesión YouTube",
+                    youtube_auth_help(),
+                ))
+            else:
+                error_message = str(e)
+                self.video_player.window.after(0, lambda msg=error_message: messagebox.showerror(
+                    "Error de descarga",
+                    f"No se pudo descargar '{title}':\n{msg}\n\nPosibles soluciones:\n"
+                    f"1. Verifica que el enlace sea accesible\n"
+                    f"2. Prueba con otro vídeo\n"
+                    f"3. Comprueba tu conexión a internet"
+                ))
             
             # Intentar eliminar archivo parcial si existe
             if os.path.exists(filepath):
@@ -1308,13 +1446,21 @@ class YouTubeHandler:
                         stream['title'] = info.get('title') or ''
                         stream['subtitles'] = collect_youtube_subs(info)
                         self._write_subs_from_info(ydl, info, stream['subtitles'])
+                        self._last_extract_error = None
+                        self._session_override = None
+                        self._session_override_reason = ''
+                        self.notify_session()
                         return stream
             except Exception as e:
                 last_error = e
+                self._last_extract_error = e
                 print(f"Error al obtener la URL compatible para VLC: {e}")
+                if youtube_auth_blocked(e):
+                    self.mark_session_from_error(e)
                 continue
         if last_error:
             print(f"[yt-dlp] Ningún intento de extracción funcionó: {last_error}")
+            self.mark_session_from_error(last_error)
         return None
 
     def _headers_for_vlc(self, headers):
@@ -1442,46 +1588,138 @@ class YouTubeHandler:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir el navegador: {e}")
 
+    def session_view(self):
+        info = inspect_youtube_session()
+        if self._session_override == 'caducada':
+            info = {
+                'ok': False,
+                'label': 'caducada',
+                'reason': self._session_override_reason or info.get('reason') or 'YouTube pide iniciar sesión',
+            }
+        return info
+
+    def add_session_listener(self, callback):
+        if callback and callback not in self._session_listeners:
+            self._session_listeners.append(callback)
+
+    def remove_session_listener(self, callback):
+        try:
+            self._session_listeners.remove(callback)
+        except ValueError:
+            pass
+
+    def notify_session(self):
+        info = self.session_view()
+        def apply():
+            player = self.video_player
+            refresh = getattr(player, 'update_youtube_session_ui', None)
+            if refresh:
+                refresh(info)
+            for callback in list(self._session_listeners):
+                try:
+                    callback(info)
+                except Exception:
+                    pass
+        self._ui_after(apply)
+
+    def mark_session_from_error(self, exc):
+        if not youtube_auth_blocked(exc):
+            self.notify_session()
+            return
+        self._session_override = 'caducada'
+        self._session_override_reason = 'YouTube pide iniciar sesión (bot-check)'
+        print('[YouTube] Sesión caducada o bloqueada. Reexporta las cookies del navegador.')
+        self.notify_session()
+
+    def reexport_youtube_cookies(self):
+        """Reexporta cookies del navegador y actualiza el indicador de sesión."""
+        path = self.export_cookies_from_browser(silent=False)
+        if path:
+            self._session_override = None
+            self._session_override_reason = ''
+        self.notify_session()
+        info = self.session_view()
+        if path and info.get('ok'):
+            messagebox.showinfo(
+                "Cookies de YouTube",
+                "Cookies reexportadas. Sesión YouTube: OK.",
+            )
+        elif path:
+            messagebox.showwarning(
+                "Cookies de YouTube",
+                "Se escribieron cookies, pero no hay login vigente.\n"
+                "Abre YouTube en Firefox (o Chrome), inicia sesión y vuelve a reexportar.",
+            )
+        return path
+
     def export_cookies_from_browser(self, output_path=None, silent=False):
-        """Exporta automáticamente las cookies de YouTube desde el navegador predeterminado usando browser-cookie3."""
+        """Exporta cookies de YouTube desde el navegador. No escribe cookies.txt si no hay login vigente."""
         def _error(message):
             if silent:
                 print(f"[YouTubeHandler] {message}")
             else:
                 messagebox.showerror("Error", message)
 
+        def _warn(message):
+            if silent:
+                print(f"[YouTubeHandler] {message}")
+            else:
+                messagebox.showwarning("Cookies de YouTube", message)
+
         try:
             import browser_cookie3
-            if output_path is None:
-                output_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
-            # Intenta obtener cookies de los navegadores más comunes
-            cookies = None
-            try:
-                cookies = browser_cookie3.load(domain_name='youtube.com')
-            except Exception:
-                pass
-            if not cookies:
-                # Prueba navegadores específicos
-                for loader in [browser_cookie3.chrome, browser_cookie3.firefox, browser_cookie3.edge, browser_cookie3.opera]:
-                    try:
-                        cookies = loader(domain_name='youtube.com')
-                        if cookies:
-                            break
-                    except Exception:
-                        continue
-            if not cookies:
-                raise Exception("No se pudieron extraer cookies de ningún navegador compatible. Asegúrate de tener sesión iniciada en YouTube.")
-            # Escribir cookies en formato Netscape
             from http.cookiejar import MozillaCookieJar
-            cj = MozillaCookieJar(output_path)
-            # Añadir cookies extraídas
-            for c in cookies:
-                cj.set_cookie(c)
-            cj.save(ignore_discard=True, ignore_expires=True)
-            return output_path
         except ImportError:
             _error("Falta el módulo browser-cookie3. Instálalo con: pip install browser-cookie3")
             return None
+
+        if output_path is None:
+            output_path = cookies_file_path()
+
+        loaders = (
+            ('firefox', getattr(browser_cookie3, 'firefox', None)),
+            ('chrome', getattr(browser_cookie3, 'chrome', None)),
+            ('chromium', getattr(browser_cookie3, 'chromium', None)),
+            ('brave', getattr(browser_cookie3, 'brave', None)),
+            ('edge', getattr(browser_cookie3, 'edge', None)),
+            ('opera', getattr(browser_cookie3, 'opera', None)),
+        )
+        cookies = None
+        source = None
+        for name, loader in loaders:
+            if not loader:
+                continue
+            try:
+                jar = loader(domain_name='youtube.com')
+            except Exception:
+                continue
+            if jar and _jar_has_live_youtube_login(jar):
+                cookies = jar
+                source = name
+                break
+        if not cookies:
+            _warn(
+                "No hay sesión de YouTube vigente en el navegador.\n"
+                "Abre YouTube en Firefox (o Chrome), inicia sesión y vuelve a reexportar.\n"
+                "No se ha escrito un cookies.txt vacío o sin login."
+            )
+            return None
+        try:
+            cj = MozillaCookieJar(output_path)
+            for cookie in cookies:
+                try:
+                    cj.set_cookie(cookie)
+                except Exception:
+                    continue
+            if not _jar_has_live_youtube_login(cj):
+                _warn(
+                    "Las cookies del navegador no incluyen un login de YouTube vigente.\n"
+                    "No se ha sobrescrito cookies.txt."
+                )
+                return None
+            cj.save(ignore_discard=True, ignore_expires=True)
+            print(f"[YouTube] Cookies exportadas desde {source} → {output_path}")
+            return output_path
         except Exception as e:
             _error(f"No se pudieron exportar las cookies del navegador: {e}")
             return None
