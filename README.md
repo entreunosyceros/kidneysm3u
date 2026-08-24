@@ -1,6 +1,7 @@
 # Kidneysm3u
-
-![about-kidneys](https://github.com/user-attachments/assets/2a90ab24-4402-42cb-8c85-5c98be00c1b2)
+<p align="center">
+<img width="902" height="693" alt="about-kidneysm3u" src="https://github.com/user-attachments/assets/1ded588f-0fed-4432-afcd-7e00f782fcae" />
+</p>
 
 Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar listas M3U/M3U8, IPTV y YouTube (vídeos, Shorts, listas y canales).
 
