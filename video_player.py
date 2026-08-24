@@ -112,6 +112,9 @@ class VideoPlayer:
         self._known_duration_ms = 0
         self._yt_via_pipe = False
         self._yt_start_offset_ms = 0
+        self._yt_resume_s = 0
+        self._last_yt_resume_save = 0
+        self._playing_youtube = False
         self._pipe_ready = False
         self._playlist_source = ''
         self._playlist_kind = ''
@@ -827,6 +830,7 @@ class VideoPlayer:
                     pass
 
             # Guardar datos y limpiar temporizadores
+            self.save_youtube_resume()
             self._save_window_geometry()
             app_config.set_volume(self.volume)
             self.save_favorites()
@@ -1182,6 +1186,7 @@ class VideoPlayer:
             
     def play_channel(self, index):
         if 0 <= index < len(self.channels):
+            self.save_youtube_resume()
             name, url = self.channels[index]
             self.current_channel = index
             app_config.remember_channel(index, name, url)
@@ -1205,6 +1210,7 @@ class VideoPlayer:
                 
             self.show_controls_and_menu()
             if "youtube.com" in url or "youtu.be" in url:
+                self._playing_youtube = True
                 self.youtube_handler.play_youtube_url(
                     url, 
                     force_pulse=True, 
@@ -1226,6 +1232,7 @@ class VideoPlayer:
             messagebox.showerror("Error de reproducción", f"No se pudo reproducir el canal '{name}'.")
             return
         self._media_started = False
+        self._playing_youtube = False
         kind = classify_iptv_url(url)
         print(f"[IPTV] '{name}' → {describe_iptv_url(url)} tipo={kind}")
         if kind == 'container':
@@ -1550,7 +1557,7 @@ class VideoPlayer:
         threading.Thread(target=producer, daemon=True).start()
         threading.Thread(target=wait_and_play, daemon=True).start()
 
-    def play_video_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, http_headers=None, on_fail=None, fail_after_s=8, local_file=False, duration_s=None, subtitle_path=None):
+    def play_video_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, http_headers=None, on_fail=None, fail_after_s=8, local_file=False, duration_s=None, subtitle_path=None, start_s=0):
         try:
             for widget in self.video_frame.winfo_children():
                 widget.destroy()
@@ -1567,6 +1574,17 @@ class VideoPlayer:
                 self.show_youtube_progress_bar()
             else:
                 self.hide_progress_bar()
+            try:
+                start_s = float(start_s or 0)
+            except (TypeError, ValueError):
+                start_s = 0
+            self._yt_resume_s = start_s if start_s >= app_config.YT_RESUME_MIN_S and not local_file else 0
+            if self._yt_resume_s:
+                self._set_progress_ui(int(self._yt_resume_s * 1000))
+            elif local_file:
+                offset = int(getattr(self, '_yt_start_offset_ms', 0) or 0)
+                if offset:
+                    self._set_progress_ui(offset)
             
             # Configurar event manager si es reproducción secuencial
             if is_sequential and not hasattr(self, '_current_event_manager'):
@@ -1622,6 +1640,9 @@ class VideoPlayer:
             if subtitle_path and os.path.isfile(subtitle_path):
                 options.append(f':sub-file={subtitle_path}')
                 print(f"[VLC] sub-file={subtitle_path}")
+            if self._yt_resume_s:
+                options.append(f':start-time={self._yt_resume_s:.1f}')
+                print(f"[VLC] start-time={self._yt_resume_s:.1f}s")
             for option in options:
                 media.add_option(option)
             self.player.set_media(media)
@@ -1661,6 +1682,7 @@ class VideoPlayer:
         playing = state in (vlc.State.Playing, vlc.State.Buffering, vlc.State.Paused)
         if playing:
             self._youtube_fail_cb = None
+            self._apply_pending_youtube_resume()
             if hasattr(self, 'youtube_handler') and self.youtube_handler:
                 self.youtube_handler.hide_loading()
             return
@@ -1714,6 +1736,54 @@ class VideoPlayer:
         if raw < 0:
             raw = 0
         return raw + int(getattr(self, '_yt_start_offset_ms', 0) or 0)
+
+    def _current_youtube_id(self):
+        handler = getattr(self, 'youtube_handler', None)
+        url = ''
+        if handler:
+            url = getattr(handler, '_current_url', '') or ''
+        if not url and self.current_channel is not None:
+            try:
+                url = self.channels[self.current_channel][1]
+            except (IndexError, TypeError):
+                url = ''
+        if 'youtube.com' not in url and 'youtu.be' not in url:
+            return None
+        if not handler:
+            return None
+        return handler.extract_youtube_id(url)
+
+    def save_youtube_resume(self):
+        if not getattr(self, '_playing_youtube', False):
+            return
+        video_id = self._current_youtube_id()
+        if not video_id:
+            return
+        elapsed_ms = self._playback_elapsed_ms()
+        duration_ms = self._media_length_ms()
+        app_config.remember_youtube_position(
+            video_id,
+            elapsed_ms / 1000.0,
+            (duration_ms / 1000.0) if duration_ms else None,
+        )
+        self._last_yt_resume_save = time.time()
+
+    def clear_youtube_resume(self):
+        video_id = self._current_youtube_id()
+        if video_id:
+            app_config.clear_youtube_position(video_id)
+
+    def _apply_pending_youtube_resume(self):
+        pending = float(getattr(self, '_yt_resume_s', 0) or 0)
+        self._yt_resume_s = 0
+        if pending < app_config.YT_RESUME_MIN_S:
+            return
+        target_ms = int(pending * 1000)
+        elapsed = self._playback_elapsed_ms()
+        if elapsed < target_ms - 2500:
+            self._apply_seek(target_ms)
+        else:
+            self._set_progress_ui(max(elapsed, target_ms))
 
     def _set_progress_ui(self, elapsed_ms, length_ms=None):
         if length_ms is None:
@@ -1806,6 +1876,8 @@ class VideoPlayer:
                     elif hint is not None and time.time() >= until:
                         self._seek_hint_ms = None
                     self._set_progress_ui(elapsed)
+                    if active and time.time() - getattr(self, '_last_yt_resume_save', 0) >= 20:
+                        self.save_youtube_resume()
         except Exception as e:
             print(f"Error actualizando tiempo: {e}")
         self.update_time_job = self.window.after(250, self.update_time)
@@ -1871,6 +1943,7 @@ class VideoPlayer:
             title = title or existing
         elif not existing:
             self.add_channel_to_list(title or 'YouTube', url)
+        self._playing_youtube = True
         self.youtube_handler.play_youtube_url(
             url,
             force_pulse=True,
@@ -1979,6 +2052,7 @@ class VideoPlayer:
     def stop(self):
         """Detiene la reproducción del vídeo actual y reinicia el estado del reproductor."""
         try:
+            self.save_youtube_resume()
             # Usar método de limpieza segura
             self._cleanup_vlc_player()
             # Ocultar la barra de progreso
@@ -2162,6 +2236,7 @@ class VideoPlayer:
             print(f"Estado actual: {self.player.get_state() if self.player else 'No hay reproductor'}")
             print(f"Reproducción secuencial: {self.is_sequential_playback}")
             print(f"Índice actual: {self.current_playlist_index}")
+            self.clear_youtube_resume()
             
             if not self.player:
                 print("No hay reproductor activo")

@@ -2,10 +2,14 @@
 
 import json
 import os
+import time
 import tkinter as tk
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 MAX_RECENT = 12
+MAX_YT_RESUME = 80
+YT_RESUME_MIN_S = 15
+YT_RESUME_END_S = 20
 
 _DEFAULTS = {
     'theme': 'dark',
@@ -29,6 +33,7 @@ _DEFAULTS = {
         'channel_name': '',
         'channel_url': '',
     },
+    'youtube_resume': {},
 }
 
 _cache = None
@@ -150,6 +155,84 @@ def remember_channel(index, name, url):
             'channel_url': url or '',
         },
     })
+
+
+def _yt_resume_seconds_value(entry):
+    if isinstance(entry, (int, float)):
+        return float(entry)
+    if isinstance(entry, dict):
+        try:
+            return float(entry.get('s') or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    return 0.0
+
+
+def _yt_resume_near_end(seconds, duration_s):
+    try:
+        duration_s = float(duration_s or 0)
+    except (TypeError, ValueError):
+        duration_s = 0.0
+    if duration_s <= 0 or seconds < 0:
+        return False
+    margin = min(YT_RESUME_END_S, max(5.0, duration_s * 0.05))
+    return (duration_s - seconds) <= margin
+
+
+def youtube_resume_seconds(video_id, duration_s=None):
+    video_id = str(video_id or '').strip()
+    if len(video_id) != 11:
+        return 0.0
+    seconds = _yt_resume_seconds_value((load().get('youtube_resume') or {}).get(video_id))
+    if seconds < YT_RESUME_MIN_S:
+        return 0.0
+    if _yt_resume_near_end(seconds, duration_s):
+        clear_youtube_position(video_id)
+        return 0.0
+    return seconds
+
+
+def remember_youtube_position(video_id, seconds, duration_s=None):
+    video_id = str(video_id or '').strip()
+    if len(video_id) != 11:
+        return
+    try:
+        seconds = float(seconds or 0)
+    except (TypeError, ValueError):
+        return
+    data = load()
+    resume = dict(data.get('youtube_resume') or {})
+    if seconds < YT_RESUME_MIN_S:
+        return
+    if _yt_resume_near_end(seconds, duration_s):
+        if video_id in resume:
+            resume.pop(video_id, None)
+            data['youtube_resume'] = resume
+            save()
+        return
+    resume[video_id] = {'s': int(seconds), 'updated': int(time.time())}
+    if len(resume) > MAX_YT_RESUME:
+        ordered = sorted(
+            resume.items(),
+            key=lambda item: item[1].get('updated', 0) if isinstance(item[1], dict) else 0,
+        )
+        for key, _unused in ordered[: len(resume) - MAX_YT_RESUME]:
+            resume.pop(key, None)
+    data['youtube_resume'] = resume
+    save()
+
+
+def clear_youtube_position(video_id):
+    video_id = str(video_id or '').strip()
+    if not video_id:
+        return
+    data = load()
+    resume = dict(data.get('youtube_resume') or {})
+    if video_id not in resume:
+        return
+    resume.pop(video_id, None)
+    data['youtube_resume'] = resume
+    save()
 
 
 def remember_window(name, geometry):

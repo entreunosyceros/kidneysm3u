@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 import tkinter as tk
 from tkinter import messagebox, simpledialog, filedialog, ttk
+import app_config
 
 
 YT_TEMP_PREFIX = 'kidneys_yt_'
@@ -345,10 +346,14 @@ class YouTubeHandler:
 
     def play_youtube_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, title=None):
         """Reproduce un vídeo de YouTube dentro del reproductor integrado."""
+        save_resume = getattr(self.video_player, 'save_youtube_resume', None)
+        if save_resume:
+            save_resume()
         video_id = self.extract_youtube_id(url)
         if not video_id:
             messagebox.showerror("Error", "No se pudo extraer el ID del vídeo de YouTube")
             return
+        self.video_player._playing_youtube = True
 
         gen = self._new_play_gen()
         self._current_url = url
@@ -357,8 +362,13 @@ class YouTubeHandler:
             'show_progress': show_progress,
             'is_sequential': is_sequential,
         }
+        resume_s = app_config.youtube_resume_seconds(video_id)
+        if resume_s:
+            status = f"Reanudando en {self._resume_clock(resume_s)}…"
+        else:
+            status = "Obteniendo vídeo de YouTube…"
         self._show_loading(
-            "Obteniendo vídeo de YouTube…",
+            status,
             video_id=video_id,
             title=title,
         )
@@ -392,15 +402,23 @@ class YouTubeHandler:
 
     def _begin_playback(self, url, stream, force_pulse, show_progress, is_sequential):
         subs = (stream or {}).get('subtitles') or []
+        video_id = self.extract_youtube_id(url)
+        resume_s = app_config.youtube_resume_seconds(
+            video_id,
+            (stream or {}).get('duration'),
+        )
         if stream:
             self._direct_url = stream.get('url') or ''
             self._direct_headers = stream.get('headers') or {}
             if stream.get('title'):
                 self._set_loading_title(stream['title'])
                 self._sync_sidebar_title(url, stream['title'])
+        if resume_s:
+            self._set_loading_status(f"Reanudando en {self._resume_clock(resume_s)}…")
         if stream and self._stream_ok_for_vlc(stream):
             print(f"[YouTubeHandler] Reproduciendo en el reproductor: {stream['url'][:80]}…")
-            self._set_loading_status("Abriendo el vídeo…")
+            if not resume_s:
+                self._set_loading_status("Abriendo el vídeo…")
 
             def fallback():
                 print("[YouTubeHandler] VLC no pudo abrir el stream directo; retransmitiendo la URL ya extraída")
@@ -409,6 +427,7 @@ class YouTubeHandler:
                     duration=stream.get('duration'),
                     source_url=stream.get('url'),
                     http_headers=stream.get('headers'),
+                    start_s=resume_s,
                 ):
                     self._show_playback_error(url)
 
@@ -421,6 +440,7 @@ class YouTubeHandler:
                 duration_s=stream.get('duration'),
                 fail_after_s=20,
                 on_fail=fallback,
+                start_s=resume_s,
             )
             self.video_player.set_youtube_subtitles(subs)
             return
@@ -433,11 +453,23 @@ class YouTubeHandler:
             duration=duration,
             source_url=(stream or {}).get('url'),
             http_headers=(stream or {}).get('headers'),
+            start_s=resume_s,
         ):
             self.video_player.set_youtube_subtitles(subs)
             return
 
         self._show_playback_error(url)
+
+    def _resume_clock(self, seconds):
+        formatter = getattr(self.video_player, '_format_clock', None)
+        if formatter:
+            return formatter(int(float(seconds) * 1000))
+        total = max(0, int(float(seconds)))
+        minutes, secs = divmod(total, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours:
+            return f'{hours}:{minutes:02d}:{secs:02d}'
+        return f'{minutes:02d}:{secs:02d}'
 
     def _new_play_gen(self):
         self._play_gen = getattr(self, '_play_gen', 0) + 1
@@ -840,6 +872,12 @@ class YouTubeHandler:
                     header_block = self._ffmpeg_header_block(http_headers)
                     if header_block:
                         ffmpeg_cmd.extend(['-headers', header_block])
+                    try:
+                        start_at = float(start_s or 0)
+                    except (TypeError, ValueError):
+                        start_at = 0
+                    if start_at >= 0.5:
+                        ffmpeg_cmd.extend(['-ss', f'{start_at:.1f}'])
                     ffmpeg_cmd.extend([
                         '-i', source_url,
                         '-c', 'copy', '-bsf:v', 'h264_mp4toannexb',

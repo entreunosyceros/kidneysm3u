@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | `favoritos.json` | Favoritos del reproductor | Viene en el repo; si falta, el reproductor usa una lista vacía |
 | `enlaces.json` | Enlaces guardados en el gestor | Se crea vacío al arrancar |
-| `config.json` | Volumen, geometría de ventanas, última lista lateral y canal (sin autoplay) | Se crea con valores por defecto al arrancar |
+| `config.json` | Volumen, geometría de ventanas, última lista lateral y canal (sin autoplay), y el segundo de YouTube para reanudar | Se crea con valores por defecto al arrancar |
 | `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube si hay sesión en el navegador. Detalle en [YouTube](youtube.md#cookies) |
 | `.venv/` | Entorno Python | `run_app.py` lo recrea ([instalación](instalacion.md)) |
 
