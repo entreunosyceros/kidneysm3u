@@ -55,7 +55,9 @@ Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short 
 
 ## Descargas
 
-![descarga-youtube](https://github.com/user-attachments/assets/5a3592f5-3ef4-46a1-a996-be542638515e)
+<p align="center">
+<img width="779" height="594" alt="descarga-youtube" src="https://github.com/user-attachments/assets/e60eefc5-4765-420f-a282-b44c1c096e8a" />
+</p>
 
 - Vídeo + audio, o **solo audio** (hace falta `ffmpeg` en el PATH).
 - Desde la búsqueda, el menú contextual o **Youtube → Descargar vídeo de YouTube**.
