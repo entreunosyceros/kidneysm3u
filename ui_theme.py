@@ -182,8 +182,8 @@ def apply_theme(root, dark=False):
     root.option_add('*Menu.foreground', colors['menu_fg'])
     root.option_add('*Menu.activeBackground', colors['menu_active_bg'])
     root.option_add('*Menu.activeForeground', colors['menu_active_fg'])
-    root.option_add('*Menu.relief', 'flat')
-    root.option_add('*Menu.borderWidth', 0)
+    root.option_add('*Menu.relief', 'solid')
+    root.option_add('*Menu.borderWidth', 1)
     root.option_add('*TCombobox*Listbox.background', colors['list_bg'])
     root.option_add('*TCombobox*Listbox.foreground', colors['list_fg'])
     root.option_add('*TCombobox*Listbox.selectBackground', colors['select_bg'])
@@ -480,8 +480,8 @@ def style_menu(menu):
             activebackground=colors['menu_active_bg'],
             activeforeground=colors['menu_active_fg'],
             disabledforeground=colors['disabled_fg'],
-            borderwidth=0,
-            relief='flat',
+            borderwidth=1,
+            relief='solid',
         )
     except tk.TclError:
         pass
@@ -622,6 +622,13 @@ def make_control_icons(color, size=20):
     d.arc([p + 9, cy - 4, p + 15, cy + 4], start=-55, end=55, fill=fill, width=2)
     d.arc([p + 11, cy - 7, p + 19, cy + 7], start=-55, end=55, fill=fill, width=2)
     icons['audio'] = photo(img)
+
+    img = blank()
+    d = ImageDraw.Draw(img)
+    bar(d, p + 6, size - p - 2, size - p, size - p)
+    bar(d, p + 3, cy - 1, size - p, cy + 1)
+    bar(d, p, p + 2, size - p, p + 4)
+    icons['quality'] = photo(img)
 
     img = blank()
     d = ImageDraw.Draw(img)

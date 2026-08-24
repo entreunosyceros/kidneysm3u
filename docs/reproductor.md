@@ -20,9 +20,11 @@ Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 
 ## Controles
 
-Play/pausa, stop, salto atrás/adelante, **audio**, **subtítulos**, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
+Play/pausa, stop, salto atrás/adelante, **calidad / audio**, **subtítulos**, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
 
-Los botones de audio y subtítulos (y los menús **Audio** / **Subtítulos**) listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC (hace falta más de una de audio para poder elegir). En YouTube los subtítulos oficiales o automáticos se descargan al elegirlos; el audio extra (doblajes) no está, porque el vídeo llega en una sola pista.
+**Calidad / audio** (botón y menú): en YouTube eliges **360p** o **720p** (se recuerda; si cambias con el vídeo en marcha, se recarga desde el segundo actual). En IPTV, si el stream trae varias pistas de audio, aparecen debajo para cambiar de idioma. YouTube solo trae una pista de audio (no hay doblajes).
+
+Los **subtítulos** listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC. En YouTube los subtítulos oficiales o automáticos se descargan al elegirlos.
 
 En **pantalla completa**, menú y controles se ocultan a los 3 segundos sin usarlos. Los botones de la barra siguen sirviendo para cambiar pista.
 
