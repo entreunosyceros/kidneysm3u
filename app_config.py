@@ -11,6 +11,8 @@ MAX_YT_RESUME = 80
 YT_RESUME_MIN_S = 15
 YT_RESUME_END_S = 20
 
+COOKIE_BROWSERS = ('auto', 'firefox', 'chrome', 'chromium', 'brave', 'edge')
+
 _DEFAULTS = {
     'theme': 'dark',
     'language': 'es',
@@ -21,6 +23,9 @@ _DEFAULTS = {
         'tvg-logo="',
     ],
     'volume': 50,
+    'download_dir': '',
+    'cookie_browser': 'auto',
+    'remember_last_list': True,
     'windows': {
         'main': '',
         'player': '',
@@ -85,6 +90,15 @@ def save(updates=None):
     return data
 
 
+def get_theme():
+    theme = str(load().get('theme') or 'dark').strip().lower()
+    return 'dark' if theme in ('dark', 'equilux') else 'light'
+
+
+def set_theme(theme):
+    save({'theme': 'dark' if theme in ('dark', 'equilux', True) else 'light'})
+
+
 def get_volume():
     try:
         return max(0, min(100, int(load().get('volume', 50))))
@@ -97,6 +111,49 @@ def set_volume(value):
         save({'volume': max(0, min(100, int(value)))})
     except (TypeError, ValueError):
         pass
+
+
+def suggested_download_dir():
+    candidates = [
+        os.environ.get('XDG_DOWNLOAD_DIR'),
+        os.path.expanduser('~/Descargas'),
+        os.path.expanduser('~/Downloads'),
+        os.path.expanduser('~'),
+    ]
+    for path in candidates:
+        path = os.path.expanduser(path) if path else ''
+        if path and os.path.isdir(path):
+            return path
+    return os.path.expanduser('~')
+
+
+def get_download_dir():
+    stored = str(load().get('download_dir') or '').strip()
+    if stored and os.path.isdir(stored):
+        return stored
+    return suggested_download_dir()
+
+
+def set_download_dir(path):
+    save({'download_dir': str(path or '').strip()})
+
+
+def get_cookie_browser():
+    value = str(load().get('cookie_browser') or 'auto').strip().lower()
+    return value if value in COOKIE_BROWSERS else 'auto'
+
+
+def set_cookie_browser(name):
+    value = str(name or 'auto').strip().lower()
+    save({'cookie_browser': value if value in COOKIE_BROWSERS else 'auto'})
+
+
+def get_remember_last_list():
+    return bool(load().get('remember_last_list', True))
+
+
+def set_remember_last_list(value):
+    save({'remember_last_list': bool(value)})
 
 
 def get_youtube_quality():
@@ -117,17 +174,19 @@ def remember_playlist(path, kind='file'):
     path = str(path).strip()
     recent = [item for item in load().get('recent_files') or [] if item != path]
     recent.insert(0, path)
-    save({
-        'recent_files': recent[:MAX_RECENT],
-        'session': {
+    updates = {'recent_files': recent[:MAX_RECENT]}
+    if get_remember_last_list():
+        updates['session'] = {
             'playlist': path,
             'playlist_kind': kind,
             'sidebar': [],
-        },
-    })
+        }
+    save(updates)
 
 
 def remember_sidebar(items, source='', kind='items'):
+    if not get_remember_last_list():
+        return
     snapshot = []
     for entry in items or []:
         if isinstance(entry, dict):
@@ -161,6 +220,8 @@ def clear_session_list():
 
 
 def remember_channel(index, name, url):
+    if not get_remember_last_list():
+        return
     save({
         'session': {
             'channel_index': index,

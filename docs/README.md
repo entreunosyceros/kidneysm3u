@@ -9,7 +9,7 @@ Dentro de la aplicación: **Ayuda → Documentación**. El texto se muestra en e
 ## Temas
 
 1. **[Instalación](instalacion.md)** — Python, VLC, ffmpeg, paquete `.deb`, Windows y qué ocurre si borras `.venv`.
-2. **[Uso](uso.md)** — Primeros pasos: arrancar, cargar una lista y abrir el reproductor.
+2. **[Uso](uso.md)** — Primeros pasos: arrancar, cargar una lista, abrir el reproductor y preferencias.
 3. **[Listas M3U](listas-m3u.md)** — Filtro de la ventana principal y utilidad para ordenar canales.
 4. **[YouTube](youtube.md)** — Búsqueda (vídeos, Shorts, listas, canales), cookies, playlists y descargas.
 5. **[Reproductor](reproductor.md)** — Controles, atajos, favoritos, lista lateral, pantalla completa y bandeja del sistema.

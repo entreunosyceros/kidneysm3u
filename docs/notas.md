@@ -7,6 +7,7 @@
 - **VLC embebido** (`python-vlc`): decodificación por software (`avcodec-hw=none`) para evitar ruido de VA-API en NVIDIA. Audio: ALSA en IPTV, Pulse en YouTube cuando hace falta.
 - **YouTube**: [yt-dlp](https://github.com/yt-dlp/yt-dlp) elige un stream que VLC pueda abrir (audio+vídeo juntos si existe; se evitan DASH/HLS difíciles). La calidad se pide en **Calidad / audio** (360p o 720p). Si falla, hay un relevo local.
 - **IPTV**: se usa la URL del M3U. No se inventan rutas Xtream. Un 302 del panel lo sigue VLC; si el nodo de vídeo cierra la conexión, no hay imagen. Ver [listas M3U](listas-m3u.md#reproducción-iptv).
+- **Listas grandes**: la barra lateral usa un Treeview. Con `group-title` los grupos arrancan plegados y se rellenan al abrirlos; sin grupos y con miles de entradas, solo se dibujan las filas visibles.
 - **Audio y subtítulos**: VLC lista las pistas del stream (típico en IPTV/HLS) en **Calidad / audio**. YouTube aporta subtítulos descargados (oficiales o auto); no hay cambio de idioma de audio.
 - No se usa `--no-hw-dec`: en VLC 3.0.20 esa opción puede hacer que `vlc.Instance()` falle.
 
@@ -18,7 +19,7 @@
 | --- | --- | --- |
 | `favoritos.json` | Favoritos del reproductor | Viene en el repo; si falta, el reproductor usa una lista vacía |
 | `enlaces.json` | Enlaces guardados en el gestor | Se crea vacío al arrancar |
-| `config.json` | Volumen, geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube para reanudar y calidad 360p/720p | Se crea con valores por defecto al arrancar |
+| `config.json` | Preferencias (tema, volumen, carpeta de descargas, navegador de cookies, calidad YouTube, recordar última lista), geometría de ventanas, última lista lateral y canal (sin autoplay) y segundo de YouTube para reanudar | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
 | `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube o al pulsar **Reexportar cookies**, solo si hay login vigente en el navegador. El indicador **Sesión YouTube: OK / caducada** avisa si hace falta reexportar. Detalle en [YouTube](youtube.md#cookies) |
 | `.venv/` | Entorno Python | `run_app.py` lo recrea ([instalación](instalacion.md)) |
 

@@ -10,7 +10,7 @@ La ventana principal puede leer listas locales o por URL, también si son muy gr
 - Puedes **sustituir** el archivo de salida o **añadir** la nueva búsqueda al final del existente.
 - Los comentarios entre `#EXTINF` y la URL se ignoran; no se tratan como canales las imágenes sueltas.
 
-Después abre el [reproductor](reproductor.md) con esa lista. También puedes cargar un M3U directo desde **Reproducir → Cargar archivo local** o **Cargar URL**.
+Después abre el [reproductor](reproductor.md) con esa lista. También puedes cargar un M3U directo desde **Reproducir → Cargar archivo local** o **Cargar URL**. En el reproductor, una lista enorme no carga los 10.000 canales de golpe: se ven los grupos y cada uno se rellena al abrirlo.
 
 Los enlaces que guardes en el gestor de enlaces quedan en `enlaces.json` dentro de la carpeta del programa.
 

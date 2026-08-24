@@ -7,6 +7,7 @@ import re
 import requests
 from urllib.parse import unquote
 from ui_theme import style_window, set_window_icon, center_window
+import app_config
 
 class DownloadManager:
     def __init__(self, parent):
@@ -21,7 +22,7 @@ class DownloadManager:
         
         # Variables
         self.url = tk.StringVar()
-        self.output_path = tk.StringVar()
+        self.output_path = tk.StringVar(value=app_config.get_download_dir())
         self.filename = tk.StringVar()
         self.is_downloading = False
         
@@ -68,7 +69,11 @@ class DownloadManager:
         ttk.Button(buttons_frame, text="Cancelar", command=self.window.destroy).pack(side=tk.RIGHT)
         
     def browse_output(self):
-        folder = filedialog.askdirectory()
+        folder = filedialog.askdirectory(
+            parent=self.window,
+            title='Carpeta de destino',
+            initialdir=self.output_path.get() or app_config.get_download_dir(),
+        )
         if folder:
             self.output_path.set(folder)
             

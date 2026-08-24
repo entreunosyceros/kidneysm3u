@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from urllib.parse import quote, quote_plus
 from youtube_player import youtube_ydl_opts, youtube_auth_blocked, youtube_auth_help
 from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window
+import app_config
 
 
 def _hashtag_slug(query):
@@ -694,6 +695,7 @@ class YouTubeSearchDialog:
             
             filepath = filedialog.asksaveasfilename(
                 title="Guardar " + ("audio" if audio_only else "vídeo"),
+                initialdir=app_config.get_download_dir(),
                 initialfile=safe_title + default_ext,
                 defaultextension=default_ext,
                 filetypes=file_types + [("Todos los archivos", "*.*")]

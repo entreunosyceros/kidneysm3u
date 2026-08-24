@@ -203,29 +203,48 @@ def collect_youtube_subs(info):
     return items
 
 
-def preferred_youtube_browser():
-    """Elige un navegador que tenga cookies de YouTube, si es posible."""
+def cookie_browser_loaders():
+    """Loaders de browser-cookie3, con el navegador preferido primero."""
     try:
         import browser_cookie3
     except ImportError:
-        return 'firefox'
-    loaders = (
-        ('firefox', getattr(browser_cookie3, 'firefox', None)),
-        ('chrome', getattr(browser_cookie3, 'chrome', None)),
-        ('chromium', getattr(browser_cookie3, 'chromium', None)),
-        ('brave', getattr(browser_cookie3, 'brave', None)),
-        ('edge', getattr(browser_cookie3, 'edge', None)),
-    )
+        return []
+    names = ['firefox', 'chrome', 'chromium', 'brave', 'edge', 'opera']
+    preferred = app_config.get_cookie_browser()
+    if preferred and preferred != 'auto' and preferred in names:
+        names = [preferred] + [name for name in names if name != preferred]
+    loaders = []
+    for name in names:
+        loader = getattr(browser_cookie3, name, None)
+        if loader:
+            loaders.append((name, loader))
+    return loaders
+
+
+def preferred_youtube_browser():
+    """Elige un navegador que tenga cookies de YouTube, si es posible."""
+    configured = app_config.get_cookie_browser()
+    loaders = cookie_browser_loaders()
+    if not loaders:
+        return configured if configured and configured != 'auto' else 'firefox'
+    if configured and configured != 'auto':
+        for name, loader in loaders:
+            if name != configured:
+                continue
+            try:
+                cookies = loader(domain_name='youtube.com')
+                if cookies and any(True for _ in cookies):
+                    return configured
+            except Exception:
+                break
     for name, loader in loaders:
-        if not loader:
-            continue
         try:
             cookies = loader(domain_name='youtube.com')
             if cookies and any(True for _ in cookies):
                 return name
         except Exception:
             continue
-    return 'firefox'
+    return configured if configured and configured != 'auto' else 'firefox'
 
 
 COOKIES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookies.txt')
@@ -855,25 +874,8 @@ class YouTubeHandler:
         if not title or not url or title in ('YouTube', url):
             return
         player = self.video_player
-        updated = False
-        for attr in ('all_channels', 'channels'):
-            items = getattr(player, attr, None)
-            if not items:
-                continue
-            for i, (name, item_url) in enumerate(items):
-                if item_url != url or name == title:
-                    continue
-                items[i] = (title, url)
-                updated = True
-                if attr == 'channels':
-                    try:
-                        box = player.channels_listbox
-                        if i < box.size():
-                            box.delete(i)
-                            box.insert(i, title)
-                    except (tk.TclError, AttributeError):
-                        pass
-        if updated:
+        setter = getattr(player, 'update_sidebar_title', None)
+        if setter and setter(url, title):
             persist = getattr(player, '_persist_sidebar', None)
             if persist:
                 persist()
@@ -1229,6 +1231,7 @@ class YouTubeHandler:
             # Pedimos al usuario dónde guardar el archivo
             filepath = filedialog.asksaveasfilename(
                 title="Guardar vídeo",
+                initialdir=app_config.get_download_dir(),
                 initialfile=safe_title,
                 filetypes=[("Archivos MP4", "*.mp4"), ("Todos los archivos", "*.*")]
             )
@@ -1676,14 +1679,7 @@ class YouTubeHandler:
         if output_path is None:
             output_path = cookies_file_path()
 
-        loaders = (
-            ('firefox', getattr(browser_cookie3, 'firefox', None)),
-            ('chrome', getattr(browser_cookie3, 'chrome', None)),
-            ('chromium', getattr(browser_cookie3, 'chromium', None)),
-            ('brave', getattr(browser_cookie3, 'brave', None)),
-            ('edge', getattr(browser_cookie3, 'edge', None)),
-            ('opera', getattr(browser_cookie3, 'opera', None)),
-        )
+        loaders = cookie_browser_loaders()
         cookies = None
         source = None
         for name, loader in loaders:

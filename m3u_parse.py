@@ -13,14 +13,22 @@ _HLS_EXT = re.compile(r'\.m3u8?(\?.*)?$', re.I)
 IPTV_USER_AGENT = 'VLC/3.0.21'
 
 
+_GROUP_RE = re.compile(r'group-title="([^"]*)"', re.I)
+
+
 def _channel_name(extinf):
     if ',' in extinf:
         return extinf.split(',', 1)[1].strip() or extinf.strip()
     return extinf.strip()
 
 
-def parse_m3u_entries(content):
-    """Devuelve [(nombre, url), ...] ignorando comentarios entre EXTINF y la URL."""
+def _channel_group(extinf):
+    match = _GROUP_RE.search(extinf or '')
+    return (match.group(1).strip() if match else '') or ''
+
+
+def parse_m3u_channels(content):
+    """Devuelve [(nombre, url, grupo), ...] ignorando comentarios entre EXTINF y la URL."""
     if isinstance(content, bytes):
         content = _decode_bytes(content)
     lines = content.replace('\r\n', '\n').replace('\r', '\n').split('\n')
@@ -30,6 +38,7 @@ def parse_m3u_entries(content):
         line = lines[i].strip()
         if line.startswith('#EXTINF'):
             name = _channel_name(line)
+            group = _channel_group(line)
             i += 1
             while i < len(lines):
                 nxt = lines[i].strip()
@@ -42,13 +51,18 @@ def parse_m3u_entries(content):
                     i += 1
                     continue
                 if _URL_RE.match(nxt) or nxt.startswith(('udp:', 'rtp:', 'mms:')):
-                    entries.append((name, nxt))
+                    entries.append((name, nxt, group))
                     i += 1
                     break
                 i += 1
         else:
             i += 1
     return entries
+
+
+def parse_m3u_entries(content):
+    """Devuelve [(nombre, url), ...] ignorando comentarios entre EXTINF y la URL."""
+    return [(name, url) for name, url, _group in parse_m3u_channels(content)]
 
 
 def decode_m3u_bytes(raw):

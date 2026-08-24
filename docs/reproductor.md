@@ -9,16 +9,17 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 ## Lista lateral
 
 - **★ Favoritos** / **Todos** — filtra o restaura el listado.
-- **Limpiar** — vacía la lista de esta sesión (pide confirmación). El aviso queda sobre esta ventana; no pasa al frente la principal. Al volver a abrir el programa se restaura lo último que había; si no había lista, no se muestra nada. No reproduce solo.
+- **Limpiar** — vacía la lista de esta sesión (pide confirmación). El aviso queda sobre esta ventana; no pasa al frente la principal. Si en **Preferencias** está activa «recordar última lista», al volver a abrir el programa se restaura lo último que había; si no había lista, no se muestra nada. No reproduce solo.
 - Cuadro de **búsqueda** — filtra por nombre.
 - Abajo: **Sesión YouTube: OK / caducada** y **Reexportar cookies** (también en el menú **Youtube**). Si YouTube pide login o un bot-check, el indicador pasa a caducada.
 - Al pasar el ratón por un título se ve el nombre completo; al salir, el aviso desaparece.
-- Doble clic — reproduce.
+- Las listas grandes se agrupan por `group-title` y cada grupo se rellena al abrirlo. Si no hay grupos y hay miles de canales, la lista es virtual: solo se pintan las filas visibles.
+- Doble clic — reproduce un canal. Los grupos se abren con el triángulo; cada uno carga sus canales en ese momento.
 - Clic derecho — reproducir desde aquí, favoritos, descargar, eliminar un ítem o vaciar la lista.
 
 Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeos se concatenan a esta lista sin cerrar la búsqueda.
 
-**Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso.
+**Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso. **Reproducir → Preferencias** abre la misma ventana que **Archivo → Preferencias** en la principal.
 
 Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 
@@ -26,7 +27,7 @@ Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 
 Play/pausa, stop, salto atrás/adelante, **calidad / audio**, **subtítulos**, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
 
-**Calidad / audio** (botón y menú): en YouTube eliges **360p** o **720p** (se recuerda; si cambias con el vídeo en marcha, se recarga desde el segundo actual). En IPTV, si el stream trae varias pistas de audio, aparecen debajo para cambiar de idioma. YouTube solo trae una pista de audio (no hay doblajes).
+**Calidad / audio** (botón y menú): en YouTube eliges **360p** o **720p** (también en **Preferencias**; si cambias con el vídeo en marcha, se recarga desde el segundo actual). En IPTV, si el stream trae varias pistas de audio, aparecen debajo para cambiar de idioma. YouTube solo trae una pista de audio (no hay doblajes).
 
 Los **subtítulos** listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC. En YouTube los subtítulos oficiales o automáticos se descargan al elegirlos.
 
