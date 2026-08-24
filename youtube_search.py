@@ -496,7 +496,8 @@ class YouTubeSearchDialog:
             url = self.results[index]
             tipo = self.result_types[index] if hasattr(self, 'result_types') else "video"
             if tipo == "video":
-                self.play_callback(url)
+                label = self.results_listbox.get(index)
+                self.play_callback(url, title=label)
                 self.window.destroy()
             elif tipo == "playlist":
                 self.load_playlist_videos(url)

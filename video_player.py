@@ -1209,7 +1209,8 @@ class VideoPlayer:
                     url, 
                     force_pulse=True, 
                     show_progress=True,
-                    is_sequential=self.is_sequential_playback
+                    is_sequential=self.is_sequential_playback,
+                    title=name,
                 )
                 return
             try:
@@ -1639,17 +1640,19 @@ class VideoPlayer:
             self._schedule_track_refresh()
             self._youtube_fail_cb = on_fail
             self._youtube_fail_deadline = time.time() + max(8, int(fail_after_s))
-            if on_fail:
-                self.window.after(2000, self._check_youtube_stream)
+            self._yt_check_gen = getattr(self, '_yt_check_gen', 0) + 1
+            check_gen = self._yt_check_gen
+            self.window.after(400, lambda g=check_gen: self._check_youtube_stream(g))
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo reproducir el vídeo: {e}")
             if on_fail:
                 on_fail()
 
-    def _check_youtube_stream(self):
+    def _check_youtube_stream(self, gen=None):
         """Si VLC no consigue abrir el stream de YouTube, usa el plan B."""
-        callback = getattr(self, '_youtube_fail_cb', None)
-        if not callback or not self.player:
+        if gen is not None and gen != getattr(self, '_yt_check_gen', 0):
+            return
+        if not self.player:
             return
         try:
             state = self.player.get_state()
@@ -1658,6 +1661,11 @@ class VideoPlayer:
         playing = state in (vlc.State.Playing, vlc.State.Buffering, vlc.State.Paused)
         if playing:
             self._youtube_fail_cb = None
+            if hasattr(self, 'youtube_handler') and self.youtube_handler:
+                self.youtube_handler.hide_loading()
+            return
+        callback = getattr(self, '_youtube_fail_cb', None)
+        if not callback:
             return
         if state == vlc.State.Error:
             self._youtube_fail_cb = None
@@ -1668,7 +1676,7 @@ class VideoPlayer:
             print(f"[VLC] El stream de YouTube no arrancó (estado={state})")
             callback()
             return
-        self.window.after(1500, self._check_youtube_stream)
+        self.window.after(1500, lambda g=gen: self._check_youtube_stream(g))
 
     def start_update_time(self):
         """Inicia la actualización periódica de tiempo de reproducción (sin barra de progreso visible)."""
@@ -1856,21 +1864,19 @@ class VideoPlayer:
             self._playlist_kind = 'items'
         self._persist_sidebar()
 
-    def play_youtube_url(self, url):
-        """Delega la reproducción de YouTube al manejador centralizado, forzando salida pulse y añade a la lista si no está."""
-
-
-        # Obtener título del vídeo antes de reproducir
-        try:
-            with yt_dlp.YoutubeDL(youtube_ydl_opts(skip_download=True)) as ydl:
-                info = ydl.extract_info(url, download=False)
-                title = info.get('title', url)
-        except Exception:
-            title = url
-        # Añadir a la lista si no está
-        if (title, url) not in self.all_channels:
-            self.add_channel_to_list(title, url)
-        self.youtube_handler.play_youtube_url(url, force_pulse=True, show_progress=True)
+    def play_youtube_url(self, url, title=None):
+        """Delega la reproducción de YouTube al manejador y añade el vídeo a la lista si falta."""
+        existing = next((name for name, item_url in self.all_channels if item_url == url), None)
+        if existing and existing not in ('YouTube', url):
+            title = title or existing
+        elif not existing:
+            self.add_channel_to_list(title or 'YouTube', url)
+        self.youtube_handler.play_youtube_url(
+            url,
+            force_pulse=True,
+            show_progress=True,
+            title=title,
+        )
 
     def cargar_videos_playlist(self, canales):
         """Carga los vídeos de una playlist de YouTube como canales en el listado."""
@@ -1977,6 +1983,8 @@ class VideoPlayer:
             self._cleanup_vlc_player()
             # Ocultar la barra de progreso
             self.hide_progress_bar()
+            if hasattr(self, 'youtube_handler') and self.youtube_handler:
+                self.youtube_handler.cancel_pending_play()
         except Exception as e:
             print(f"Error al detener la reproducción: {e}")
         
