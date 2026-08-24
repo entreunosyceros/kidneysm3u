@@ -33,8 +33,9 @@ No dejes un `cookies.txt` vacío: yt-dlp lo usaría y YouTube fallaría. Si YouT
 
 También puedes filtrar por fecha, duración (no aplica a Shorts) y número de resultados.
 
-- Doble clic o **Reproducir** añade el vídeo a la lista lateral y lo pone en marcha.
-- Una **lista** se carga entera en la barra lateral.
+- Doble clic o **Reproducir** añade el vídeo a la lista lateral y lo pone en marcha (cierra la búsqueda).
+- **Añadir a la cola** (o clic derecho) lo deja en la lista de la izquierda **sin cerrar** la ventana ni interrumpir el vídeo en curso. Puedes marcar varios con Ctrl o Mayús. `Ctrl+Enter` hace lo mismo.
+- Una **lista**: **Cargar lista** sustituye la barra lateral; **Añadir lista a la cola** concatena los vídeos.
 - Un **canal** se abre en el navegador.
 
 Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short de la búsqueda.

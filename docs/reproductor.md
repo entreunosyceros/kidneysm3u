@@ -14,6 +14,8 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 - Doble clic — reproduce.
 - Clic derecho — reproducir desde aquí, favoritos, descargar, eliminar un ítem o vaciar la lista.
 
+Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeos se concatenan a esta lista sin cerrar la búsqueda.
+
 **Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso.
 
 Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
