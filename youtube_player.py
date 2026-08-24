@@ -1,4 +1,5 @@
 import yt_dlp
+import json
 import re
 import webbrowser
 import urllib.request
@@ -12,8 +13,9 @@ import threading
 import time
 import atexit
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 import tkinter as tk
-from tkinter import messagebox, simpledialog, filedialog
+from tkinter import messagebox, simpledialog, filedialog, ttk
 
 
 YT_TEMP_PREFIX = 'kidneys_yt_'
@@ -292,6 +294,15 @@ class YouTubeHandler:
         self._sub_429_until = 0
         self._direct_url = ''
         self._direct_headers = {}
+        self._play_gen = 0
+        self._loading_frame = None
+        self._loading_bar = None
+        self._loading_title_label = None
+        self._loading_status_label = None
+        self._loading_thumb_label = None
+        self._loading_title_text = ''
+        self._loading_video_id = None
+        self._thumb_photos = {}
         cleanup_youtube_temp_dirs()
 
     def stop_pipeline(self):
@@ -332,98 +343,401 @@ class YouTubeHandler:
         if url:
             self.play_youtube_url(url)
 
-    def play_youtube_url(self, url, force_pulse=False, show_progress=False, is_sequential=False):
+    def play_youtube_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, title=None):
         """Reproduce un vídeo de YouTube dentro del reproductor integrado."""
-        try:
+        video_id = self.extract_youtube_id(url)
+        if not video_id:
+            messagebox.showerror("Error", "No se pudo extraer el ID del vídeo de YouTube")
+            return
+
+        gen = self._new_play_gen()
+        self._current_url = url
+        self._play_kwargs = {
+            'force_pulse': force_pulse,
+            'show_progress': show_progress,
+            'is_sequential': is_sequential,
+        }
+        self._show_loading(
+            "Obteniendo vídeo de YouTube…",
+            video_id=video_id,
+            title=title,
+        )
+        self.stop_pipeline()
+        self.video_player.clear_youtube_subtitles()
+
+        def work():
+            err = None
+            stream = None
             try:
-                self.export_cookies_from_browser(silent=True)
-            except Exception as e:
-                print(f"[YouTubeHandler] No se pudieron exportar cookies: {e}")
+                try:
+                    self.export_cookies_from_browser(silent=True)
+                except Exception as exc:
+                    print(f"[YouTubeHandler] No se pudieron exportar cookies: {exc}")
+                stream = self.get_best_vlc_url(url)
+            except Exception as exc:
+                err = exc
 
-            video_id = self.extract_youtube_id(url)
-            if not video_id:
-                messagebox.showerror("Error", "No se pudo extraer el ID del vídeo de YouTube")
-                return
+            def cont():
+                if gen != self._play_gen:
+                    return
+                if err:
+                    messagebox.showerror("Error", f"Error al procesar el vídeo: {err}")
+                    self.open_in_browser(url)
+                    return
+                self._begin_playback(url, stream, force_pulse, show_progress, is_sequential)
 
-            self._current_url = url
-            self._play_kwargs = {
-                'force_pulse': force_pulse,
-                'show_progress': show_progress,
-                'is_sequential': is_sequential,
-            }
-            self._show_status("Obteniendo vídeo de YouTube…")
-            self.stop_pipeline()
-            self.video_player.clear_youtube_subtitles()
-            stream = self.get_best_vlc_url(url)
-            subs = (stream or {}).get('subtitles') or []
-            if stream:
-                self._direct_url = stream.get('url') or ''
-                self._direct_headers = stream.get('headers') or {}
-            if stream and self._stream_ok_for_vlc(stream):
-                print(f"[YouTubeHandler] Reproduciendo en el reproductor: {stream['url'][:80]}…")
-                self._clear_video_surface()
+            self._ui_after(cont)
 
-                def fallback():
-                    print("[YouTubeHandler] VLC no pudo abrir el stream directo; retransmitiendo la URL ya extraída")
-                    if not self._play_via_pipe(
-                        url, force_pulse, show_progress, is_sequential,
-                        duration=stream.get('duration'),
-                        source_url=stream.get('url'),
-                        http_headers=stream.get('headers'),
-                    ):
-                        self._show_playback_error(url)
+        threading.Thread(target=work, daemon=True).start()
 
-                self.video_player.play_video_url(
-                    stream['url'],
-                    force_pulse=force_pulse,
-                    show_progress=show_progress,
-                    is_sequential=is_sequential,
+    def _begin_playback(self, url, stream, force_pulse, show_progress, is_sequential):
+        subs = (stream or {}).get('subtitles') or []
+        if stream:
+            self._direct_url = stream.get('url') or ''
+            self._direct_headers = stream.get('headers') or {}
+            if stream.get('title'):
+                self._set_loading_title(stream['title'])
+                self._sync_sidebar_title(url, stream['title'])
+        if stream and self._stream_ok_for_vlc(stream):
+            print(f"[YouTubeHandler] Reproduciendo en el reproductor: {stream['url'][:80]}…")
+            self._set_loading_status("Abriendo el vídeo…")
+
+            def fallback():
+                print("[YouTubeHandler] VLC no pudo abrir el stream directo; retransmitiendo la URL ya extraída")
+                if not self._play_via_pipe(
+                    url, force_pulse, show_progress, is_sequential,
+                    duration=stream.get('duration'),
+                    source_url=stream.get('url'),
                     http_headers=stream.get('headers'),
-                    duration_s=stream.get('duration'),
-                    fail_after_s=20,
-                    on_fail=fallback,
-                )
-                self.video_player.set_youtube_subtitles(subs)
-                return
+                ):
+                    self._show_playback_error(url)
 
-            if stream:
-                print("[YouTubeHandler] Retransmitiendo la URL extraída (sin volver a pedir el vídeo a YouTube)")
-            duration = (stream or {}).get('duration')
-            if self._play_via_pipe(
-                url, force_pulse, show_progress, is_sequential,
-                duration=duration,
-                source_url=(stream or {}).get('url'),
-                http_headers=(stream or {}).get('headers'),
-            ):
-                self.video_player.set_youtube_subtitles(subs)
-                return
+            self.video_player.play_video_url(
+                stream['url'],
+                force_pulse=force_pulse,
+                show_progress=show_progress,
+                is_sequential=is_sequential,
+                http_headers=stream.get('headers'),
+                duration_s=stream.get('duration'),
+                fail_after_s=20,
+                on_fail=fallback,
+            )
+            self.video_player.set_youtube_subtitles(subs)
+            return
 
-            self._show_playback_error(url)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al procesar el vídeo: {str(e)}")
-            self.open_in_browser(url)
+        if stream:
+            print("[YouTubeHandler] Retransmitiendo la URL extraída (sin volver a pedir el vídeo a YouTube)")
+        duration = (stream or {}).get('duration')
+        if self._play_via_pipe(
+            url, force_pulse, show_progress, is_sequential,
+            duration=duration,
+            source_url=(stream or {}).get('url'),
+            http_headers=(stream or {}).get('headers'),
+        ):
+            self.video_player.set_youtube_subtitles(subs)
+            return
+
+        self._show_playback_error(url)
+
+    def _new_play_gen(self):
+        self._play_gen = getattr(self, '_play_gen', 0) + 1
+        return self._play_gen
+
+    def cancel_pending_play(self):
+        self._new_play_gen()
+        self.hide_loading()
+
+    def _ui_after(self, fn, delay_ms=0):
+        window = getattr(self.video_player, 'window', None)
+        if not window:
+            return
+        try:
+            window.after(delay_ms, fn)
+        except tk.TclError:
+            pass
 
     def _clear_video_surface(self):
-        for widget in self.video_player.video_frame.winfo_children():
-            widget.destroy()
+        frame = getattr(self.video_player, 'video_frame', None)
+        if not frame:
+            return
+        try:
+            for widget in frame.winfo_children():
+                widget.destroy()
+        except tk.TclError:
+            pass
+
+    def _loading_alive(self):
+        frame = getattr(self, '_loading_frame', None)
+        try:
+            return bool(frame and frame.winfo_exists())
+        except tk.TclError:
+            return False
+
+    def hide_loading(self):
+        bar = getattr(self, '_loading_bar', None)
+        if bar:
+            try:
+                bar.stop()
+            except tk.TclError:
+                pass
+        self._loading_bar = None
+        frame = getattr(self, '_loading_frame', None)
+        self._loading_frame = None
+        self._loading_title_label = None
+        self._loading_status_label = None
+        self._loading_thumb_label = None
+        if frame:
+            try:
+                frame.destroy()
+            except tk.TclError:
+                pass
 
     def _show_status(self, text):
+        if self._loading_alive():
+            self._set_loading_status(text)
+            return
+        self._show_loading(text)
+
+    def _show_loading(self, status, video_id=None, title=None):
         from ui_theme import get_colors, get_font
-        self._clear_video_surface()
+
+        video_id = video_id or getattr(self, '_loading_video_id', None)
+        old_id = getattr(self, '_loading_video_id', None)
+        if title:
+            self._loading_title_text = title
+        elif video_id != old_id:
+            self._loading_title_text = 'YouTube'
+        if self._loading_alive() and video_id == old_id:
+            self._set_loading_status(status)
+            if title:
+                self._set_loading_title(title)
+            return
+        self._loading_video_id = video_id
+
+        player = self.video_player
+        parent = getattr(player, 'player_frame', None) or getattr(player, 'video_frame', None)
+        video_frame = getattr(player, 'video_frame', None)
+        if not parent or not video_frame:
+            return
+
+        self.hide_loading()
         colors = get_colors()
-        info_frame = tk.Frame(self.video_player.video_frame, bg=colors['bg'])
-        info_frame.pack(fill=tk.BOTH, expand=True)
-        tk.Label(
-            info_frame,
-            text=text,
-            font=get_font(12),
-            bg=colors['bg'],
+        overlay = tk.Frame(parent, bg='#000000', highlightthickness=0)
+        place_opts = {'relx': 0, 'rely': 0, 'relwidth': 1, 'relheight': 1}
+        try:
+            overlay.place(in_=video_frame, **place_opts)
+            overlay.lift(video_frame)
+        except tk.TclError:
+            overlay.place(**place_opts)
+        self._loading_frame = overlay
+
+        card = tk.Frame(
+            overlay,
+            bg=colors['surface'],
+            highlightbackground=colors['border'],
+            highlightthickness=1,
+            padx=22,
+            pady=18,
+        )
+        card.place(relx=0.5, rely=0.5, anchor='center')
+
+        thumb_wrap = tk.Frame(card, bg=colors['surface_alt'], width=440, height=248)
+        thumb_wrap.pack()
+        thumb_wrap.pack_propagate(False)
+        thumb = tk.Label(
+            thumb_wrap,
+            text='▶',
+            font=get_font(28),
+            bg=colors['surface_alt'],
+            fg=colors['text_muted'],
+        )
+        thumb.pack(fill=tk.BOTH, expand=True)
+        self._loading_thumb_label = thumb
+        cached = self._thumb_photos.get(video_id) if video_id else None
+        if cached:
+            thumb.configure(image=cached, text='')
+            thumb.image = cached
+
+        title_label = tk.Label(
+            card,
+            text=self._loading_title_text or 'YouTube',
+            font=get_font(13, 'bold'),
+            bg=colors['surface'],
             fg=colors['text'],
-        ).pack(expand=True)
-        self.video_player.window.update_idletasks()
+            wraplength=420,
+            justify='center',
+        )
+        title_label.pack(pady=(14, 6))
+        self._loading_title_label = title_label
+
+        status_label = tk.Label(
+            card,
+            text=status,
+            font=get_font(10),
+            bg=colors['surface'],
+            fg=colors['text_muted'],
+            wraplength=420,
+            justify='center',
+        )
+        status_label.pack(pady=(0, 10))
+        self._loading_status_label = status_label
+
+        bar_wrap = ttk.Frame(card)
+        bar_wrap.pack(fill=tk.X)
+        bar = ttk.Progressbar(bar_wrap, mode='indeterminate', length=280)
+        bar.pack()
+        bar.start(12)
+        self._loading_bar = bar
+
+        gen = self._play_gen
+        have_title = bool(title) or (
+            bool(self._loading_title_text) and self._loading_title_text != 'YouTube'
+        )
+        if video_id:
+            threading.Thread(
+                target=self._load_loading_meta,
+                args=(gen, video_id, have_title),
+                daemon=True,
+            ).start()
+        try:
+            player.window.update_idletasks()
+        except tk.TclError:
+            pass
+
+    def _set_loading_status(self, text):
+        label = getattr(self, '_loading_status_label', None)
+        try:
+            if label and label.winfo_exists():
+                label.configure(text=text)
+        except tk.TclError:
+            pass
+
+    def _set_loading_title(self, title):
+        title = (title or '').strip()
+        if not title or title == 'YouTube':
+            return
+        self._loading_title_text = title
+        label = getattr(self, '_loading_title_label', None)
+        try:
+            if label and label.winfo_exists():
+                label.configure(text=title)
+        except tk.TclError:
+            pass
+
+    def _load_loading_meta(self, gen, video_id, have_title):
+        title = None if have_title else self._oembed_title(video_id)
+        data = None
+        if video_id not in getattr(self, '_thumb_photos', {}):
+            data = self._download_thumb_bytes(video_id)
+
+        def apply():
+            if gen != self._play_gen:
+                return
+            if title:
+                self._set_loading_title(title)
+                self._sync_sidebar_title(self._current_url, title)
+            if data:
+                self._apply_thumb_bytes(video_id, data)
+
+        self._ui_after(apply)
+
+    def _oembed_title(self, video_id):
+        url = (
+            'https://www.youtube.com/oembed?format=json'
+            f'&url=https://www.youtube.com/watch?v={video_id}'
+        )
+        try:
+            req = urllib.request.Request(url, headers={
+                'User-Agent': (
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) '
+                    'Gecko/20100101 Firefox/125.0'
+                ),
+            })
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                info = json.loads(resp.read().decode('utf-8', errors='replace'))
+            return (info.get('title') or '').strip() or None
+        except Exception:
+            return None
+
+    def _download_thumb_bytes(self, video_id):
+        headers = {
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) '
+                'Gecko/20100101 Firefox/125.0'
+            ),
+        }
+        for name in ('hqdefault.jpg', 'mqdefault.jpg', 'default.jpg'):
+            url = f'https://i.ytimg.com/vi/{video_id}/{name}'
+            try:
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    data = resp.read()
+                if data:
+                    return data
+            except Exception:
+                continue
+        return None
+
+    def _apply_thumb_bytes(self, video_id, data):
+        try:
+            from PIL import Image, ImageTk
+        except Exception:
+            return
+        try:
+            img = Image.open(BytesIO(data)).convert('RGB')
+        except Exception:
+            return
+        width, height = img.size
+        target_h = int(width * 9 / 16)
+        if height > target_h + 8:
+            top = (height - target_h) // 2
+            img = img.crop((0, top, width, top + target_h))
+        img = img.resize((440, 248), Image.Resampling.LANCZOS)
+        photo = ImageTk.PhotoImage(img)
+        self._thumb_photos[video_id] = photo
+        label = getattr(self, '_loading_thumb_label', None)
+        try:
+            if label and label.winfo_exists():
+                label.configure(image=photo, text='')
+                label.image = photo
+        except tk.TclError:
+            pass
+
+    def _sync_sidebar_title(self, url, title):
+        title = (title or '').strip()
+        if not title or not url or title in ('YouTube', url):
+            return
+        player = self.video_player
+        updated = False
+        for attr in ('all_channels', 'channels'):
+            items = getattr(player, attr, None)
+            if not items:
+                continue
+            for i, (name, item_url) in enumerate(items):
+                if item_url != url or name == title:
+                    continue
+                items[i] = (title, url)
+                updated = True
+                if attr == 'channels':
+                    try:
+                        box = player.channels_listbox
+                        if i < box.size():
+                            box.delete(i)
+                            box.insert(i, title)
+                    except (tk.TclError, AttributeError):
+                        pass
+        if updated:
+            persist = getattr(player, '_persist_sidebar', None)
+            if persist:
+                persist()
+            return
+        add = getattr(player, 'add_channel_to_list', None)
+        if add and not any(item_url == url for _, item_url in getattr(player, 'all_channels', [])):
+            add(title, url)
 
     def _show_playback_error(self, url):
         from ui_theme import get_colors, get_font
+        self.hide_loading()
         self._clear_video_surface()
         colors = get_colors()
         info_frame = tk.Frame(self.video_player.video_frame, bg=colors['bg'])
@@ -937,6 +1251,7 @@ class YouTubeHandler:
                     if stream:
                         stream['headers'] = self._headers_for_vlc(stream.get('headers'))
                         stream['duration'] = info.get('duration')
+                        stream['title'] = info.get('title') or ''
                         stream['subtitles'] = collect_youtube_subs(info)
                         self._write_subs_from_info(ydl, info, stream['subtitles'])
                         return stream
