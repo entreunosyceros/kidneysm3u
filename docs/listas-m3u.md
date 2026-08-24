@@ -18,6 +18,10 @@ Los enlaces que guardes en el gestor de enlaces quedan en `enlaces.json` dentro 
 
 ## Reproducción IPTV
 
+<p align="center">
+<img width="1919" height="1044" alt="lista-ipt-reproduciendo" src="https://github.com/user-attachments/assets/a060538e-a7aa-4f24-af6d-e601e5dd2a15" />
+</p>
+
 El reproductor abre la **URL que viene en el M3U** con VLC. El tipo se deduce de la extensión:
 
 | Extensión | Tratamiento |
