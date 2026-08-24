@@ -2,11 +2,11 @@
 <p align="center">
 <img width="902" height="693" alt="about-kidneysm3u" src="https://github.com/user-attachments/assets/1ded588f-0fed-4432-afcd-7e00f782fcae" />
 </p>
-<p align="center">
+
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat&logo=python&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![VLC](https://img.shields.io/badge/VLC-Embedded-orange?logo=vlc)
-</p>
+
 
 Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar listas M3U/M3U8, IPTV y YouTube (vídeos, Shorts, listas y canales).
 
