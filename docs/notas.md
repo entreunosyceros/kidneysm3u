@@ -19,7 +19,7 @@
 | `favoritos.json` | Favoritos del reproductor | Viene en el repo; si falta, el reproductor usa una lista vacía |
 | `enlaces.json` | Enlaces guardados en el gestor | Se crea vacío al arrancar |
 | `config.json` | Volumen, geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube para reanudar y calidad 360p/720p | Se crea con valores por defecto al arrancar |
-| `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube si hay sesión en el navegador. Detalle en [YouTube](youtube.md#cookies) |
+| `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube o al pulsar **Reexportar cookies**, solo si hay login vigente en el navegador. El indicador **Sesión YouTube: OK / caducada** avisa si hace falta reexportar. Detalle en [YouTube](youtube.md#cookies) |
 | `.venv/` | Entorno Python | `run_app.py` lo recrea ([instalación](instalacion.md)) |
 
 ## Monitor de CPU

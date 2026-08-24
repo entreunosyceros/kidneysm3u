@@ -209,6 +209,8 @@ def apply_theme(root, dark=False):
     style.configure('Section.TLabel', background=colors['surface'], foreground=colors['text_muted'], font=font_section)
     style.configure('Status.TLabel', background=colors['status_bg'], foreground=colors['text_muted'], font=font_small)
     style.configure('Link.TLabel', background=colors['bg'], foreground=colors['accent'], font=font)
+    style.configure('SessionOk.TLabel', background=colors['bg'], foreground=colors['accent'], font=font_small)
+    style.configure('SessionBad.TLabel', background=colors['bg'], foreground=colors['danger'], font=font_small)
 
     _configure_button(style, 'TButton', colors['surface_alt'], colors['text'],
                       colors['border'], colors['border'], colors['disabled_bg'], colors['disabled_fg'])

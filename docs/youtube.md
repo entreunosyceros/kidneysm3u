@@ -13,10 +13,12 @@ Para buscar, ver y descargar hace falta estar **logueado en YouTube**. El progra
 `cookies.txt` **no viene en el repositorio** (es tu sesión; no lo subas a GitHub). Tampoco hace falta crearlo a mano:
 
 1. Inicia sesión en YouTube en el navegador (el flujo más fiable es **Firefox**, con [browser-cookie3](https://pypi.org/project/browser-cookie3/)).
-2. Reproduce un vídeo desde el programa. Si hay cookies válidas, se escriben solas en `cookies.txt`.
+2. Reproduce un vídeo desde el programa, o pulsa **Reexportar cookies**. Si hay login vigente, se escribe `cookies.txt`.
 3. A partir de ahí se reutiliza ese archivo. Si no existe, se sigue leyendo el navegador.
 
-No dejes un `cookies.txt` vacío: yt-dlp lo usaría y YouTube fallaría. Si YouTube bloquea la extracción, instala **Node** o **Deno**: yt-dlp los usa para los retos de la web.
+En el reproductor (abajo a la izquierda) y en la búsqueda verás **Sesión YouTube: OK** o **caducada**. Lo mismo aparece en el menú **Youtube**. Si YouTube pide captcha o «confirma que no eres un robot», el indicador pasa a caducada y puedes reexportar; no se traga el fallo en silencio.
+
+No se escribe un `cookies.txt` vacío ni uno sin cookies de login: yt-dlp lo usaría y YouTube fallaría. Si YouTube bloquea la extracción, instala **Node** o **Deno**: yt-dlp los usa para los retos de la web.
 
 ## Búsqueda
 

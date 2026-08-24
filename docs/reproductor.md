@@ -11,6 +11,8 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 - **★ Favoritos** / **Todos** — filtra o restaura el listado.
 - **Limpiar** — vacía la lista de esta sesión (pide confirmación). El aviso queda sobre esta ventana; no pasa al frente la principal. Al volver a abrir el programa se restaura lo último que había; si no había lista, no se muestra nada. No reproduce solo.
 - Cuadro de **búsqueda** — filtra por nombre.
+- Abajo: **Sesión YouTube: OK / caducada** y **Reexportar cookies** (también en el menú **Youtube**). Si YouTube pide login o un bot-check, el indicador pasa a caducada.
+- Al pasar el ratón por un título se ve el nombre completo; al salir, el aviso desaparece.
 - Doble clic — reproduce.
 - Clic derecho — reproducir desde aquí, favoritos, descargar, eliminar un ítem o vaciar la lista.
 

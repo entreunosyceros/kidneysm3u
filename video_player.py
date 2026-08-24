@@ -35,20 +35,30 @@ class Tooltip:
     def __init__(self, widget):
         self.widget = widget
         self.tipwindow = None
+        self._text = None
         self.id = None
         self.x = self.y = 0
 
-    def showtip(self, text, x=None, y=None):
+    def showtip(self, text, x=None, y=None, wraplength=0):
         """Muestra el tooltip con el texto dado, cerca del puntero del ratón"""
-        if self.tipwindow or not text:
+        text = (text or '').strip()
+        if not text:
+            self.hidetip()
             return
-        # Si no se pasan coordenadas, usar la posición actual del puntero
+        if self.tipwindow and self._text == text:
+            return
+        self.hidetip()
         if x is None or y is None:
-            x = self.widget.winfo_pointerx() + 20
-            y = self.widget.winfo_pointery() + 10
+            x = self.widget.winfo_pointerx() + 16
+            y = self.widget.winfo_pointery() + 12
+        self._text = text
         self.tipwindow = tw = tk.Toplevel(self.widget)
-        tw.wm_overrideredirect(1)
-        tw.wm_geometry(f"+{x}+{y}")
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{int(x)}+{int(y)}")
+        try:
+            tw.transient(self.widget.winfo_toplevel())
+        except tk.TclError:
+            pass
         colors = get_colors()
         label = tk.Label(
             tw,
@@ -61,14 +71,19 @@ class Tooltip:
             font=get_font(9),
             padx=8,
             pady=5,
+            wraplength=wraplength,
         )
         label.pack()
 
     def hidetip(self):
         tw = self.tipwindow
         self.tipwindow = None
+        self._text = None
         if tw:
-            tw.destroy()
+            try:
+                tw.destroy()
+            except tk.TclError:
+                pass
 
 
 def _make_vlc_instance():
@@ -191,17 +206,29 @@ class VideoPlayer:
         self.search_entry = ttk.Entry(self.channels_frame, textvariable=self.search_var)
         self.search_entry.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 8))
 
+        session_frame = ttk.Frame(self.channels_frame)
+        session_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 8))
+        self._yt_session_label = ttk.Label(session_frame, text='Sesión YouTube: …', style='Muted.TLabel')
+        self._yt_session_label.pack(anchor=tk.W)
+        ttk.Button(
+            session_frame,
+            text="Reexportar cookies",
+            command=self.reexport_youtube_cookies,
+        ).pack(anchor=tk.W, pady=(4, 0))
+
         self.channels_listbox = tk.Listbox(self.channels_frame, width=30, yscrollcommand=None)
         self.channels_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         style_listbox(self.channels_listbox)
         self.channels_listbox.bind('<Double-Button-1>', self.play_selected)
         self.channels_listbox.bind('<Button-3>', self.show_channel_context_menu)
 
-        # Tooltip para los elementos de la lista (solo al seleccionar)
         self.listbox_tooltip = Tooltip(self.channels_listbox)
-        self.channels_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
-        self.channels_listbox.bind('<FocusOut>', lambda e: self.listbox_tooltip.hidetip())
-        # Ya no se usa el tooltip con el ratón
+        self._listbox_tip_index = None
+        self.channels_listbox.bind('<Motion>', self.on_listbox_motion)
+        self.channels_listbox.bind('<Leave>', self.on_listbox_leave)
+        self.channels_listbox.bind('<Button-4>', self._hide_listbox_tooltip)
+        self.channels_listbox.bind('<Button-5>', self._hide_listbox_tooltip)
+        self.channels_listbox.bind('<MouseWheel>', self._hide_listbox_tooltip)
 
         scrollbar = ttk.Scrollbar(self.channels_frame, orient=tk.VERTICAL, command=self.channels_listbox.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -286,6 +313,7 @@ class VideoPlayer:
         #self.setup_performance_monitoring()
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.window.bind('<Escape>', lambda e: self.exit_fullscreen())
+        self.youtube_handler.notify_session()
 
     def setup_performance_monitoring(self):
         """Inicia el monitoreo de recursos"""
@@ -315,6 +343,11 @@ class VideoPlayer:
         youtube_menu.add_command(label="Buscar en YouTube", command=self.open_youtube_search)
         # NUEVO: Añadir opción para cargar playlist
         youtube_menu.add_command(label="Cargar Playlist de YouTube", command=self.prompt_youtube_playlist)
+        youtube_menu.add_separator()
+        youtube_menu.add_command(label="Sesión YouTube: …", state='disabled')
+        self._yt_session_menu_index = youtube_menu.index('end')
+        youtube_menu.add_command(label="Reexportar cookies", command=self.reexport_youtube_cookies)
+        self._youtube_menu = youtube_menu
         favoritos_menu = tk.Menu(self.menubar, tearoff=0)
         favoritos_menu.add_command(label="Mostrar Favoritos", command=self.show_favorites)
         favoritos_menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
@@ -2210,6 +2243,28 @@ class VideoPlayer:
                 except OSError:
                     pass # No hacer nada si no se puede borrar
 
+    def update_youtube_session_ui(self, info=None):
+        info = info or self.youtube_handler.session_view()
+        ok = bool(info.get('ok'))
+        text = f"Sesión YouTube: {'OK' if ok else 'caducada'}"
+        style = 'SessionOk.TLabel' if ok else 'SessionBad.TLabel'
+        label = getattr(self, '_yt_session_label', None)
+        if label:
+            try:
+                label.configure(text=text, style=style)
+            except tk.TclError:
+                pass
+        menu = getattr(self, '_youtube_menu', None)
+        index = getattr(self, '_yt_session_menu_index', None)
+        if menu is not None and index is not None:
+            try:
+                menu.entryconfigure(index, label=text)
+            except tk.TclError:
+                pass
+
+    def reexport_youtube_cookies(self):
+        self.youtube_handler.reexport_youtube_cookies()
+
     def open_youtube_search(self):
         """Abre la ventana de búsqueda de YouTube."""
         # Asegúrate de que load_playlist_callback se pasa correctamente
@@ -2218,6 +2273,7 @@ class VideoPlayer:
             self.play_youtube_url,
             self.load_playlist_callback,
             self.enqueue_youtube_items,
+            youtube_handler=self.youtube_handler,
         )
 
     def load_playlist_callback(self, channels_list):
@@ -2277,36 +2333,55 @@ class VideoPlayer:
     def hide_progress_bar(self):
         self.progress_frame.pack_forget()
 
-    def on_listbox_motion(self, event):
-        """Muestra un tooltip con el nombre del canal al pasar el ratón"""
-        index = self.channels_listbox.nearest(event.y)
-        if 0 <= index < len(self.channels):
-            name = self.channels[index][0]
-            # Usar coordenadas absolutas del puntero
-            x = self.channels_listbox.winfo_pointerx() + 20
-            y = self.channels_listbox.winfo_pointery() + 10
-            self.listbox_tooltip.showtip(name, x, y)
-        else:
-            self.listbox_tooltip.hidetip()
+    def _listbox_index_at(self, event):
+        """Índice de la fila bajo el puntero, o None si no hay título debajo."""
+        box = self.channels_listbox
+        index = box.nearest(event.y)
+        if index < 0 or index >= len(self.channels):
+            return None
+        bbox = box.bbox(index)
+        if not bbox:
+            return None
+        x, y, width, height = bbox
+        if not (y <= event.y < y + height):
+            return None
+        if event.x < x or event.x >= box.winfo_width():
+            return None
+        return index
 
-    def on_listbox_select(self, event):
-        """Muestra un tooltip con el nombre del canal seleccionado justo debajo del ítem seleccionado"""
-        self.listbox_tooltip.hidetip()  # Oculta cualquier tooltip anterior
-        selection = self.channels_listbox.curselection()
-        if selection:
-            index = selection[0]
-            if 0 <= index < len(self.channels):
-                name = self.channels[index][0]
-                bbox = self.channels_listbox.bbox(index)
-                if bbox:
-                    x, y, width, height = bbox
-                    abs_x = self.channels_listbox.winfo_rootx() + x
-                    abs_y = self.channels_listbox.winfo_rooty() + y + height
-                    self.listbox_tooltip.showtip(name, abs_x, abs_y)
-                else:
-                    self.listbox_tooltip.showtip(name)
-        else:
-            self.listbox_tooltip.hidetip()
+    def _hide_listbox_tooltip(self, event=None):
+        self._listbox_tip_index = None
+        tip = getattr(self, 'listbox_tooltip', None)
+        if tip:
+            tip.hidetip()
+
+    def on_listbox_motion(self, event):
+        """Muestra el título completo solo al pasar el ratón por esa fila."""
+        index = self._listbox_index_at(event)
+        if index is None:
+            self._hide_listbox_tooltip()
+            return
+        if index == self._listbox_tip_index and self.listbox_tooltip.tipwindow:
+            return
+        name = self.channels[index][0]
+        self._listbox_tip_index = index
+        self.listbox_tooltip.showtip(
+            name,
+            event.x_root + 14,
+            event.y_root + 12,
+            wraplength=360,
+        )
+
+    def on_listbox_leave(self, event):
+        box = self.channels_listbox
+        try:
+            px = box.winfo_pointerx() - box.winfo_rootx()
+            py = box.winfo_pointery() - box.winfo_rooty()
+            if 0 <= px < box.winfo_width() and 0 <= py < box.winfo_height():
+                return
+        except tk.TclError:
+            pass
+        self._hide_listbox_tooltip()
 
     def _progress_ms_from_x(self, x):
         width = max(1, self.progress_bar.winfo_width())
@@ -2617,6 +2692,7 @@ class VideoPlayer:
         self.channels_listbox.selection_clear(0, tk.END)
         self.channels_listbox.selection_set(selection)
         self.channels_listbox.activate(selection)
+        self._hide_listbox_tooltip()
         menu = tk.Menu(self.window, tearoff=0)
         style_menu_tree(menu)
         menu.add_command(label="Reproducir desde aquí", command=lambda: self.play_from_here(selection))
@@ -2635,6 +2711,7 @@ class VideoPlayer:
 
     def toggle_playlist(self):
         """Muestra u oculta la lista de canales y el sizer"""
+        self._hide_listbox_tooltip()
         if self.channels_frame_visible:
             self.channels_frame.pack_forget()
             self.sizer.pack_forget()
