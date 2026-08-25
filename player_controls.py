@@ -7,6 +7,12 @@ from tkinter import ttk
 class PlayerControlsMixin:
     def hide_controls_and_menu(self):
         """Oculta controles y menú superior juntos (solo en fullscreen el menú)."""
+        if getattr(self, '_posted_popup', None) or (
+            callable(getattr(self, '_any_track_menu_mapped', None))
+            and self._any_track_menu_mapped()
+        ):
+            self.reset_hide_controls_timer()
+            return
         self._dismiss_track_menus()
         if self.controls_visible:
             self.controls_frame.pack_forget()

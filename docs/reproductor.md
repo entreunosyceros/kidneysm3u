@@ -37,7 +37,7 @@ Play/pausa (también **un clic en el vídeo** o `Espacio`), stop, **grabar** (c�
 
 Los **subtítulos** listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC. En YouTube el menú pone el español primero: **auto** (transcribe el audio), los del autor, o **traducción automática** (YouTube traduce; no es un doblaje). Se descarga el idioma elegido, no un archivo en caché de otro idioma.
 
-En **pantalla completa**, menú y controles se ocultan a los 3 segundos sin usarlos. Los botones de la barra siguen sirviendo para cambiar pista.
+En **pantalla completa**, menú y controles se ocultan a los 3 segundos sin usarlos. Los botones de la barra siguen sirviendo para cambiar pista: **calidad / audio** y **subtítulos** abren el menú hacia arriba para que no se salga de la pantalla.
 
 La barra de progreso aparece en YouTube y en VOD; no en un canal en directo. Los botones de ±2 s / ±10 s y el arrastre de la barra saltan a ese punto. En YouTube retransmitido (MPEG-TS local) un salto lejano puede tardar un momento: se reinicia el vídeo desde ahí.
 
