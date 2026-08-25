@@ -446,14 +446,21 @@ class M3UProcessor:
 
     def _ensure_player(self):
         if self.video_player is None or not getattr(self.video_player, 'is_alive', lambda: False)():
-            self.video_player = VideoPlayer()
-            self.video_player._prefs_apply = self.apply_preferences
+            try:
+                self.video_player = VideoPlayer()
+                self.video_player._prefs_apply = self.apply_preferences
+            except Exception as exc:
+                self.video_player = None
+                messagebox.showerror('Reproductor', f'No se pudo abrir el reproductor:\n{exc}')
+                return None
         return self.video_player
 
     def load_url(self):
         url = tk.simpledialog.askstring("Cargar URL", "Introduce la URL de la lista M3U:")
         if url:
             player = self._ensure_player()
+            if not player:
+                return
             player.run()
             player.load_m3u_url(url)
             self._refresh_recent_menu()
@@ -466,12 +473,16 @@ class M3UProcessor:
         )
         if filename:
             player = self._ensure_player()
+            if not player:
+                return
             player.run()
             player.load_m3u_file(filename)
             self._refresh_recent_menu()
 
     def open_player(self):
         player = self._ensure_player()
+        if not player:
+            return
         player.run()
         output = self.output_file.get()
         if self.channels and output and os.path.isfile(output):
@@ -528,6 +539,8 @@ class M3UProcessor:
 
     def _open_recent(self, path):
         player = self._ensure_player()
+        if not player:
+            return
         player.run()
         if str(path).lower().startswith('http'):
             player.load_m3u_url(path, notify=False, on_done=player.restore_last_channel)
