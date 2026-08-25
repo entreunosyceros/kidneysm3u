@@ -88,6 +88,7 @@ def show_keyboard_shortcuts(root):
             ("▶", "Avanzar 2 segundos"),
             ("▶▶|", "Avanzar 10 segundos"),
             ("■", "Detener reproducción"),
+            ("● Grabar", "Iniciar o detener grabación (se pone rojo)"),
             ("Altavoz", "Silenciar/Activar sonido"),
             ("Esquinas", "Alternar pantalla completa"),
             ("≡", "Mostrar/Ocultar lista de canales")

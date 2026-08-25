@@ -8,7 +8,7 @@
 - [VLC Media Player](https://www.videolan.org/vlc/) (el reproductor embebido usa `python-vlc`)
 - [tkinter](https://docs.python.org/3/library/tkinter.html) (suele venir con Python; en Ubuntu: `python3-tk`)
 - Las librerías de `requirements.txt` (las instala `run_app.py`)
-- [ffmpeg](https://ffmpeg.org/download.html) — opcional, para extraer solo el audio de YouTube
+- [ffmpeg](https://ffmpeg.org/download.html) — opcional, para grabar el stream en reproducción y para extraer solo el audio de YouTube
 - Node o Deno — recomendable; [yt-dlp](https://github.com/yt-dlp/yt-dlp) lo usa si YouTube pide un runtime JavaScript
 - [psutil](https://pypi.org/project/psutil/) — opcional, solo si activas el [monitor de CPU](notas.md#monitor-de-cpu)
 

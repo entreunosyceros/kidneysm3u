@@ -43,7 +43,8 @@ Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda →
 - Ver la guía EPG en parrilla (ahora + unas horas), con logos de canal y recarga automática.
 - Historial de canales IPTV y seguir viendo películas/VOD desde el segundo guardado.
 - Gestionar la lista lateral (favoritos, limpiar, reproducir desde aquí).
-- Descargar vídeos o solo audio (hace falta [ffmpeg](https://ffmpeg.org/download.html)).
+- Grabar el canal o vídeo en reproducción a un fichero local (hace falta [ffmpeg](https://ffmpeg.org/download.html)).
+- Descargar vídeos o solo audio (también hace falta ffmpeg).
 - Ordenar listas M3U desde la interfaz.
 - Ajustar tema, volumen, descargas, cookies y calidad de YouTube en **Preferencias**.
 

@@ -223,6 +223,9 @@ def apply_theme(root, dark=False):
     _configure_button(style, 'Icon.TButton', colors['surface_alt'], colors['text'],
                       colors['border'], colors['border'], colors['disabled_bg'], colors['disabled_fg'])
     style.configure('Icon.TButton', padding=(10, 8), font=get_font(10))
+    _configure_button(style, 'IconRecord.TButton', colors['danger'], colors['danger_text'],
+                      colors['danger'], colors['danger_hover'], colors['disabled_bg'], colors['disabled_fg'])
+    style.configure('IconRecord.TButton', padding=(10, 8), font=get_font(10))
 
     style.configure(
         'TEntry',
@@ -528,7 +531,7 @@ def _hex_to_rgba(color):
     return (int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16), 255)
 
 
-def make_control_icons(color, size=20):
+def make_control_icons(color, size=20, record_color=None):
     """Iconos vectoriales para los controles del reproductor (independientes de la fuente)."""
     from PIL import Image, ImageDraw, ImageTk
 
@@ -586,6 +589,19 @@ def make_control_icons(color, size=20):
     d = ImageDraw.Draw(img)
     bar(d, p + 2, p + 2, size - p - 2, size - p - 2)
     icons['stop'] = photo(img)
+
+    img = blank()
+    d = ImageDraw.Draw(img)
+    pad = p + 1
+    d.ellipse([pad, pad, size - pad - 1, size - pad - 1], outline=fill, width=max(2, size // 10))
+    icons['record'] = photo(img)
+
+    rec = _hex_to_rgba(record_color or '#dc2626')
+    img = blank()
+    d = ImageDraw.Draw(img)
+    inner = p + 3
+    d.ellipse([inner, inner, size - inner - 1, size - inner - 1], fill=rec)
+    icons['record_on'] = photo(img)
 
     img = blank()
     d = ImageDraw.Draw(img)
