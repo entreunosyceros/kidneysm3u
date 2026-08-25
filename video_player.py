@@ -36,6 +36,24 @@ from player_overlay import ChannelNoticeMixin
 from player_pip import PlayerPipMixin
 from iptv_record import StreamRecorder, default_recording_path, show_recordings
 
+
+def popup_menu_origin(btn_x, btn_y, btn_h, menu_w, menu_h, area_x, area_y, area_w, area_h, pad=4):
+    """Esquina superior izquierda del menú para que quepa en el área. Prefiere debajo del botón."""
+    below = btn_y + btn_h
+    if below + menu_h + pad <= area_y + area_h:
+        y = below
+    else:
+        y = btn_y - menu_h
+        if y < area_y + pad:
+            y = area_y + pad
+    x = btn_x
+    if x + menu_w + pad > area_x + area_w:
+        x = area_x + area_w - menu_w - pad
+    if x < area_x + pad:
+        x = area_x + pad
+    return int(x), int(y)
+
+
 # Clase Tooltip para mostrar información al pasar el ratón
 class Tooltip:
     def __init__(self, widget):
@@ -578,6 +596,39 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         else:
             action()
 
+    def _track_menu_size(self, menu):
+        try:
+            menu.update_idletasks()
+            width = int(menu.winfo_reqwidth() or 0)
+            height = int(menu.winfo_reqheight() or 0)
+        except tk.TclError:
+            width, height = 0, 0
+        try:
+            last = menu.index('end')
+            count = 0 if last is None else last + 1
+        except tk.TclError:
+            count = 4
+        if width < 80:
+            width = 220
+        if height < 24:
+            height = max(count, 1) * 28 + 8
+        return width, height
+
+    def _popup_origin_for_button(self, button, menu):
+        menu_w, menu_h = self._track_menu_size(menu)
+        win = self.window
+        return popup_menu_origin(
+            button.winfo_rootx(),
+            button.winfo_rooty(),
+            button.winfo_height(),
+            menu_w,
+            menu_h,
+            win.winfo_rootx(),
+            win.winfo_rooty(),
+            win.winfo_width(),
+            win.winfo_height(),
+        )
+
     def _popup_track_menu(self, button, menu):
         if not button or not self._widget_exists(button) or menu is None:
             return
@@ -587,8 +638,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._dismiss_track_menus()
         self._rebuild_track_menus()
         try:
-            x = button.winfo_rootx()
-            y = button.winfo_rooty() + button.winfo_height()
+            x, y = self._popup_origin_for_button(button, menu)
             menu.post(x, y)
             self._posted_popup = menu
         except tk.TclError:
