@@ -29,6 +29,7 @@ import epg
 import logo_cache
 from epg_grid import show_epg_grid
 from iptv_history import show_iptv_history
+from youtube_queue import show_youtube_queue
 from player_controls import PlayerControlsMixin
 from player_iptv import IptvPlaybackMixin
 from player_overlay import ChannelNoticeMixin
@@ -407,6 +408,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
         youtube_menu.add_command(label="Cargar URL de YouTube", command=self.youtube_handler.prompt_youtube_url)
         youtube_menu.add_command(label="Descargar vídeo de YouTube", command=self.youtube_handler.download_youtube_video)
         youtube_menu.add_command(label="Buscar en YouTube", command=self.open_youtube_search)
+        youtube_menu.add_command(label="Cola de YouTube", command=self.open_youtube_queue)
         # NUEVO: Añadir opción para cargar playlist
         youtube_menu.add_command(label="Cargar Playlist de YouTube", command=self.prompt_youtube_playlist)
         youtube_menu.add_separator()
@@ -733,6 +735,18 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             value='720',
             command=lambda: self._choose_from_menu(lambda: self._apply_youtube_quality(720)),
         )
+        menu.add_radiobutton(
+            label='1080p',
+            variable=self._quality_choice,
+            value='1080',
+            command=lambda: self._choose_from_menu(lambda: self._apply_youtube_quality(1080)),
+        )
+        menu.add_radiobutton(
+            label='Mejor disponible',
+            variable=self._quality_choice,
+            value='0',
+            command=lambda: self._choose_from_menu(lambda: self._apply_youtube_quality(0)),
+        )
         menu.add_separator()
         tracks = self._audio_tracks
         if len(tracks) <= 1:
@@ -751,7 +765,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             )
 
     def _apply_youtube_quality(self, height, force=False):
-        height = 360 if int(height) == 360 else 720
+        height = app_config.normalize_youtube_quality(height)
         previous = app_config.get_youtube_quality()
         app_config.set_youtube_quality(height)
         if getattr(self, '_quality_choice', None) is not None:
@@ -764,7 +778,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             return
         elapsed_s = self._playback_elapsed_ms() / 1000.0
         kwargs = dict(getattr(handler, '_play_kwargs', {}) or {})
-        print(f"[YouTube] Calidad {previous}p → {height}p")
+        print(
+            f"[YouTube] Calidad {app_config.youtube_quality_label(previous)} → "
+            f"{app_config.youtube_quality_label(height)}"
+        )
         handler.play_youtube_url(
             url,
             force_pulse=kwargs.get('force_pulse', True),
@@ -855,6 +872,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
                 url=item.get('url'),
                 ext=item.get('ext') or 'vtt',
                 path=item.get('path'),
+                vtt_url=item.get('vtt_url'),
             )
             if path:
                 item['path'] = path
@@ -879,6 +897,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
                     http_headers=getattr(handler, '_direct_headers', None),
                     duration_s=(self._known_duration_ms / 1000.0) if self._known_duration_ms else None,
                     subtitle_path=path,
+                    start_s=keep_ms / 1000.0,
                     fail_after_s=20,
                 )
                 self._hold_progress_ms = keep_ms
@@ -888,13 +907,16 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             try:
                 uri = pathlib.Path(path).resolve().as_uri()
                 loaded = self.player.add_slave(vlc.MediaSlaveType.subtitle, uri, True)
-                print(f"[VLC] Subtítulo esclavo ({loaded}): {uri}")
+                print(f"[VLC] Subtítulo esclavo ({loaded})")
             except Exception as exc:
                 print(f"[VLC] No se pudo añadir el subtítulo: {exc}")
                 return
             self._hold_progress_ms = keep_ms
             self._hold_progress_until = time.time() + 2.5
-            self._restore_after_subtitle(keep_ms)
+            if self._widget_exists(self.window):
+                self.window.after(400, self._select_external_spu)
+                self.window.after(550, lambda ms=keep_ms: self._restore_after_subtitle(ms))
+            return
         if self._widget_exists(self.window):
             self.window.after(0, apply)
 
@@ -1857,6 +1879,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             return
         watching = app_config.iptv_continue_watching()
         recent = app_config.iptv_history()
+        yt_watching = app_config.youtube_continue_watching()
+        yt_recent = app_config.youtube_history()
         menu.add_command(label="Ver historial…", command=self.open_iptv_history)
         if watching:
             menu.add_separator()
@@ -1867,35 +1891,62 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
                     label=app_config.iptv_history_label(item, with_time=True),
                     command=lambda u=url: self.play_history_url(u),
                 )
+        if yt_watching:
+            menu.add_separator()
+            menu.add_command(label="YouTube a medio ver", state='disabled')
+            for item in yt_watching[:8]:
+                url = item['url']
+                name = item.get('name') or 'YouTube'
+                menu.add_command(
+                    label=app_config.youtube_history_label(item, with_time=True),
+                    command=lambda u=url, n=name: self.play_youtube_url(u, title=n, add_to_list=False),
+                )
         menu.add_separator()
-        if not recent:
+        if not recent and not yt_recent:
             menu.add_command(label="Sin recientes", state='disabled')
         else:
-            for item in recent[:15]:
+            for item in recent[:10]:
                 url = item['url']
                 vod = item.get('kind') == 'vod'
                 menu.add_command(
                     label=app_config.iptv_history_label(item, with_time=vod),
                     command=lambda u=url: self.play_history_url(u),
                 )
+            if recent and yt_recent:
+                menu.add_separator()
+            if yt_recent:
+                menu.add_command(label="YouTube recientes", state='disabled')
+            for item in yt_recent[:10]:
+                url = item['url']
+                name = item.get('name') or 'YouTube'
+                menu.add_command(
+                    label=app_config.youtube_history_label(item, with_time=True),
+                    command=lambda u=url, n=name: self.play_youtube_url(u, title=n, add_to_list=False),
+                )
         menu.add_separator()
         menu.add_command(label="Vaciar historial", command=self.clear_iptv_history_prompt)
 
     def clear_iptv_history_prompt(self):
-        if not app_config.iptv_history():
+        if not app_config.iptv_history() and not app_config.youtube_history():
             return
         if not messagebox.askyesno(
             'Vaciar historial',
-            '¿Quitar todos los canales y películas del historial?',
+            '¿Quitar el historial de IPTV y de YouTube?',
             parent=self.window,
         ):
             return
         app_config.clear_iptv_history()
+        app_config.clear_youtube_history()
         self._refresh_history_ui()
 
     def play_history_url(self, url):
         url = (url or '').strip()
         if not url:
+            return
+        if app_config._is_youtube_url(url):
+            item = app_config.youtube_history_item_by_url(url) or {}
+            self.play_youtube_url(url, title=item.get('name') or 'YouTube', add_to_list=False)
+            self._refresh_history_ui()
             return
         for index, (_name, item_url) in enumerate(self.channels):
             if item_url != url:
@@ -2292,12 +2343,15 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
         video_id = self._current_youtube_id()
         if not video_id:
             return
+        handler = getattr(self, 'youtube_handler', None)
         elapsed_ms = self._playback_elapsed_ms()
         duration_ms = self._media_length_ms()
         app_config.remember_youtube_position(
             video_id,
             elapsed_ms / 1000.0,
             (duration_ms / 1000.0) if duration_ms else None,
+            title=getattr(handler, '_loading_title_text', None) if handler else None,
+            url=getattr(handler, '_current_url', None) if handler else None,
         )
         self._last_yt_resume_save = time.time()
 
@@ -2572,28 +2626,19 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
 
     def add_channel_to_list(self, name, url):
         """Añade un canal o vídeo individual a la lista de la izquierda y a all_channels."""
-        self.enqueue_youtube_items([(name, url)])
-
-    def enqueue_youtube_items(self, items):
-        """Añade vídeos a la lista lateral sin reproducirlos."""
         if not self.is_alive():
             self.ensure_window()
-        existing = {url for _name, url in self.all_channels}
-        added = []
-        for name, url in items or []:
-            url = (url or '').strip()
-            if not url or url in existing:
-                continue
-            title = (name or '').strip() or 'YouTube'
-            added.append((title, url))
-            existing.add(url)
-        if not added:
+        url = (url or '').strip()
+        if not url:
             return 0
-        for name, url in added:
-            self.all_channels.append((name, url))
-            self._groups_all.append('YouTube')
-            self._tvg_ids_all.append('')
-            self._logos_all.append('')
+        existing = {item_url for _name, item_url in self.all_channels}
+        if url in existing:
+            return 0
+        title = (name or '').strip() or 'YouTube'
+        self.all_channels.append((title, url))
+        self._groups_all.append('YouTube')
+        self._tvg_ids_all.append('')
+        self._logos_all.append('')
         if self._playlist_kind in ('file', 'url') and len(self.all_channels) <= 1500:
             self._playlist_kind = 'items'
         elif not self._playlist_kind:
@@ -2607,24 +2652,66 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
         if search:
             self.filter_channels()
         else:
-            for name, url in added:
-                self.channels.append((name, url))
-                self._groups.append('YouTube')
-                self._tvg_ids.append('')
-                self._logos.append('')
+            self.channels.append((title, url))
+            self._groups.append('YouTube')
+            self._tvg_ids.append('')
+            self._logos.append('')
             self._rebuild_sidebar()
             if getattr(self, 'sidebar', None):
                 self.sidebar.see(len(self.channels) - 1)
         self._persist_sidebar()
-        return len(added)
+        return 1
 
-    def play_youtube_url(self, url, title=None):
+    def enqueue_youtube_items(self, items):
+        """Añade vídeos a la cola de YouTube, no a la lista IPTV."""
+        return self.enqueue_youtube_queue(items)
+
+    def enqueue_youtube_queue(self, items):
+        added = app_config.enqueue_youtube_queue(items)
+        if not added:
+            return added
+        existing = getattr(self, '_youtube_queue_win', None)
+        if existing is not None:
+            try:
+                if existing.window.winfo_exists():
+                    existing.refresh()
+                    return added
+            except tk.TclError:
+                pass
+        self.open_youtube_queue()
+        return added
+
+    def open_youtube_queue(self):
+        if not self.is_alive():
+            self.ensure_window()
+        show_youtube_queue(self)
+
+    def _refresh_queue_ui(self):
+        win = getattr(self, '_youtube_queue_win', None)
+        if win is not None:
+            try:
+                win.refresh()
+            except tk.TclError:
+                pass
+
+    def play_youtube_queue_index(self, index):
+        item = app_config.pop_youtube_queue(index)
+        self._refresh_queue_ui()
+        if not item:
+            return
+        self.play_youtube_url(item.get('url') or '', title=item.get('name'), add_to_list=False)
+
+    def play_youtube_queue_next(self):
+        self.play_youtube_queue_index(0)
+
+    def play_youtube_url(self, url, title=None, add_to_list=True):
         """Delega la reproducción de YouTube al manejador y añade el vídeo a la lista si falta."""
-        existing = next((name for name, item_url in self.all_channels if item_url == url), None)
-        if existing and existing not in ('YouTube', url):
-            title = title or existing
-        elif not existing:
-            self.add_channel_to_list(title or 'YouTube', url)
+        if add_to_list:
+            existing = next((name for name, item_url in self.all_channels if item_url == url), None)
+            if existing and existing not in ('YouTube', url):
+                title = title or existing
+            elif not existing:
+                self.add_channel_to_list(title or 'YouTube', url)
         self._playing_youtube = True
         self.youtube_handler.play_youtube_url(
             url,
@@ -2632,6 +2719,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             show_progress=True,
             title=title,
         )
+        self._refresh_history_ui()
 
     def cargar_videos_playlist(self, canales):
         """Carga los vídeos de una playlist de YouTube como canales en el listado."""
@@ -2816,7 +2904,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             self.window,
             self.play_youtube_url,
             self.load_playlist_callback,
-            self.enqueue_youtube_items,
+            self.enqueue_youtube_queue,
             youtube_handler=self.youtube_handler,
         )
 
@@ -3000,7 +3088,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             print(traceback.format_exc())
 
     def _safe_on_media_end(self, event):
-        """Cuando termina un vídeo, reproduce el siguiente si estamos en modo secuencial."""
+        """Cuando termina un vídeo, sigue la cola de YouTube o el modo secuencial de la lista."""
         try:
             print("\n=== MediaPlayerEndReached ===")
             print(f"Estado actual: {self.player.get_state() if self.player else 'No hay reproductor'}")
@@ -3014,6 +3102,24 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
                 
             if not getattr(self, '_media_started', False):
                 print("Fin ignorado: el stream no llegó a reproducirse")
+                return
+
+            if getattr(self, '_playing_youtube', False) and app_config.youtube_queue():
+                def play_queue_next():
+                    try:
+                        if self.player and self.player.is_playing():
+                            self.player.stop()
+                        if hasattr(self, '_current_event_manager') and self._current_event_manager:
+                            try:
+                                self._current_event_manager.event_detach(vlc.EventType.MediaPlayerEndReached)
+                                self._current_event_manager = None
+                            except Exception:
+                                pass
+                        self.play_youtube_queue_next()
+                    except Exception as exc:
+                        print(f"Error al reproducir el siguiente de la cola: {exc}")
+
+                self.window.after(500, play_queue_next)
                 return
 
             if not self.is_sequential_playback:

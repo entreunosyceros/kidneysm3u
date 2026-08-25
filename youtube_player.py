@@ -17,6 +17,12 @@ from io import BytesIO
 import tkinter as tk
 from tkinter import messagebox, simpledialog, filedialog, ttk
 import app_config
+from youtube_subs import (
+    collect_youtube_subs,
+    ensure_caption_tlang,
+    filename_matches_sub_lang,
+    prepare_subtitle_for_vlc,
+)
 
 
 YT_TEMP_PREFIX = 'kidneys_yt_'
@@ -48,15 +54,32 @@ def is_playable_local_video(path):
         return False
 
 
+def youtube_format_selector(max_height=None):
+    """Selector de yt-dlp: tope de altura, o el mejor stream jugable si max_height <= 0."""
+    height = app_config.normalize_youtube_quality(
+        app_config.get_youtube_quality() if max_height is None else max_height
+    )
+    if height <= 0:
+        return (
+            'best[ext=mp4][acodec!=none][vcodec!=none]/'
+            'best[acodec!=none][vcodec!=none]/'
+            'best'
+        )
+    return (
+        f'best[height<={height}][ext=mp4][acodec!=none][vcodec!=none]/'
+        f'best[height<={height}][acodec!=none][vcodec!=none]/'
+        'best[ext=mp4][acodec!=none][vcodec!=none]/'
+        'best[acodec!=none][vcodec!=none]/'
+        'best'
+    )
+
+
 def find_cached_youtube_video(video_id, quality=None):
     video_id = str(video_id or '').strip()
     if len(video_id) != 11:
         return None
-    try:
-        quality = int(quality or app_config.get_youtube_quality())
-    except (TypeError, ValueError):
-        quality = 720
-    prefix = f'{video_id}_{quality}.'
+    key = app_config.youtube_quality_cache_key(quality)
+    prefix = f'{video_id}_{key}.'
     root = youtube_cache_dir()
     try:
         names = os.listdir(root)
@@ -206,92 +229,6 @@ def youtube_ydl_opts(**extra):
         extra_extractor,
     )
     return opts
-
-
-_YT_LANG_NAMES = {
-    'es': 'Español',
-    'es-ES': 'Español (España)',
-    'es-419': 'Español (Latinoamérica)',
-    'en': 'English',
-    'en-US': 'English (US)',
-    'en-GB': 'English (UK)',
-    'fr': 'Français',
-    'de': 'Deutsch',
-    'it': 'Italiano',
-    'pt': 'Português',
-    'pt-BR': 'Português (Brasil)',
-    'ca': 'Català',
-    'eu': 'Euskara',
-    'gl': 'Galego',
-    'ja': '日本語',
-    'ko': '한국어',
-    'zh': '中文',
-    'zh-Hans': '中文 (简体)',
-    'ar': 'العربية',
-    'ru': 'Русский',
-}
-
-
-def _subtitle_file_url(entries):
-    """Elige una URL de subtítulo que VLC pueda abrir (vtt/srt), sin relanzar yt-dlp."""
-    if not entries:
-        return None, None
-    by_ext = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        url = entry.get('url')
-        ext = (entry.get('ext') or '').lower()
-        if url and ext:
-            by_ext[ext] = url
-    for ext in ('vtt', 'srt', 'ttml'):
-        if ext in by_ext:
-            return by_ext[ext], ext
-    return None, None
-
-
-def collect_youtube_subs(info):
-    """Lista subtítulos oficiales y automáticos, priorizando es/en."""
-    official = info.get('subtitles') or {}
-    automatic = info.get('automatic_captions') or {}
-
-    def pretty(code, auto=False):
-        base = _YT_LANG_NAMES.get(code) or _YT_LANG_NAMES.get(str(code).split('-')[0]) or code
-        return f'{base} (auto)' if auto else base
-
-    def add(code, entries, kind, auto=False):
-        url, ext = _subtitle_file_url(entries)
-        if not url:
-            return False
-        items.append({
-            'lang': code,
-            'kind': kind,
-            'label': pretty(code, auto),
-            'url': url,
-            'ext': ext or 'vtt',
-        })
-        return True
-
-    items = []
-    seen = set()
-    for code in ('es', 'es-ES', 'es-419', 'en', 'en-US', 'en-GB'):
-        if code not in seen and add(code, official.get(code), 'official'):
-            seen.add(code)
-    for code, entries in official.items():
-        if code in seen or code == 'live_chat':
-            continue
-        if add(code, entries, 'official'):
-            seen.add(code)
-        if len(items) >= 14:
-            break
-    bases = {str(item['lang']).split('-')[0] for item in items}
-    for code in ('es', 'es-ES', 'es-419', 'en', 'en-US'):
-        if code in seen or str(code).split('-')[0] in bases:
-            continue
-        if add(code, automatic.get(code), 'auto', auto=True):
-            seen.add(code)
-            bases.add(str(code).split('-')[0])
-    return items
 
 
 def cookie_browser_loaders():
@@ -656,6 +593,13 @@ class YouTubeHandler:
             messagebox.showerror("Error", "No se pudo extraer el ID del vídeo de YouTube")
             return
         self.video_player._playing_youtube = True
+        app_config.remember_youtube_watch(video_id, title=title or '', url=url)
+        refresh = getattr(self.video_player, '_refresh_history_ui', None)
+        if refresh:
+            try:
+                refresh()
+            except tk.TclError:
+                pass
 
         gen = self._new_play_gen()
         self._current_url = url
@@ -734,6 +678,7 @@ class YouTubeHandler:
             if stream.get('title'):
                 self._set_loading_title(stream['title'])
                 self._sync_sidebar_title(url, stream['title'])
+                app_config.remember_youtube_watch(video_id, title=stream['title'], url=url)
         if resume_s:
             self._set_loading_status(f"Reanudando en {self._resume_clock(resume_s)}…")
         if stream and self._stream_ok_for_vlc(stream):
@@ -1361,21 +1306,15 @@ class YouTubeHandler:
             return True
         self.stop_pipeline()
         self._show_status("Descargando vídeo para reproducirlo…")
-        try:
-            quality = int(app_config.get_youtube_quality())
-        except (TypeError, ValueError):
-            quality = 720
-        outtmpl = os.path.join(youtube_cache_dir(), f'{video_id or "video"}_{quality}.%(ext)s')
+        quality = app_config.get_youtube_quality()
+        quality_key = app_config.youtube_quality_cache_key(quality)
+        outtmpl = os.path.join(youtube_cache_dir(), f'{video_id or "video"}_{quality_key}.%(ext)s')
 
         def work():
             try:
                 opts = youtube_ydl_opts(
                     outtmpl=outtmpl,
-                    format=(
-                        f'best[height<={quality}][ext=mp4][acodec!=none][vcodec!=none]/'
-                        f'best[height<={quality}][acodec!=none][vcodec!=none]/'
-                        'best[ext=mp4][acodec!=none][vcodec!=none]/best'
-                    ),
+                    format=youtube_format_selector(quality),
                     quiet=True,
                 )
                 with yt_dlp.YoutubeDL(opts) as ydl:
@@ -1584,30 +1523,39 @@ class YouTubeHandler:
             return None
         lang = (lang or '').lower()
         matches = []
-        others = []
         for name in os.listdir(directory):
             lower = name.lower()
-            if not lower.endswith(('.vtt', '.srt')):
+            if not lower.endswith(('.vtt', '.srt', '.json3')):
                 continue
-            full = os.path.join(directory, name)
-            if lang and lang in lower:
-                matches.append(full)
-            else:
-                others.append(full)
-        if matches:
-            return sorted(matches)[0]
-        if len(others) == 1:
-            return others[0]
-        return None
+            if not filename_matches_sub_lang(name, lang):
+                continue
+            matches.append(os.path.join(directory, name))
+        if not matches:
+            return None
+        vlc_ready = [path for path in matches if path.endswith('.vlc.vtt')]
+        return sorted(vlc_ready or matches)[0]
 
     def _write_subs_from_info(self, ydl, info, items):
-        """Guarda el VTT español (o el primero) con la misma sesión de extract_info."""
+        """Guarda el ASR original (o el primero) y lo deja en un VTT que VLC no atasca."""
         if not items:
             return
         preferred = next(
-            (item for item in items if str(item.get('lang') or '').split('-')[0] == 'es'),
-            items[0],
+            (
+                item for item in items
+                if item.get('kind') == 'auto'
+                and str(item.get('lang') or '') in ('es-orig', 'es', 'es-ES', 'es-419')
+            ),
+            None,
         )
+        if preferred is None:
+            preferred = next(
+                (
+                    item for item in items
+                    if item.get('kind') == 'official'
+                    and str(item.get('lang') or '').startswith('es')
+                ),
+                items[0],
+            )
         tmpdir = self._sub_cache_dir()
         ydl.params['writesubtitles'] = True
         ydl.params['writeautomaticsub'] = True
@@ -1631,10 +1579,11 @@ class YouTubeHandler:
             path = sub_info.get('filepath')
             if not path or not os.path.isfile(path):
                 continue
+            ready = prepare_subtitle_for_vlc(path, ext='vtt') or path
             for item in items:
                 if item.get('lang') == lang:
-                    item['path'] = path
-            print(f"[YouTube] Subtítulo listo {lang} → {path}")
+                    item['path'] = ready
+            print(f"[YouTube] Subtítulo listo {lang}")
 
     def _dl_sub_url(self, url, lang, ext='vtt'):
         if not url:
@@ -1643,11 +1592,15 @@ class YouTubeHandler:
             wait = int(self._sub_429_until - time.time())
             print(f"[YouTube] YouTube limita subtítulos; espera {wait}s y prueba otra vez")
             return None
-        dest = os.path.join(self._sub_cache_dir(), f'caption_{lang}.{ext or "vtt"}')
+        suffix = (ext or 'vtt').lstrip('.')
+        dest = os.path.join(self._sub_cache_dir(), f'caption_{lang}.{suffix}')
+        download_url = url
+        if lang and not str(lang).endswith('-orig'):
+            download_url = ensure_caption_tlang(url, lang)
         opts = youtube_ydl_opts(silent=True, quiet=True, no_warnings=True, ignoreerrors=True)
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
-                ydl.dl(dest, {'url': url, 'http_headers': ydl.params.get('http_headers')}, subtitle=True)
+                ydl.dl(dest, {'url': download_url, 'http_headers': ydl.params.get('http_headers')}, subtitle=True)
         except Exception as exc:
             text = str(exc)
             if '429' in text:
@@ -1656,27 +1609,34 @@ class YouTubeHandler:
             else:
                 print(f"[YouTube] Subtítulo no disponible: {exc}")
             return None
-        return dest if os.path.isfile(dest) else None
+        if not os.path.isfile(dest):
+            return None
+        return prepare_subtitle_for_vlc(dest, ext=suffix) or dest
 
-    def fetch_subtitle_file(self, lang, auto=False, url=None, ext='vtt', path=None):
-        """Usa el VTT de la primera extracción. No relanza yt-dlp (eso provoca 429)."""
-        if path and os.path.isfile(path):
-            return path
+    def fetch_subtitle_file(self, lang, auto=False, url=None, ext='vtt', path=None, vtt_url=None):
+        """Usa el archivo ya extraído o descarga json3/vtt y lo convierte para VLC."""
+        if path and os.path.isfile(path) and filename_matches_sub_lang(path, lang):
+            ready = path if path.endswith('.vlc.vtt') else prepare_subtitle_for_vlc(path, ext=ext)
+            if ready:
+                return ready
         found = self._find_sub_file(getattr(self.video_player, '_yt_sub_dir', None), lang)
-        if found:
-            return found
-        return self._dl_sub_url(url, lang, ext)
+        if found and filename_matches_sub_lang(found, lang):
+            if found.endswith('.vlc.vtt'):
+                return found
+            ready = prepare_subtitle_for_vlc(found)
+            if ready:
+                return ready
+        downloaded = self._dl_sub_url(url, lang, ext)
+        if downloaded:
+            return downloaded
+        if vtt_url and vtt_url != url:
+            return self._dl_sub_url(vtt_url, lang, 'vtt')
+        return None
 
     def get_best_vlc_url(self, youtube_url):
         """Obtiene una URL de stream que VLC pueda reproducir dentro de la ventana."""
         max_height = app_config.get_youtube_quality()
-        format_sel = (
-            f'best[height<={max_height}][ext=mp4][acodec!=none][vcodec!=none]/'
-            f'best[height<={max_height}][acodec!=none][vcodec!=none]/'
-            'best[ext=mp4][acodec!=none][vcodec!=none]/'
-            'best[acodec!=none][vcodec!=none]/'
-            'best'
-        )
+        format_sel = youtube_format_selector(max_height)
         attempts = [
             # Sin cookies: permite clientes android/ios, cuyas URLs VLC suele abrir
             youtube_ydl_opts(
@@ -1763,14 +1723,11 @@ class YouTubeHandler:
     def _pick_playable_stream(self, info, max_height=None):
         formats = list(info.get('formats') or [])
         headers = dict(info.get('http_headers') or {})
-        try:
-            preferred = int(max_height or app_config.get_youtube_quality())
-        except (TypeError, ValueError):
-            preferred = 720
-        if preferred <= 360:
-            preferred = 360
-        else:
-            preferred = 720
+        preferred = app_config.normalize_youtube_quality(
+            max_height if max_height is not None else app_config.get_youtube_quality()
+        )
+        if preferred <= 0:
+            preferred = 10000
 
         def protocol_of(fmt):
             return (fmt.get('protocol') or '').lower()
@@ -1833,7 +1790,7 @@ class YouTubeHandler:
                 f"[yt-dlp] Stream: id={best.get('format_id')} ext={best.get('ext')} "
                 f"vcodec={best.get('vcodec')} acodec={best.get('acodec')} "
                 f"proto={best.get('protocol')} height={best.get('height')} "
-                f"prefer={preferred}p"
+                f"prefer={app_config.youtube_quality_label(max_height)}"
             )
             return {
                 'url': best['url'],

@@ -35,14 +35,14 @@ No se escribe un `cookies.txt` vacío ni uno sin cookies de login: yt-dlp lo usa
 | Vídeos | Resultados normales |
 | **Shorts** | Solo URLs `/shorts/` (hashtag + filtro de YouTube) |
 | Listas de reproducción | Playlists |
-| Canales | Canales (se abren en el navegador) |
+| Canales | Canales (doble clic: vídeos recientes en esta ventana) |
 
 También puedes filtrar por fecha, duración (no aplica a Shorts) y número de resultados.
 
 - Doble clic o **Reproducir** añade el vídeo a la lista lateral y lo pone en marcha (cierra la búsqueda).
-- **Añadir a la cola** (o clic derecho) lo deja en la lista de la izquierda **sin cerrar** la ventana ni interrumpir el vídeo en curso. Puedes marcar varios con Ctrl o Mayús. `Ctrl+Enter` hace lo mismo.
-- Una **lista**: **Cargar lista** sustituye la barra lateral; **Añadir lista a la cola** concatena los vídeos.
-- Un **canal** se abre en el navegador.
+- **Añadir a la cola** (o clic derecho) lo deja en la **cola de YouTube**, una lista aparte (**Youtube → Cola de YouTube**): siguiente, quitar, subir/bajar. No se mezcla con la lista IPTV. Puedes marcar varios con Ctrl o Mayús. `Ctrl+Enter` hace lo mismo.
+- Una **lista**: **Cargar lista** sustituye la barra lateral; **Añadir lista a la cola** mete esos vídeos en la cola.
+- Un **canal**: doble clic o **Ver vídeos recientes** lista las subidas nuevas aquí mismo (no solo abre el navegador). **Añadir recientes a la cola** encola esos vídeos. El navegador sigue disponible en el menú contextual.
 
 Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short de la búsqueda.
 
@@ -70,9 +70,9 @@ yt-dlp elige un stream que VLC pueda abrir (audio y vídeo juntos cuando es posi
 
 Si el directo falla, se usa un archivo de la caché si ya es jugable (MP4, MKV, WebM, etc.) **sin remuxear** a MPEG-TS. Solo si hace falta se retransmite por un servidor local. La caché vive en el directorio temporal del sistema (`kidneysm3u_yt_cache`), se recorta a unos **500 MB** (borra lo más antiguo) y no se vacía al cerrar. Los temporales de retransmisión (`kidneys_yt_*`) sí se borran al cerrar o al cambiar de vídeo. La barra de progreso es para YouTube y VOD, no para un directo IPTV.
 
-Si cierras el reproductor o cambias de vídeo, se guarda el segundo. Al volver a abrirlo (también en una lista) continúa desde ahí, salvo que estuvieras al principio o casi al final. No se reproduce solo al restaurar la sesión.
+Si cierras el reproductor o cambias de vídeo, se guarda el segundo. Al volver a abrirlo (también en una lista o desde **Historial**) continúa desde ahí, salvo que estuvieras al principio o casi al final. No se reproduce solo al restaurar la sesión. Los últimos vídeos de YouTube aparecen en la misma ventana de **Historial** que el IPTV.
 
-Si el vídeo tiene subtítulos, el reproductor los ofrece en **Subtítulos** (oficiales primero; los automáticos llevan «auto»). En **Calidad / audio** puedes pedir 360p o 720p; los doblajes de YouTube no se pueden elegir (el stream solo trae una pista de audio). Detalle en [reproductor](reproductor.md#controles).
+Si el vídeo tiene subtítulos, el menú **Subtítulos** pone el español primero: transcripción automática (**auto**) si el vídeo está en español, los del autor, y **traducción automática** si el audio es de otro idioma. Esa última pide el VTT con `tlang` (el json3 de YouTube a menudo se queda en inglés). El archivo se convierte a un VTT simple para VLC. En **Calidad / audio** puedes pedir 360p, 720p, 1080p o **mejor disponible**; los doblajes de YouTube no se pueden elegir (el stream solo trae una pista de audio). Detalle en [reproductor](reproductor.md#controles).
 
 Si un vídeo no está disponible (restricción de YouTube o sin stream compatible), no hay alternativa dentro del programa. Ver [notas](notas.md#problemas-conocidos).
 

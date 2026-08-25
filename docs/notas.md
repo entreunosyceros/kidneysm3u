@@ -5,12 +5,12 @@
 ## Cómo reproduce
 
 - **VLC embebido** (`python-vlc`): decodificación por software (`avcodec-hw=none`) para evitar ruido de VA-API en NVIDIA. Audio: ALSA en IPTV, Pulse en YouTube cuando hace falta.
-- **YouTube**: [yt-dlp](https://github.com/yt-dlp/yt-dlp) elige un stream que VLC pueda abrir (audio+vídeo juntos si existe; se evitan DASH/HLS difíciles). La calidad se pide en **Calidad / audio** (360p o 720p). Si falla, hay un relevo local o un archivo de caché jugable (tope ~500 MB, sin remux si ya es MP4/MKV/WebM).
+- **YouTube**: [yt-dlp](https://github.com/yt-dlp/yt-dlp) elige un stream que VLC pueda abrir (audio+vídeo juntos si existe; se evitan DASH/HLS difíciles). La calidad se pide en **Calidad / audio** (360p, 720p, 1080p o mejor disponible). Si falla, hay un relevo local o un archivo de caché jugable (tope ~500 MB, sin remux si ya es MP4/MKV/WebM).
 - **IPTV**: se usa la URL del M3U. No se inventan rutas Xtream. Un 302 del panel lo sigue VLC; si el nodo de vídeo cierra la conexión, no hay imagen. Ver [listas M3U](listas-m3u.md#reproducción-iptv).
 - **Listas grandes**: el filtrado de la ventana principal y la carga/parseo del M3U van en segundo plano. La barra lateral agrupa por `group-title`: pestañas si hay pocos grupos, desplegable si hay muchos; un clic entra en la categoría. Sin grupos y con miles de entradas, solo se dibujan las filas visibles. Pintar o filtrar una lista enorme en la lateral aún puede congelar un momento.
 - **EPG**: XMLTV (en el M3U o en **Reproducir → Guía EPG**, por URL o archivo). Se asocia por `tvg-id`, `tvg-name` o el nombre del canal frente a `<display-name>`. Hay parrilla, programa actual en la fila y ahora / a continuación al pasar el ratón. La guía se pide en segundo plano (timeout 90 s), se recarga cada 30 min y no se registran las URLs (pueden llevar token). Una URL `get.php` o `xmltv.php` se usa tal cual; no se reescribe a otra ruta Xtream. Miniaturas: `tvg-logo` / `<icon>` en `epg_cache/` (no va al git); se pueden apagar en **Preferencias** o en **Guía EPG → Mostrar logos de canal**.
-- **Historial IPTV**: últimos canales (hasta 25) y posición de VOD en `config.json`, igual que la sesión. No se escriben las URLs en el registro. YouTube sigue usando `youtube_resume`.
-- **Audio y subtítulos**: VLC lista las pistas del stream (típico en IPTV/HLS) en **Calidad / audio**. YouTube aporta subtítulos descargados (oficiales o auto); no hay cambio de idioma de audio.
+- **Historial IPTV y YouTube**: últimos canales (hasta 25), posición de VOD y últimos vídeos de YouTube en `config.json`, igual que la sesión. La misma ventana **Historial** muestra las dos. No se escriben las URLs en el registro.
+- **Audio y subtítulos**: VLC lista las pistas del stream (típico en IPTV/HLS) en **Calidad / audio**. YouTube: transcripción ASR, pistas del autor y traducción automática (VTT con `tlang`; el json3 traducido suele seguir en inglés). No hay cambio de idioma de audio.
 - No se usa `--no-hw-dec`: en VLC 3.0.20 esa opción puede hacer que `vlc.Instance()` falle.
 
 El reproductor está partido en `video_player.py` más mixins: `player_iptv.py` (apertura VLC y stream muerto), `player_overlay.py` (aviso en pantalla) y `player_controls.py` (barra, volumen, pantalla completa).
@@ -32,7 +32,7 @@ python3 -m pytest
 | --- | --- | --- |
 | `favoritos.json` | Favoritos del reproductor | Viene en el repo; si falta, el reproductor usa una lista vacía |
 | `enlaces.json` | Enlaces guardados en el gestor | Se crea vacío al arrancar |
-| `config.json` | Preferencias (tema, logos de canal, volumen, carpeta de descargas, navegador de cookies, calidad YouTube, recordar última lista, URL de guía EPG), geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube y historial IPTV / seguir viendo VOD | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
+| `config.json` | Preferencias (tema, logos de canal, volumen, carpeta de descargas, navegador de cookies, calidad YouTube, recordar última lista, URL de guía EPG), geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube, cola de YouTube e historial IPTV / YouTube | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
 | `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube o al pulsar **Reexportar cookies**, solo si hay login vigente en el navegador. El indicador **Sesión YouTube: OK / caducada** avisa si hace falta reexportar. Detalle en [YouTube](youtube.md#cookies) |
 | `.venv/` | Entorno Python | `run_app.py` lo recrea ([instalación](instalacion.md)) |
 | `epg_cache/` | Miniaturas de logos EPG / `tvg-logo` | Se crea al pintar logos; no va al git |

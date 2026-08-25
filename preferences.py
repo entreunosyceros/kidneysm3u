@@ -112,10 +112,12 @@ def show_preferences(parent, on_apply=None):
     quality_row.pack(fill=tk.X)
     ttk.Label(quality_row, text='Calidad YouTube', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 16))
     ttk.Radiobutton(quality_row, text='360p', variable=quality_var, value='360').pack(side=tk.LEFT, padx=(0, 10))
-    ttk.Radiobutton(quality_row, text='720p', variable=quality_var, value='720').pack(side=tk.LEFT)
+    ttk.Radiobutton(quality_row, text='720p', variable=quality_var, value='720').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(quality_row, text='1080p', variable=quality_var, value='1080').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(quality_row, text='Mejor', variable=quality_var, value='0').pack(side=tk.LEFT)
     ttk.Label(
         playback,
-        text='Si cambias la calidad con un vídeo de YouTube en marcha, se recarga desde el segundo actual.',
+        text='Tope de altura al pedir el stream. «Mejor» usa la resolución más alta que VLC pueda abrir. Si cambias la calidad con un vídeo de YouTube en marcha, se recarga desde el segundo actual.',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
@@ -213,7 +215,7 @@ def show_preferences(parent, on_apply=None):
             'cookie_browser': cookie_key,
             'remember_last_list': bool(remember_var.get()),
             'show_channel_logos': bool(logos_var.get()),
-            'youtube_quality': 360 if quality <= 360 else 720,
+            'youtube_quality': app_config.normalize_youtube_quality(quality),
         })
         close()
         apply_theme(root, app_config.get_theme() == 'dark')

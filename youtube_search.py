@@ -114,6 +114,16 @@ def _search_youtube_shorts(query, max_results, extra_query=''):
     return found
 
 
+def youtube_channel_tab_url(url):
+    text = (url or '').strip().rstrip('/')
+    if not text:
+        return text
+    lower = text.lower()
+    if any(lower.endswith(suffix) for suffix in ('/videos', '/streams', '/shorts', '/releases')):
+        return text
+    return f'{text}/videos'
+
+
 class YouTubeSearchDialog:
     def __init__(self, parent, play_callback, load_playlist_callback=None, enqueue_callback=None, youtube_handler=None):
         self.parent = parent
@@ -141,7 +151,7 @@ class YouTubeSearchDialog:
         ttk.Label(main_frame, text='Buscar en YouTube', style='PageTitle.TLabel').pack(anchor=tk.W)
         ttk.Label(
             main_frame,
-            text='Vídeos, Shorts, listas y canales. Añade a la cola sin cerrar esta ventana.',
+            text='Vídeos, Shorts, listas y canales. La cola es una lista aparte; un canal abre sus vídeos recientes.',
             style='Muted.TLabel',
         ).pack(anchor=tk.W, pady=(0, 8))
 
@@ -589,7 +599,10 @@ class YouTubeSearchDialog:
                 context_menu.add_command(label="Abrir en navegador", 
                                        command=lambda: webbrowser.open_new(self.results[selection]))
             elif tipo == "channel":
-                context_menu.add_command(label="Abrir en navegador", 
+                context_menu.add_command(label="Ver vídeos recientes", command=self.play_selected)
+                context_menu.add_command(label="Añadir recientes a la cola", command=self.enqueue_selected)
+                context_menu.add_separator()
+                context_menu.add_command(label="Abrir en navegador",
                                        command=lambda: webbrowser.open_new(self.results[selection]))
             
             try:
@@ -613,8 +626,7 @@ class YouTubeSearchDialog:
             elif tipo == "playlist":
                 self.load_playlist_videos(url, close_after=True)
             elif tipo == "channel":
-                webbrowser.open_new(url)
-                self.window.destroy()
+                self.open_channel_videos(url, title=self._result_title(index))
 
     def _result_title(self, index):
         details = None
@@ -644,6 +656,7 @@ class YouTubeSearchDialog:
             return
         videos = []
         playlists = []
+        channels = []
         skipped = 0
         for index in selection:
             tipo = self.result_types[index] if index < len(self.result_types) else 'video'
@@ -652,6 +665,8 @@ class YouTubeSearchDialog:
                 videos.append((self._result_title(index), url))
             elif tipo == 'playlist' and url:
                 playlists.append((self._result_title(index), url))
+            elif tipo == 'channel' and url:
+                channels.append((self._result_title(index), url))
             else:
                 skipped += 1
         if videos:
@@ -666,8 +681,12 @@ class YouTubeSearchDialog:
         if playlists:
             self._enqueue_playlists(playlists, skipped)
             return
+        if channels:
+            title, url = channels[0]
+            self.open_channel_videos(url, title=title, enqueue=True)
+            return
         if skipped and not videos:
-            self._set_queue_status('Los canales se abren en el navegador, no van a la cola.')
+            self._set_queue_status('Selecciona un vídeo, una lista o un canal.')
 
     def _enqueue_playlists(self, playlists, skipped=0):
         self._set_queue_status('Añadiendo lista a la cola…')
@@ -698,7 +717,7 @@ class YouTubeSearchDialog:
                 else:
                     self._set_queue_status('Esos vídeos ya estaban en la cola.')
                 if skipped and not added:
-                    self._set_queue_status('Los canales se abren en el navegador, no van a la cola.')
+                    self._set_queue_status('Selecciona un vídeo, una lista o un canal.')
 
             self.window.after(0, done)
 
@@ -864,6 +883,129 @@ class YouTubeSearchDialog:
                         pass
 
         threading.Thread(target=work, daemon=True).start()
+
+    def open_channel_videos(self, channel_url, title='', enqueue=False):
+        if getattr(self, '_loading_playlist', False):
+            return
+        self._loading_playlist = True
+        label = title or 'canal'
+        if enqueue:
+            self._set_queue_status(f'Añadiendo vídeos recientes de {label}…')
+        else:
+            self._set_queue_status(f'Cargando vídeos recientes de {label}…')
+        self.progress_bar.pack(fill=tk.X, expand=True)
+        self.progress_bar.start(10)
+        window = self.window
+        try:
+            limit = max(10, min(int(self.results_count.get() or 20), 50))
+        except (TypeError, ValueError, tk.TclError):
+            limit = 20
+
+        def work():
+            err = None
+            videos = []
+            channel_name = label
+            try:
+                videos, channel_name = self._fetch_channel_videos(channel_url, limit=limit)
+                channel_name = channel_name or label
+            except Exception as exc:
+                err = exc
+
+            def done():
+                self._loading_playlist = False
+                try:
+                    self.progress_bar.stop()
+                    self.progress_bar.pack_forget()
+                except tk.TclError:
+                    pass
+                if err:
+                    if self.youtube_handler:
+                        self.youtube_handler.mark_session_from_error(err)
+                    if youtube_auth_blocked(err):
+                        messagebox.showerror("Sesión YouTube", youtube_auth_help())
+                    else:
+                        messagebox.showerror("Error", f"No se pudieron leer los vídeos del canal: {err}")
+                    return
+                if not videos:
+                    messagebox.showinfo("Info", "No se encontraron vídeos recientes en ese canal.")
+                    return
+                if enqueue:
+                    items = [(item['title'], item['url']) for item in videos]
+                    added = self.enqueue_callback(items) if self.enqueue_callback else 0
+                    if added:
+                        self._set_queue_status(
+                            f'{added} vídeos de {channel_name} añadidos a la cola.'
+                        )
+                    else:
+                        self._set_queue_status('Esos vídeos ya estaban en la cola.')
+                    return
+                self._replace_results_with_videos(
+                    videos,
+                    f'Vídeos recientes de {channel_name} ({len(videos)}).',
+                )
+
+            try:
+                window.after(0, done)
+            except tk.TclError:
+                self._loading_playlist = False
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _replace_results_with_videos(self, videos, status=''):
+        try:
+            self.results_listbox.delete(0, tk.END)
+        except tk.TclError:
+            return
+        self.results = []
+        self.result_types = []
+        self.result_details = []
+        for item in videos:
+            duration = item.get('duration')
+            duration_str = self.format_duration(duration) if duration else ''
+            self.result_types.append('video')
+            self.results.append(item['url'])
+            self.result_details.append({
+                'title': item.get('title') or 'YouTube',
+                'id': item.get('id'),
+                'duration': duration,
+            })
+            display = f"[Vídeo] {item.get('title') or 'YouTube'}"
+            if duration_str:
+                display += f" [{duration_str}]"
+            self.results_listbox.insert(tk.END, display)
+        self._set_queue_status(status)
+
+    def _fetch_channel_videos(self, channel_url, limit=30):
+        limit = max(5, min(int(limit or 30), 50))
+        tab_url = youtube_channel_tab_url(channel_url)
+        ydl_opts = youtube_ydl_opts(
+            extract_flat='in_playlist',
+            skip_download=True,
+            force_generic_extractor=False,
+            noplaylist=False,
+            playlistend=limit,
+        )
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(tab_url, download=False)
+        videos = []
+        seen = set()
+        for entry in info.get('entries') or []:
+            if not entry or not entry.get('id'):
+                continue
+            video_id = str(entry.get('id'))
+            if len(video_id) != 11 or video_id in seen:
+                continue
+            seen.add(video_id)
+            videos.append({
+                'title': (entry.get('title') or '').strip() or 'YouTube',
+                'id': video_id,
+                'url': f'https://www.youtube.com/watch?v={video_id}',
+                'duration': entry.get('duration'),
+            })
+            if len(videos) >= limit:
+                break
+        channel_name = (info.get('channel') or info.get('uploader') or info.get('title') or '').strip()
+        return videos, channel_name
 
     def _fetch_playlist_videos(self, playlist_url):
         ydl_opts = youtube_ydl_opts(
