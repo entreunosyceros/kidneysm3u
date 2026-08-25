@@ -56,7 +56,7 @@ python3 -m pytest
 2. En una terminal:
 
 ```bash
-sudo dpkg -i kidneysm3u_1.2.0_all.deb
+sudo dpkg -i kidneysm3u_1.2.1_all.deb
 sudo apt-get install -f   # si hace falta
 ```
 
