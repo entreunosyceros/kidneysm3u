@@ -33,7 +33,7 @@ python3 run_app.py
 3. Instala todo lo de `requirements.txt`.
 4. Arranca `main.py` con el Python de ese entorno.
 
-Si **borras `.venv`**, el siguiente `python3 run_app.py` lo vuelve a crear e instala otra vez las librerías de Python. No reinstala VLC, ffmpeg, tkinter ni Node: eso es del sistema.
+Si **borras `.venv`**, el siguiente `python3 run_app.py` lo vuelve a crear e instala otra vez las librerías de Python. No reinstala VLC, ffmpeg, tkinter ni Node: eso es del sistema. `pip install -r` no actualiza solo yt-dlp si ya está instalado; para eso usa **Preferencias → Actualizar yt-dlp**.
 
 No uses `python3 main.py` a pelo si acabas de borrar el entorno: ese comando no recrea `.venv`.
 

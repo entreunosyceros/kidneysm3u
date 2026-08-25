@@ -61,18 +61,22 @@ class PlayerPipMixin:
         if click:
             frame.bind('<Button-1>', click)
         self._reembed_vlc()
+        try:
+            pip.after_idle(self._reembed_vlc)
+        except tk.TclError:
+            pass
         self._apply_topmost()
 
     def close_pip(self):
         pip = getattr(self, '_pip_window', None)
         self._pip_window = None
         self._pip_frame = None
+        self._reembed_vlc()
         if pip is not None:
             try:
                 pip.destroy()
             except tk.TclError:
                 pass
-        self._reembed_vlc()
         self._apply_topmost()
 
     def _reembed_vlc(self):

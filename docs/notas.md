@@ -13,7 +13,7 @@
 - **Audio y subtítulos**: VLC lista las pistas del stream (típico en IPTV/HLS) en **Calidad / audio**. YouTube: transcripción ASR, pistas del autor y traducción automática (VTT con `tlang`; el json3 traducido suele seguir en inglés). No hay cambio de idioma de audio.
 - No se usa `--no-hw-dec`: en VLC 3.0.20 esa opción puede hacer que `vlc.Instance()` falle.
 
-El reproductor está partido en `video_player.py` más mixins: `player_iptv.py` (apertura VLC y stream muerto), `player_overlay.py` (aviso en pantalla) y `player_controls.py` (barra, volumen, pantalla completa). La grabación del stream actual está en `iptv_record.py`: `ffmpeg -c copy` a un `.ts`/`.mkv` local (carpeta de descargas de Preferencias). No sube nada ni descifra DRM.
+El reproductor está partido en `video_player.py` más mixins: `player_iptv.py` (apertura VLC y stream muerto), `player_overlay.py` (aviso en pantalla), `player_controls.py` (barra, volumen, pantalla completa) y `player_pip.py` (recuadro PiP y siempre encima). La grabación del stream actual está en `iptv_record.py`: `ffmpeg -c copy` a un `.ts`/`.mkv` local (carpeta de descargas de Preferencias). No sube nada ni descifra DRM.
 
 ## Tests
 
@@ -32,7 +32,7 @@ python3 -m pytest
 | --- | --- | --- |
 | `favoritos.json` | Favoritos del reproductor | Viene en el repo; si falta, el reproductor usa una lista vacía |
 | `enlaces.json` | Enlaces guardados en el gestor | Se crea vacío al arrancar |
-| `config.json` | Preferencias (tema, logos de canal, volumen, carpeta de descargas, navegador de cookies, calidad YouTube, recordar última lista, URL de guía EPG), geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube, cola de YouTube e historial IPTV / YouTube | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
+| `config.json` | Preferencias (tema, logos de canal, volumen, carpeta de descargas, abrir gestor de archivos al descargar, navegador de cookies, calidad YouTube, recordar última lista, URL de guía EPG), geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube, cola de YouTube e historial IPTV / YouTube | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
 | `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube o al pulsar **Reexportar cookies**, solo si hay login vigente en el navegador. El indicador **Sesión YouTube: OK / caducada** avisa si hace falta reexportar. Detalle en [YouTube](youtube.md#cookies) |
 | `.venv/` | Entorno Python | `run_app.py` lo recrea ([instalación](instalacion.md)) |
 | `epg_cache/` | Miniaturas de logos EPG / `tvg-logo` | Se crea al pintar logos; no va al git |
@@ -63,7 +63,7 @@ Aparecerá el porcentaje abajo a la derecha, actualizado cada segundo.
 > [!IMPORTANT]
 > El desarrollo y las pruebas se hacen sobre todo en Linux. En Windows puede haber fallos no vistos.
 
-- Algunos vídeos de YouTube no tienen stream compatible o están restringidos.
+- Algunos vídeos de YouTube no tienen stream compatible o están restringidos. Si de pronto no extrae ninguno, actualiza yt-dlp en **Preferencias** (o **Youtube → Actualizar yt-dlp**) y reinicia.
 - En Linux hacen falta VLC y, si aplica, `python3-vlc` del sistema.
 - Si YouTube no tiene audio, prueba la salida Pulse/ALSA del sistema.
 - Un canal IPTV puede tardar en arrancar o no arrancar: depende del servidor de la lista, no solo del programa. Si no hay vídeo (también con pantalla negra), el reproductor muestra que ese canal por el momento no funciona. Si el mismo enlace falla en VLC, el archivo no está disponible desde esta red.

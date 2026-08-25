@@ -35,6 +35,8 @@ class PlayerControlsMixin:
             pass
 
     def enter_fullscreen(self):
+        if getattr(self, 'pip_is_open', lambda: False)():
+            self.close_pip()
         self.window.attributes('-fullscreen', True)
         self.is_fullscreen = True
         self.window.config(menu="")  # Ocultar menú superior
@@ -57,6 +59,9 @@ class PlayerControlsMixin:
             self.window.after_cancel(self.hide_controls_timer)
             self.hide_controls_timer = None
         self.show_controls_and_menu()
+        apply = getattr(self, '_apply_topmost', None)
+        if apply:
+            apply()
 
     def reset_hide_controls_timer(self):
         """

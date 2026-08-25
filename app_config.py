@@ -30,6 +30,7 @@ _DEFAULTS = {
     ],
     'volume': 50,
     'download_dir': '',
+    'open_folder_after_download': True,
     'cookie_browser': 'auto',
     'remember_last_list': True,
     'show_channel_logos': True,
@@ -149,6 +150,14 @@ def get_download_dir():
 
 def set_download_dir(path):
     save({'download_dir': str(path or '').strip()})
+
+
+def get_open_folder_after_download():
+    return bool(load().get('open_folder_after_download', True))
+
+
+def set_open_folder_after_download(value):
+    save({'open_folder_after_download': bool(value)})
 
 
 def get_cookie_browser():

@@ -33,6 +33,7 @@ from youtube_queue import show_youtube_queue
 from player_controls import PlayerControlsMixin
 from player_iptv import IptvPlaybackMixin
 from player_overlay import ChannelNoticeMixin
+from player_pip import PlayerPipMixin
 from iptv_record import StreamRecorder, default_recording_path, show_recordings
 
 # Clase Tooltip para mostrar información al pasar el ratón
@@ -108,7 +109,7 @@ def _make_vlc_instance():
     )
 
 
-class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
+class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, PlayerPipMixin):
     def __init__(self):
         self.window = None
         self.instance = _make_vlc_instance()
@@ -177,6 +178,9 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
         self._recordings = []
         self._recordings_win = None
         self._record_watch_job = None
+        self._pip_window = None
+        self._pip_frame = None
+        self._topmost_var = None
         self._iptv_check_gen = 0
         self._iptv_status_frame = None
         self._iptv_notice_top = None
@@ -338,6 +342,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             ('quality', 'Calidad / audio', self._popup_audio_menu),
             ('subtitles', 'Subtítulos', self._popup_subs_menu),
             ('volume', 'Silenciar / Activar sonido', self.toggle_mute),
+            ('pip', 'Ventana PiP', self.toggle_pip),
             ('fullscreen', 'Pantalla completa', self.toggle_fullscreen),
             ('playlist', 'Mostrar / Ocultar lista', self.toggle_playlist),
         ]
@@ -417,6 +422,14 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
         reproducir_menu.add_command(label="Grabar en…", command=lambda: self.start_stream_recording(ask_path=True))
         reproducir_menu.add_command(label="Grabaciones…", command=lambda: show_recordings(self))
         reproducir_menu.add_separator()
+        self._topmost_var = tk.BooleanVar(value=False)
+        reproducir_menu.add_checkbutton(
+            label="Siempre encima",
+            variable=self._topmost_var,
+            command=self.toggle_always_on_top,
+        )
+        reproducir_menu.add_command(label="Ventana PiP", command=self.toggle_pip)
+        reproducir_menu.add_separator()
         reproducir_menu.add_command(label="Limpiar lista lateral", command=self.clear_channel_list)
         reproducir_menu.add_separator()
         reproducir_menu.add_command(label="Preferencias", command=self.open_preferences)
@@ -433,6 +446,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
         youtube_menu.add_command(label="Sesión YouTube: …", state='disabled')
         self._yt_session_menu_index = youtube_menu.index('end')
         youtube_menu.add_command(label="Reexportar cookies", command=self.reexport_youtube_cookies)
+        youtube_menu.add_command(label="Actualizar yt-dlp", command=self.update_yt_dlp)
         self._youtube_menu = youtube_menu
         favoritos_menu = tk.Menu(self.menubar, tearoff=0)
         favoritos_menu.add_command(label="Mostrar Favoritos", command=self.show_favorites)
@@ -1171,6 +1185,9 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             self.stop_update_time()
             self._cancel_epg_jobs()
             self.stop_stream_recording(notify=False)
+            close_pip = getattr(self, 'close_pip', None)
+            if close_pip:
+                close_pip()
 
             if hasattr(self, 'youtube_handler') and self.youtube_handler:
                 try:
@@ -1202,7 +1219,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
 
     def _embed_vlc_in_frame(self):
         """Enchufa VLC al frame y deja el clic para Tk (pausa sin OSD ni parpadeo)."""
-        if not self.player or not self._widget_exists(self.video_frame):
+        target = self._video_target_frame() if hasattr(self, '_video_target_frame') else self.video_frame
+        if not self.player or not self._widget_exists(target):
             return
         try:
             self.player.video_set_mouse_input(False)
@@ -1211,8 +1229,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             pass
         try:
             self.window.update_idletasks()
-            self.video_frame.update_idletasks()
-            wid = self.video_frame.winfo_id()
+            target.update_idletasks()
+            wid = target.winfo_id()
         except tk.TclError:
             return
         if sys.platform.startswith('win'):
@@ -3036,6 +3054,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
 
     def reexport_youtube_cookies(self):
         self.youtube_handler.reexport_youtube_cookies()
+
+    def update_yt_dlp(self):
+        from preferences import start_yt_dlp_upgrade
+        start_yt_dlp_upgrade(self.window)
 
     def open_youtube_search(self):
         """Abre la ventana de búsqueda de YouTube."""
