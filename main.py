@@ -704,7 +704,7 @@ class M3UProcessor:
 def main():
     """Función principal para iniciar la aplicación"""
     try:
-        root = TkinterDnD.Tk() 
+        root = TkinterDnD.Tk(className='Kidneysm3u') 
         app = M3UProcessor(root)
         root.mainloop()
         return 0

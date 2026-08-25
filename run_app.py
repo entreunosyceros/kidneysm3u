@@ -38,15 +38,17 @@ def install_requirements():
     subprocess.run([pip_exe, 'install', '-r', requirements_file], check=True)
 
 def run_main_app():
-    python_exe = get_python_executable()
-    main_file = 'main.py'
-    
+    python_exe = os.path.abspath(get_python_executable())
+    main_file = os.path.abspath('main.py')
+
     if not os.path.exists(main_file):
         print(f"Error: {main_file} not found")
         sys.exit(1)
-    
+
     print("Iniciando la aplicación...")
-    subprocess.run([python_exe, main_file], check=True)
+    # Sustituye este proceso para que el lanzador de GNOME agrupe la ventana
+    # en el mismo icono (mismo PID que arrancó el .desktop).
+    os.execv(python_exe, [python_exe, main_file])
 
 def main():
     # Cambiar al directorio que contenga este script

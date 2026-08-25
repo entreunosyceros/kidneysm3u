@@ -56,7 +56,7 @@ python3 -m pytest
 2. En una terminal:
 
 ```bash
-sudo dpkg -i kidneysm3u_1.1.0_all.deb
+sudo dpkg -i kidneysm3u_1.2.0_all.deb
 sudo apt-get install -f   # si hace falta
 ```
 
@@ -64,8 +64,10 @@ sudo apt-get install -f   # si hace falta
 
 El paquete instala el código en `/usr/share/kidneysm3u`. Al arrancar se copia a `~/.local/share/kidneysm3u` (ahí van `config.json`, cookies, favoritos, `epg_cache/` y `.venv`). Así no se escribe en directorios de sistema.
 
+El icono del lanzador y la ventana del programa comparten el mismo identificador (`Kidneysm3u`). En GNOME/Ubuntu el programa se queda en el icono desde el que lo abriste, no aparece otro genérico de Python.
+
 > [!NOTE]
-> El primer arranque tarda más porque crea el entorno virtual e instala dependencias. Los siguientes son más rápidos.
+> El primer arranque tarda más porque crea el entorno virtual e instala dependencias. Los siguientes son más rápidos. Si actualizas el `.deb` y ya tenías una copia en `~/.local/share/kidneysm3u`, el siguiente arranque sustituye el código de esa carpeta.
 
 Siguiente: [uso básico](uso.md).
 

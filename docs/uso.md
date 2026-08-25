@@ -25,7 +25,21 @@ Desde aquí filtras o abres listas y lanzas el reproductor. El flujo habitual:
 
 El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras corre.
 
-En **Archivo → Preferencias** (también **Reproducir → Preferencias** en el reproductor) unificas tema, logos de canal, volumen por defecto, carpeta de descargas, navegador de cookies, calidad de YouTube y si se recuerda la última lista. Ahí también puedes **actualizar yt-dlp** si YouTube deja de extraerse. El botón **Tema claro/oscuro** de la cabecera sigue sirviendo para cambiar solo el tema.
+## Preferencias
+
+**Archivo → Preferencias** (también **Reproducir → Preferencias** en el reproductor). La ventana se puede desplazar; **Guardar** y **Cancelar** quedan fijos abajo.
+
+| Apartado | Qué hace |
+| --- | --- |
+| Tema | Oscuro o claro. El botón **Tema claro/oscuro** de la cabecera solo cambia esto. |
+| Logos de canal | Miniaturas `tvg-logo` en la lista y en la parrilla. En listas grandes conviene apagarlos. |
+| Volumen por defecto | Al abrir el reproductor. |
+| Calidad YouTube | Tope de altura: 360p, 720p, 1080p o **Mejor**. Si cambias con un vídeo en marcha, se recarga desde el segundo actual. |
+| Buffer IPTV | **Rápido**, **Equilibrado** (por defecto) o **Estable**. El siguiente canal ya usa el valor. Detalle en [listas M3U](listas-m3u.md#buffer-iptv). |
+| Recordar última lista | Restaura la lista lateral al abrir; no reproduce solo. |
+| Carpeta de descargas | Destino inicial de vídeos, audio y grabaciones. |
+| Navegador de cookies | De dónde leer la sesión de YouTube (**Automático** prueba Firefox primero). |
+| yt-dlp | Muestra la versión e **Actualizar yt-dlp**. Después hay que cerrar y abrir el programa. |
 
 Detalle del filtro y de la herramienta de ordenar: [listas M3U](listas-m3u.md).
 
@@ -56,6 +70,7 @@ Menú **Youtube**:
 - Pegar una URL (también `youtube.com/shorts/...`)
 - Cola de YouTube (siguiente, quitar, reordenar)
 - Cargar una playlist como lista lateral
+- Actualizar yt-dlp (también en Preferencias)
 
 Guía completa: [YouTube](youtube.md).
 

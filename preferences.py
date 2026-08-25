@@ -179,6 +179,7 @@ def show_preferences(parent, on_apply=None):
     volume_label_var = tk.StringVar(value=f'{volume_var.get()} %')
     download_var = tk.StringVar(value=app_config.get_download_dir())
     quality_var = tk.StringVar(value=str(app_config.get_youtube_quality()))
+    buffer_var = tk.StringVar(value=app_config.get_iptv_buffer())
     cookie_var = tk.StringVar(value=app_config.get_cookie_browser())
     remember_var = tk.BooleanVar(value=app_config.get_remember_last_list())
     logos_var = tk.BooleanVar(value=app_config.get_show_channel_logos())
@@ -316,6 +317,19 @@ def show_preferences(parent, on_apply=None):
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
 
+    buffer_row = ttk.Frame(playback, style='Card.TFrame')
+    buffer_row.pack(fill=tk.X, pady=(12, 0))
+    ttk.Label(buffer_row, text='Buffer IPTV', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 16))
+    ttk.Radiobutton(buffer_row, text='Rápido', variable=buffer_var, value='fast').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(buffer_row, text='Equilibrado', variable=buffer_var, value='balanced').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(buffer_row, text='Estable', variable=buffer_var, value='stable').pack(side=tk.LEFT)
+    ttk.Label(
+        playback,
+        text='Caché de VLC al ver un canal. Equilibrado usa menos en MPEG-TS (cambio de canal más ágil) y más en HLS. Rápido reduce la espera; Estable aguanta mejor los microcortes. El siguiente canal ya usa el valor nuevo.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(8, 0))
+
     session = ttk.LabelFrame(main, text=' SESIÓN ', padding=12)
     session.pack(fill=tk.X, pady=(0, 10))
     ttk.Checkbutton(
@@ -441,6 +455,7 @@ def show_preferences(parent, on_apply=None):
             'remember_last_list': bool(remember_var.get()),
             'show_channel_logos': bool(logos_var.get()),
             'youtube_quality': app_config.normalize_youtube_quality(quality),
+            'iptv_buffer': app_config.normalize_iptv_buffer_profile(buffer_var.get()),
         })
         close()
         apply_theme(root, app_config.get_theme() == 'dark')
