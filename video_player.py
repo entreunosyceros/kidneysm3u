@@ -233,7 +233,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.current_playlist_index = None
 
     def create_window(self):
-        self.window = tk.Toplevel()
+        self.window = tk.Toplevel(className='Kidneysm3u')
         self.window.title('Reproductor de vídeo')
         self.window.geometry('1100x750')
         style_window(self.window)

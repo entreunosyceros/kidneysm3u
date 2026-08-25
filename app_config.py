@@ -5,6 +5,7 @@ import os
 import time
 import tkinter as tk
 
+from iptv_buffer import normalize_iptv_buffer_profile
 from m3u_parse import is_iptv_vod
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
@@ -17,6 +18,7 @@ YT_RESUME_MIN_S = 15
 YT_RESUME_END_S = 20
 IPTV_RESUME_MIN_S = 15
 YOUTUBE_QUALITIES = (0, 360, 720, 1080)
+IPTV_BUFFER_PROFILES = ('fast', 'balanced', 'stable')
 
 COOKIE_BROWSERS = ('auto', 'firefox', 'chrome', 'chromium', 'brave', 'edge')
 
@@ -52,6 +54,7 @@ _DEFAULTS = {
     'youtube_queue': [],
     'iptv_history': [],
     'youtube_quality': 720,
+    'iptv_buffer': 'balanced',
 }
 
 _cache = None
@@ -239,6 +242,14 @@ def get_youtube_quality():
 
 def set_youtube_quality(height):
     save({'youtube_quality': normalize_youtube_quality(height)})
+
+
+def get_iptv_buffer():
+    return normalize_iptv_buffer_profile(load().get('iptv_buffer', 'balanced'))
+
+
+def set_iptv_buffer(value):
+    save({'iptv_buffer': normalize_iptv_buffer_profile(value)})
 
 
 def remember_playlist(path, kind='file'):

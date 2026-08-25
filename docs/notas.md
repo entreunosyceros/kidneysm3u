@@ -6,18 +6,20 @@
 
 - **VLC embebido** (`python-vlc`): decodificación por software (`avcodec-hw=none`) para evitar ruido de VA-API en NVIDIA. Audio: ALSA en IPTV, Pulse en YouTube cuando hace falta.
 - **YouTube**: [yt-dlp](https://github.com/yt-dlp/yt-dlp) elige un stream que VLC pueda abrir (audio+vídeo juntos si existe; se evitan DASH/HLS difíciles). La calidad se pide en **Calidad / audio** (360p, 720p, 1080p o mejor disponible). Si falla, hay un relevo local o un archivo de caché jugable (tope ~500 MB, sin remux si ya es MP4/MKV/WebM).
-- **IPTV**: se usa la URL del M3U. No se inventan rutas Xtream. Un 302 del panel lo sigue VLC; si el nodo de vídeo cierra la conexión, no hay imagen. Ver [listas M3U](listas-m3u.md#reproducción-iptv).
+- **IPTV**: se usa la URL del M3U. No se inventan rutas Xtream. Un 302 del panel lo sigue VLC; si el nodo de vídeo cierra la conexión, no hay imagen. El buffer de VLC depende del tipo (MPEG-TS / HLS / VOD) y del perfil de **Preferencias** (`iptv_buffer.py`). Si aún llegan bytes, no se da el canal por muerto; si el directo ya había arrancado y el buffer se queda seco, se reconecta una vez el mismo enlace. Ver [listas M3U](listas-m3u.md#buffer-iptv).
 - **Listas grandes**: el filtrado de la ventana principal y la carga/parseo del M3U van en segundo plano. La barra lateral agrupa por `group-title`: pestañas si hay pocos grupos, desplegable si hay muchos; un clic entra en la categoría. Sin grupos y con miles de entradas, solo se dibujan las filas visibles. Pintar o filtrar una lista enorme en la lateral aún puede congelar un momento.
 - **EPG**: XMLTV (en el M3U o en **Reproducir → Guía EPG**, por URL o archivo). Se asocia por `tvg-id`, `tvg-name` o el nombre del canal frente a `<display-name>`. Hay parrilla, programa actual en la fila y ahora / a continuación al pasar el ratón. La guía se pide en segundo plano (timeout 90 s), se recarga cada 30 min y no se registran las URLs (pueden llevar token). Una URL `get.php` o `xmltv.php` se usa tal cual; no se reescribe a otra ruta Xtream. Miniaturas: `tvg-logo` / `<icon>` en `epg_cache/` (no va al git); se pueden apagar en **Preferencias** o en **Guía EPG → Mostrar logos de canal**.
 - **Historial IPTV y YouTube**: últimos canales (hasta 25), posición de VOD y últimos vídeos de YouTube en `config.json`, igual que la sesión. La misma ventana **Historial** muestra las dos. No se escriben las URLs en el registro.
 - **Audio y subtítulos**: VLC lista las pistas del stream (típico en IPTV/HLS) en **Calidad / audio**. YouTube: transcripción ASR, pistas del autor y traducción automática (VTT con `tlang`; el json3 traducido suele seguir en inglés). No hay cambio de idioma de audio.
 - No se usa `--no-hw-dec`: en VLC 3.0.20 esa opción puede hacer que `vlc.Instance()` falle.
 
-El reproductor está partido en `video_player.py` más mixins: `player_iptv.py` (apertura VLC y stream muerto), `player_overlay.py` (aviso en pantalla), `player_controls.py` (barra, volumen, pantalla completa) y `player_pip.py` (recuadro PiP y siempre encima). La grabación del stream actual está en `iptv_record.py`: `ffmpeg -c copy` a un `.ts`/`.mkv` local (carpeta de descargas de Preferencias). No sube nada ni descifra DRM.
+El reproductor está partido en `video_player.py` más mixins: `player_iptv.py` (apertura VLC y stream muerto), `iptv_buffer.py` (caché según tipo/perfil y reconexión), `player_overlay.py` (aviso en pantalla), `player_controls.py` (barra, volumen, pantalla completa) y `player_pip.py` (recuadro PiP y siempre encima). Los menús de **calidad / audio** y **subtítulos** se colocan para que quepan en la ventana (`popup_menu_origin` en `video_player.py`): si no hay sitio debajo del botón, se abren hacia arriba. La grabación del stream actual está en `iptv_record.py`: `ffmpeg -c copy` a un `.ts`/`.mkv` local (carpeta de descargas de Preferencias). No sube nada ni descifra DRM.
+
+Caché de red de VLC con el perfil **Equilibrado** (ms): MPEG-TS 2000, HLS 4000, VOD/contenedor 3000, relevo local 1200. **Rápido** baja esos valores; **Estable** los sube. En directo se envía `clock-synchro=0` y `clock-jitter=0` para no parar a resincronizar un PCR irregular. En VOD no.
 
 ## Tests
 
-El parseo de M3U (`#EXTINF`, `tvg-id`, `tvg-logo`, encabezado `#EXTM3U` con `url-tvg`) y la guía XMLTV (ahora/siguiente, parrilla, iconos) tienen pruebas en `tests/`. No van en el `.deb`; son para desarrollo:
+El parseo de M3U (`#EXTINF`, `tvg-id`, `tvg-logo`, encabezado `#EXTM3U` con `url-tvg`), la guía XMLTV (ahora/siguiente, parrilla, iconos), el buffer IPTV (`tests/test_iptv_buffer.py`) y los mixins del reproductor (menús emergentes, PiP) tienen pruebas en `tests/`. No van en el `.deb`; son para desarrollo:
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
@@ -32,7 +34,7 @@ python3 -m pytest
 | --- | --- | --- |
 | `favoritos.json` | Favoritos del reproductor | Viene en el repo; si falta, el reproductor usa una lista vacía |
 | `enlaces.json` | Enlaces guardados en el gestor | Se crea vacío al arrancar |
-| `config.json` | Preferencias (tema, logos de canal, volumen, carpeta de descargas, abrir gestor de archivos al descargar, navegador de cookies, calidad YouTube, recordar última lista, URL de guía EPG), geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube, cola de YouTube e historial IPTV / YouTube | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
+| `config.json` | Preferencias (tema, logos de canal, volumen, carpeta de descargas, abrir gestor de archivos al descargar, navegador de cookies, calidad YouTube, buffer IPTV, recordar última lista, URL de guía EPG), geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube, cola de YouTube e historial IPTV / YouTube | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
 | `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube o al pulsar **Reexportar cookies**, solo si hay login vigente en el navegador. El indicador **Sesión YouTube: OK / caducada** avisa si hace falta reexportar. Detalle en [YouTube](youtube.md#cookies) |
 | `.venv/` | Entorno Python | `run_app.py` lo recrea ([instalación](instalacion.md)) |
 | `epg_cache/` | Miniaturas de logos EPG / `tvg-logo` | Se crea al pintar logos; no va al git |
@@ -66,8 +68,8 @@ Aparecerá el porcentaje abajo a la derecha, actualizado cada segundo.
 - Algunos vídeos de YouTube no tienen stream compatible o están restringidos. Si de pronto no extrae ninguno, actualiza yt-dlp en **Preferencias** (o **Youtube → Actualizar yt-dlp**) y reinicia.
 - En Linux hacen falta VLC y, si aplica, `python3-vlc` del sistema.
 - Si YouTube no tiene audio, prueba la salida Pulse/ALSA del sistema.
-- Un canal IPTV puede tardar en arrancar o no arrancar: depende del servidor de la lista, no solo del programa. Si no hay vídeo (también con pantalla negra), el reproductor muestra que ese canal por el momento no funciona. Si el mismo enlace falla en VLC, el archivo no está disponible desde esta red.
-- En GNOME, la bandeja necesita AppIndicator. Ver [reproductor](reproductor.md#ubuntu--gnome).
+- Un canal IPTV puede tardar en arrancar o no arrancar: depende del servidor de la lista, no solo del programa. Si no hay vídeo (también con pantalla negra), el reproductor muestra que ese canal por el momento no funciona. Si el mismo enlace falla en VLC, el archivo no está disponible desde esta red. Si el directo se corta a menudo, prueba **Preferencias → Buffer IPTV → Estable**.
+- En GNOME, la bandeja necesita AppIndicator. Ver [reproductor](reproductor.md#ubuntu--gnome). El lanzador y la ventana usan el mismo `WM_CLASS` (`Kidneysm3u`) para que no aparezca un segundo icono en el dock; detalle en [instalación](instalacion.md#instalación-en-ubuntu-paquete-deb).
 - La búsqueda de Shorts usa la pestaña de hashtag de YouTube; un término sin hashtag equivalente puede devolver pocos resultados.
 
 ## Siguiente

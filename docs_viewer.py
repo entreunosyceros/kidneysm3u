@@ -16,9 +16,9 @@ DOC_PAGES = (
     ('Índice', 'docs/README.md', 'Mapa de toda la documentación'),
     ('Instalación', 'docs/instalacion.md', 'Requisitos, Ubuntu, Windows y entorno virtual'),
     ('Uso', 'docs/uso.md', 'Cargar una lista, reproducir y preferencias'),
-    ('Listas M3U', 'docs/listas-m3u.md', 'Filtro, IPTV y ordenación de listas'),
+    ('Listas M3U', 'docs/listas-m3u.md', 'Filtro, IPTV, buffer y ordenación de listas'),
     ('YouTube', 'docs/youtube.md', 'Búsqueda, Shorts, cookies y descargas'),
-    ('Reproductor', 'docs/reproductor.md', 'Controles, atajos, favoritos y bandeja'),
+    ('Reproductor', 'docs/reproductor.md', 'Controles, PiP, grabación, pantalla completa y bandeja'),
     ('Notas', 'docs/notas.md', 'Detalles técnicos y problemas conocidos'),
 )
 

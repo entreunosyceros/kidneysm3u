@@ -11,6 +11,17 @@ from http.server import ThreadingHTTPServer
 
 import vlc
 
+import app_config
+from iptv_buffer import (
+    PROFILE_LABELS,
+    iptv_bytes_progress,
+    iptv_cache_ms,
+    iptv_deadman_should_fail,
+    iptv_rebuffer_decision,
+    iptv_startup_decision,
+    iptv_vlc_buffer_options,
+    vlc_state_name,
+)
 from m3u_parse import (
     IPTV_USER_AGENT,
     classify_iptv_url,
@@ -39,12 +50,17 @@ class IptvPlaybackMixin:
             self.hide_progress_bar()
         self._iptv_retry_name = name
         self._iptv_source_url = url
+        self._iptv_kind = kind
         self._iptv_did_ts_retry = False
+        self._iptv_bytes_prev = 0
+        self._iptv_reconnects = 0
+        self._iptv_rebuffer_stall = 0
         self._iptv_check_gen = getattr(self, '_iptv_check_gen', 0) + 1
         check_gen = self._iptv_check_gen
         self._start_vlc_remote(name, url, kind)
         self.window.after(800, lambda: self._watch_iptv_start(check_gen, name, url, kind, 0))
-        self.window.after(12000, lambda: self._iptv_deadman(check_gen, name))
+        self.window.after(12000, lambda: self._iptv_deadman(check_gen, name, 12))
+        self.window.after(2500, lambda: self._check_iptv_stream(check_gen))
 
     def _sanitize_iptv_log(self, text):
         return re.sub(r'https?://\S+', '[url]', text or '')
@@ -80,18 +96,24 @@ class IptvPlaybackMixin:
         return False
 
     def _iptv_remote_options(self, kind, force_ts=False):
-        options = [
-            ':network-caching=3000',
-            ':live-caching=3000',
-            ':file-caching=3000',
-            ':sout-mux-caching=3000',
+        url = getattr(self, '_iptv_source_url', '') or ''
+        vod = is_iptv_vod(url) or kind == 'container'
+        profile = app_config.get_iptv_buffer()
+        options = iptv_vlc_buffer_options(
+            kind,
+            vod=vod,
+            local=False,
+            profile=profile,
+            force_ts=force_ts,
+        )
+        options.extend([
             ':avcodec-hw=none',
             ':audio-resampler=soxr',
             ':codec=avcodec',
             f':http-user-agent={IPTV_USER_AGENT}',
             ':http-reconnect=true',
             ':aout=alsa',
-        ]
+        ])
         if force_ts:
             options.extend([':demux=ts', ':no-ts-trust-pcr'])
         elif kind == 'mpegts':
@@ -112,7 +134,14 @@ class IptvPlaybackMixin:
         except Exception:
             pass
         how = 'mpegts forzado' if force_ts else kind
-        print(f"[IPTV] Abriendo {describe_iptv_url(url)} ({how})")
+        cache = iptv_cache_ms(
+            kind,
+            vod=is_iptv_vod(url) or kind == 'container',
+            profile=app_config.get_iptv_buffer(),
+            force_ts=force_ts,
+        )
+        label = PROFILE_LABELS.get(app_config.get_iptv_buffer(), app_config.get_iptv_buffer())
+        print(f"[IPTV] Abriendo {describe_iptv_url(url)} ({how}) buffer={cache}ms ({label})")
         media = self.instance.media_new(url)
         for option in self._iptv_remote_options(kind, force_ts=force_ts):
             media.add_option(option)
@@ -124,7 +153,7 @@ class IptvPlaybackMixin:
         self._schedule_track_refresh()
         self._iptv_retry_name = name
 
-    def _iptv_deadman(self, check_gen, name):
+    def _iptv_deadman(self, check_gen, name, elapsed=12):
         if check_gen != getattr(self, '_iptv_check_gen', 0):
             return
         if getattr(self, '_iptv_failed', False) or getattr(self, '_playing_youtube', False):
@@ -134,6 +163,21 @@ class IptvPlaybackMixin:
             apply = getattr(self, '_apply_pending_iptv_resume', None)
             if apply:
                 apply()
+            return
+        stats = self._iptv_media_stats()
+        bytes_now = iptv_bytes_progress(stats)
+        bytes_prev = int(getattr(self, '_iptv_bytes_prev', 0) or 0)
+        kind = getattr(self, '_iptv_kind', 'mpegts')
+        if not iptv_deadman_should_fail(
+            decoded=False,
+            bytes_now=bytes_now,
+            bytes_prev=bytes_prev,
+            elapsed_s=elapsed,
+            kind=kind,
+        ):
+            self._iptv_bytes_prev = max(bytes_prev, bytes_now)
+            if self._widget_exists(self.window):
+                self.window.after(4000, lambda: self._iptv_deadman(check_gen, name, elapsed + 4))
             return
         self._iptv_report_unavailable(name)
 
@@ -160,49 +204,63 @@ class IptvPlaybackMixin:
         decoded_v = int(getattr(stats, 'decoded_video', 0) or 0) if stats else 0
         decoded_a = int(getattr(stats, 'decoded_audio', 0) or 0) if stats else 0
         pictures = int(getattr(stats, 'displayed_pictures', 0) or 0) if stats else 0
+        bytes_now = iptv_bytes_progress(stats)
+        bytes_prev = int(getattr(self, '_iptv_bytes_prev', 0) or 0)
         if ticks < 8:
-            print(f"[IPTV] VLC {state} decoded_v={decoded_v} decoded_a={decoded_a} pictures={pictures}")
-        if self._iptv_has_real_media():
+            print(
+                f"[IPTV] VLC {state} decoded_v={decoded_v} decoded_a={decoded_a} "
+                f"pictures={pictures} bytes={bytes_now}"
+            )
+        decoded = self._iptv_has_real_media()
+        action = iptv_startup_decision(
+            state=state,
+            decoded=decoded,
+            bytes_now=bytes_now,
+            bytes_prev=bytes_prev,
+            ticks=ticks,
+            kind=kind,
+            already_retried_ts=bool(getattr(self, '_iptv_did_ts_retry', False)),
+        )
+        self._iptv_bytes_prev = max(bytes_prev, bytes_now)
+        if action == 'ready':
             self._media_started = True
             apply = getattr(self, '_apply_pending_iptv_resume', None)
             if apply:
                 apply()
             return
-        retry_container = (
-            kind == 'container'
-            and not getattr(self, '_iptv_did_ts_retry', False)
-            and state in (vlc.State.Ended, vlc.State.Error, vlc.State.Stopped)
-        )
-        if retry_container:
+        if action == 'retry_ts':
             self._iptv_did_ts_retry = True
             print("[IPTV] El contenedor cortó al abrir; reintento como MPEG-TS")
             self._iptv_check_gen = check_gen + 1
             retry_gen = self._iptv_check_gen
+            self._iptv_bytes_prev = 0
             self._start_vlc_remote(name, url, kind, force_ts=True)
             self.window.after(2000, lambda: self._watch_iptv_start(retry_gen, name, url, kind, 0))
-            self.window.after(12000, lambda: self._iptv_deadman(retry_gen, name))
+            self.window.after(12000, lambda: self._iptv_deadman(retry_gen, name, 12))
+            self.window.after(2500, lambda: self._check_iptv_stream(retry_gen))
             return
-        if state == vlc.State.Error:
-            self._iptv_report_unavailable(name)
-            return
-        if state == vlc.State.Ended and ticks >= 1:
-            self._iptv_report_unavailable(name)
-            return
-        if ticks >= 5:
+        if action == 'fail':
             self._iptv_report_unavailable(name)
             return
         self.window.after(2000, lambda: self._watch_iptv_start(check_gen, name, url, kind, ticks + 1))
 
     def _iptv_local_options(self):
-        return [
-            'network-caching=1500',
-            'file-caching=1500',
+        profile = app_config.get_iptv_buffer()
+        options = iptv_vlc_buffer_options(
+            'mpegts',
+            vod=False,
+            local=True,
+            profile=profile,
+            prefix='',
+        )
+        options.extend([
             'avcodec-hw=none',
             'audio-resampler=soxr',
             'aout=alsa',
             'demux=ts',
             'no-ts-trust-pcr',
-        ]
+        ])
+        return options
 
     def _start_vlc_local_ts(self, name, url):
         """VLC solo abre localhost; no usa el HTTP remoto que falla tras el 302."""
@@ -233,15 +291,51 @@ class IptvPlaybackMixin:
     def _check_iptv_stream(self, check_gen=None, waited=0):
         if check_gen is not None and check_gen != getattr(self, '_iptv_check_gen', 0):
             return
+        if getattr(self, '_iptv_failed', False) or getattr(self, '_playing_youtube', False):
+            return
         if not self.player:
             return
         try:
             state = self.player.get_state()
         except Exception:
             return
-        if state in (vlc.State.Playing, vlc.State.Buffering, vlc.State.Paused):
-            if self._iptv_has_real_media():
-                self._media_started = True
+        stats = self._iptv_media_stats()
+        bytes_now = iptv_bytes_progress(stats)
+        bytes_prev = int(getattr(self, '_iptv_bytes_prev', 0) or 0)
+        if self._iptv_has_real_media():
+            self._media_started = True
+        started = bool(getattr(self, '_media_started', False))
+        stall = int(getattr(self, '_iptv_rebuffer_stall', 0) or 0)
+        if started and vlc_state_name(state) == 'Buffering' and bytes_now <= bytes_prev:
+            stall += 1
+        else:
+            stall = 0
+        self._iptv_rebuffer_stall = stall
+        url = getattr(self, '_iptv_source_url', '') or ''
+        action = iptv_rebuffer_decision(
+            started=started,
+            state=state,
+            stall_ticks=stall,
+            bytes_now=bytes_now,
+            bytes_prev=bytes_prev,
+            reconnects=int(getattr(self, '_iptv_reconnects', 0) or 0),
+            vod=is_iptv_vod(url),
+        )
+        self._iptv_bytes_prev = max(bytes_prev, bytes_now)
+        if action == 'reconnect':
+            name = getattr(self, '_iptv_retry_name', '') or ''
+            kind = getattr(self, '_iptv_kind', 'mpegts')
+            print('[IPTV] Buffer vacío; reconecto el mismo enlace')
+            self._iptv_reconnects = int(getattr(self, '_iptv_reconnects', 0) or 0) + 1
+            self._iptv_rebuffer_stall = 0
+            self._iptv_bytes_prev = 0
+            self._start_vlc_remote(name, url, kind)
+        elif action == 'fail':
+            name = getattr(self, '_iptv_retry_name', '') or ''
+            self._iptv_report_unavailable(name)
+            return
+        if self._widget_exists(getattr(self, 'window', None)):
+            self.window.after(2000, lambda: self._check_iptv_stream(check_gen))
 
     def _stop_iptv_relay(self):
         server = getattr(self, '_iptv_relay_server', None)

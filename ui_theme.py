@@ -9,6 +9,7 @@ _DARK = False
 _FONT_FAMILY = 'helvetica'
 _FONT_OBJS = {}
 _ICON_REF = None
+APP_WM_CLASS = 'Kidneysm3u'
 
 PALETTES = {
     'light': {
@@ -512,6 +513,10 @@ def style_menu_tree(menu):
 
 def set_window_icon(window):
     global _ICON_REF
+    try:
+        window.tk.call('wm', 'class', window._w, APP_WM_CLASS, APP_WM_CLASS)
+    except (tk.TclError, AttributeError):
+        pass
     logo = Path(__file__).parent / 'img' / 'logo.png'
     if not logo.exists():
         return

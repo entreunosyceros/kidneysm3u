@@ -29,7 +29,7 @@ Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 
 Play/pausa (también **un clic en el vídeo** o `Espacio`), stop, **grabar** (círculo; se pone rojo mientras copia), salto atrás/adelante, **calidad / audio**, **subtítulos**, volumen, silencio, **PiP**, pantalla completa y mostrar/ocultar la lista (`≡`).
 
-**Grabar** copia el stream actual a un fichero local con `ffmpeg -c copy` (no captura la pantalla ni descifra DRM). Un clic guarda en la **carpeta de descargas** de Preferencias, con nombre `Canal_AAAAMMDD-HHMMSS.ts`. Otro clic detiene y muestra la ruta. En **Reproducir → Grabar en…** eliges carpeta y extensión (`.ts` o `.mkv`). **Reproducir → Grabaciones…** lista lo guardado y permite reproducirlo. Hace falta `ffmpeg` en el PATH.
+**Grabar** copia el stream actual a un fichero local con `ffmpeg -c copy` (no captura la pantalla ni descifra DRM). Un clic guarda en la **carpeta de descargas** de Preferencias, con nombre `Canal_AAAAMMDD-HHMMSS.ts`. Otro clic detiene y muestra la ruta. Al cerrar el reproductor o pulsar stop, la grabación en curso se detiene. En **Reproducir → Grabar en…** eliges carpeta y extensión (`.ts` o `.mkv`). **Reproducir → Grabaciones…** lista lo guardado y permite reproducirlo. Hace falta `ffmpeg` en el PATH.
 
 **PiP** (botón de la barra o **Reproducir → Ventana PiP**) pasa el vídeo a un recuadro 480×270 siempre encima, para seguir viéndolo mientras usas otra ventana. El vídeo sigue en VLC; solo cambia el recuadro. `Esc` o doble clic lo cierra. **Reproducir → Siempre encima** deja la ventana del reproductor sobre las demás. Al entrar en pantalla completa el PiP se cierra.
 
@@ -37,13 +37,13 @@ Play/pausa (también **un clic en el vídeo** o `Espacio`), stop, **grabar** (c�
 
 Los **subtítulos** listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC. En YouTube el menú pone el español primero: **auto** (transcribe el audio), los del autor, o **traducción automática** (YouTube traduce; no es un doblaje). Se descarga el idioma elegido, no un archivo en caché de otro idioma.
 
-En **pantalla completa**, menú y controles se ocultan a los 3 segundos sin usarlos. Los botones de la barra siguen sirviendo para cambiar pista: **calidad / audio** y **subtítulos** abren el menú hacia arriba para que no se salga de la pantalla.
+En **pantalla completa** (`F1`; `Esc` para salir) el PiP se cierra. Menú y controles se ocultan a los 3 segundos sin usarlos; mueve el ratón para verlos otra vez. Los botones de la barra siguen sirviendo para cambiar pista: **calidad / audio** y **subtítulos** abren el desplegable **hacia arriba** si no cabe debajo (la barra está al borde inferior). Si se saldría por un lado, se encaja dentro de la ventana. Mientras el menú está abierto, la barra **no se oculta**, para que puedas elegir. Eso también aplica si la ventana no está a pantalla completa pero el botón queda abajo del todo.
 
 La barra de progreso aparece en YouTube y en VOD; no en un canal en directo. Los botones de ±2 s / ±10 s y el arrastre de la barra saltan a ese punto. En YouTube retransmitido (MPEG-TS local) un salto lejano puede tardar un momento: se reinicia el vídeo desde ahí.
 
 Al abrir un vídeo de YouTube, el área de vídeo muestra el título, la miniatura y una barra mientras se obtiene el stream, para que no parezca que se ha colgado. Si ya lo habías visto, se reanuda en el segundo guardado al cerrar o al cambiar de vídeo. En IPTV, **Historial** guarda los últimos canales. En VOD (`.mkv`/`.mp4` o rutas `movie`/`series`) también se guarda el segundo, como en YouTube; al volver a abrirlo continúa. Cerca del final se considera terminado. Los últimos vídeos de YouTube salen en esa misma ventana de historial. Las URLs no se escriben en el registro.
 
-Si un canal IPTV no arranca (error de VLC, pantalla negra o el servidor no entrega vídeo), en unos segundos aparece el nombre y **Este canal por el momento no funciona**. No es un fallo del programa: el enlace de esa lista no está disponible ahora.
+Si un canal IPTV no arranca (error de VLC, pantalla negra o el servidor no entrega vídeo), en unos segundos aparece el nombre y **Este canal por el momento no funciona**. No es un fallo del programa: el enlace de esa lista no está disponible ahora. Si el canal **sí llega a verse** y luego el buffer se queda seco, se reconecta una vez el mismo enlace. El tamaño de esa caché se elige en **Preferencias → Buffer IPTV** ([detalle](listas-m3u.md#buffer-iptv)).
 
 ## Atajos de teclado
 <p align="center">

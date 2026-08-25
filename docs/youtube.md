@@ -72,8 +72,8 @@ Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short 
 
 - Vídeo + audio, o **solo audio** (hace falta `ffmpeg` en el PATH).
 - Desde la búsqueda, el menú contextual o **Youtube → Descargar vídeo de YouTube**.
-- En la ventana principal, **Archivo → Descargar** sirve para bajar cualquier URL (vídeo, imagen, texto, etc.). Puedes marcar **abrir el gestor de archivos al terminar** para que muestre el fichero guardado.
-- La carpeta inicial se elige en **Archivo → Preferencias**.
+- En la ventana principal, **Archivo → Descargar** sirve para bajar cualquier URL (vídeo, imagen, texto, etc.). Puedes marcar **abrir el gestor de archivos al terminar** para que muestre el fichero guardado; esa casilla se recuerda.
+- La carpeta inicial se elige en **Archivo → Preferencias**. Los botones de la ventana de descarga quedan fijos abajo.
 
 ## Cómo se reproduce
 

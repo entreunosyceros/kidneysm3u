@@ -32,6 +32,26 @@ El reproductor abre la **URL que viene en el M3U** con VLC. El tipo se deduce de
 
 Si un `.mkv` o `.mp4` del panel IPTV se corta al abrir (el servidor redirige a otro formato), se reintenta como MPEG-TS.
 
+### Buffer IPTV
+
+La caché de VLC no es la misma para todos los enlaces:
+
+| Tipo | Qué hace el programa |
+| --- | --- |
+| Directo MPEG-TS (`.ts` o sin extensión) | Menos caché: el canal arranca antes al cambiar. |
+| HLS (`.m3u` / `.m3u8`) | Más caché: los segmentos duran varios segundos. |
+| Película / VOD (`.mkv`, `.mp4`, rutas `movie`/`series`) | Valor medio y sincronización de audio/vídeo normal. |
+
+En un **directo** se relaja el reloj de VLC (el PCR de IPTV suele ir irregular) para que no se congele a cada microcorte. Si al abrir aún llegan datos, no se da el canal por muerto. Si **ya se veía** y el buffer se queda seco, se reconecta **una vez el mismo enlace** (sin inventar otra URL).
+
+En **Preferencias → Buffer IPTV** eliges el tamaño de esa caché. El valor nuevo se aplica al **siguiente** canal (no hace falta reiniciar el programa).
+
+| Perfil | Cuándo usarlo |
+| --- | --- |
+| **Rápido** | Menos espera al cambiar de canal; puede cortarse si la red va justa. |
+| **Equilibrado** | Por defecto. MPEG-TS más ágil, HLS con más margen. |
+| **Estable** | Más caché: mejor si hay microcortes, a costa de más retraso al sintonizar. |
+
 Que el enlace esté bien formado no garantiza imagen: si el servidor de vídeo no entrega el archivo, VLC se quedará en negro igual que si pegas la URL en VLC a pelo. En [notas](notas.md#problemas-conocidos) hay más contexto.
 
 ## Ordenar listas desde la interfaz
