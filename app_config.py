@@ -10,10 +10,13 @@ from m3u_parse import is_iptv_vod
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 MAX_RECENT = 12
 MAX_YT_RESUME = 80
+MAX_YT_HISTORY = 40
+MAX_YT_QUEUE = 80
 MAX_IPTV_HISTORY = 25
 YT_RESUME_MIN_S = 15
 YT_RESUME_END_S = 20
 IPTV_RESUME_MIN_S = 15
+YOUTUBE_QUALITIES = (0, 360, 720, 1080)
 
 COOKIE_BROWSERS = ('auto', 'firefox', 'chrome', 'chromium', 'brave', 'edge')
 
@@ -44,6 +47,8 @@ _DEFAULTS = {
         'channel_url': '',
     },
     'youtube_resume': {},
+    'youtube_history': [],
+    'youtube_queue': [],
     'iptv_history': [],
     'youtube_quality': 720,
 }
@@ -180,16 +185,51 @@ def set_epg_url(url):
     save({'epg_url': str(url or '').strip()})
 
 
-def get_youtube_quality():
+def normalize_youtube_quality(value):
+    """0 = mejor disponible; el resto se ajusta a 360, 720 o 1080."""
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ('best', 'max', 'mejor', '0'):
+            return 0
+        try:
+            value = int(text)
+        except (TypeError, ValueError):
+            return 720
     try:
-        value = int(load().get('youtube_quality', 720))
+        value = int(value)
     except (TypeError, ValueError):
-        value = 720
-    return 360 if value <= 360 else 720
+        return 720
+    if value <= 0:
+        return 0
+    if value <= 360:
+        return 360
+    if value <= 720:
+        return 720
+    return 1080
+
+
+def youtube_quality_label(value=None):
+    height = normalize_youtube_quality(
+        get_youtube_quality() if value is None else value
+    )
+    if height <= 0:
+        return 'Mejor disponible'
+    return f'{height}p'
+
+
+def youtube_quality_cache_key(value=None):
+    height = normalize_youtube_quality(
+        get_youtube_quality() if value is None else value
+    )
+    return 'best' if height <= 0 else str(height)
+
+
+def get_youtube_quality():
+    return normalize_youtube_quality(load().get('youtube_quality', 720))
 
 
 def set_youtube_quality(height):
-    save({'youtube_quality': 360 if int(height) == 360 else 720})
+    save({'youtube_quality': normalize_youtube_quality(height)})
 
 
 def remember_playlist(path, kind='file'):
@@ -323,7 +363,7 @@ def youtube_resume_seconds(video_id, duration_s=None):
     return seconds
 
 
-def remember_youtube_position(video_id, seconds, duration_s=None):
+def remember_youtube_position(video_id, seconds, duration_s=None, title=None, url=None):
     video_id = str(video_id or '').strip()
     if len(video_id) != 11:
         return
@@ -331,15 +371,19 @@ def remember_youtube_position(video_id, seconds, duration_s=None):
         seconds = float(seconds or 0)
     except (TypeError, ValueError):
         return
-    data = load()
-    resume = dict(data.get('youtube_resume') or {})
     if seconds < YT_RESUME_MIN_S:
         return
+    data = load()
+    resume = dict(data.get('youtube_resume') or {})
     if _yt_resume_near_end(seconds, duration_s):
         if video_id in resume:
             resume.pop(video_id, None)
             data['youtube_resume'] = resume
-            save()
+        _upsert_youtube_history(
+            data, video_id, title=title, url=url,
+            seconds=0, duration=duration_s,
+        )
+        save()
         return
     resume[video_id] = {'s': int(seconds), 'updated': int(time.time())}
     if len(resume) > MAX_YT_RESUME:
@@ -350,6 +394,10 @@ def remember_youtube_position(video_id, seconds, duration_s=None):
         for key, _unused in ordered[: len(resume) - MAX_YT_RESUME]:
             resume.pop(key, None)
     data['youtube_resume'] = resume
+    _upsert_youtube_history(
+        data, video_id, title=title, url=url,
+        seconds=int(seconds), duration=duration_s,
+    )
     save()
 
 
@@ -359,10 +407,275 @@ def clear_youtube_position(video_id):
         return
     data = load()
     resume = dict(data.get('youtube_resume') or {})
-    if video_id not in resume:
+    history_changed = False
+    if video_id in resume:
+        resume.pop(video_id, None)
+        data['youtube_resume'] = resume
+        history_changed = True
+    items = []
+    for raw in data.get('youtube_history') or []:
+        entry = _clean_youtube_history_entry(raw)
+        if not entry:
+            continue
+        if entry['id'] == video_id and entry.get('s'):
+            entry['s'] = 0
+            history_changed = True
+        items.append(entry)
+    if history_changed:
+        data['youtube_history'] = items[:MAX_YT_HISTORY]
+        save()
+
+
+def _clean_youtube_history_entry(item):
+    if not isinstance(item, dict):
+        return None
+    video_id = str(item.get('id') or '').strip()
+    if len(video_id) != 11:
+        return None
+    url = str(item.get('url') or '').strip() or f'https://www.youtube.com/watch?v={video_id}'
+    try:
+        seconds = max(0, int(float(item.get('s') or 0)))
+    except (TypeError, ValueError):
+        seconds = 0
+    try:
+        duration = max(0, int(float(item.get('duration') or 0)))
+    except (TypeError, ValueError):
+        duration = 0
+    try:
+        updated = int(item.get('updated') or 0)
+    except (TypeError, ValueError):
+        updated = 0
+    return {
+        'id': video_id,
+        'name': str(item.get('name') or '').strip() or 'YouTube',
+        'url': url,
+        's': seconds,
+        'duration': duration,
+        'updated': updated,
+    }
+
+
+def _upsert_youtube_history(data, video_id, title=None, url=None, seconds=None, duration=None):
+    video_id = str(video_id or '').strip()
+    if len(video_id) != 11:
         return
+    items = []
+    previous = None
+    for raw in data.get('youtube_history') or []:
+        entry = _clean_youtube_history_entry(raw)
+        if not entry:
+            continue
+        if entry['id'] == video_id:
+            previous = entry
+            continue
+        items.append(entry)
+    previous = previous or {}
+    if seconds is None:
+        stored_s = int(previous.get('s') or 0)
+    else:
+        try:
+            stored_s = max(0, int(float(seconds)))
+        except (TypeError, ValueError):
+            stored_s = int(previous.get('s') or 0)
+    if duration is None:
+        stored_duration = int(previous.get('duration') or 0)
+    else:
+        try:
+            stored_duration = max(0, int(float(duration or 0)))
+        except (TypeError, ValueError):
+            stored_duration = int(previous.get('duration') or 0)
+    name = str(title or '').strip() or previous.get('name') or 'YouTube'
+    stored_url = str(url or '').strip() or previous.get('url') or f'https://www.youtube.com/watch?v={video_id}'
+    items.insert(0, {
+        'id': video_id,
+        'name': name,
+        'url': stored_url,
+        's': stored_s,
+        'duration': stored_duration,
+        'updated': int(time.time()),
+    })
+    data['youtube_history'] = items[:MAX_YT_HISTORY]
+
+
+def remember_youtube_watch(video_id, title='', url=''):
+    video_id = str(video_id or '').strip()
+    if len(video_id) != 11:
+        return
+    data = load()
+    _upsert_youtube_history(data, video_id, title=title, url=url)
+    save()
+
+
+def youtube_history():
+    items = []
+    seen = set()
+    for raw in load().get('youtube_history') or []:
+        entry = _clean_youtube_history_entry(raw)
+        if not entry or entry['id'] in seen:
+            continue
+        seen.add(entry['id'])
+        items.append(entry)
+    return items[:MAX_YT_HISTORY]
+
+
+def youtube_history_item(video_id):
+    video_id = str(video_id or '').strip()
+    if len(video_id) != 11:
+        return None
+    for item in youtube_history():
+        if item['id'] == video_id:
+            return item
+    return None
+
+
+def youtube_history_item_by_url(url):
+    url = str(url or '').strip()
+    if not url:
+        return None
+    for item in youtube_history():
+        if item.get('url') == url:
+            return item
+    return None
+
+
+def youtube_history_label(item, with_time=False, limit=46):
+    name = str((item or {}).get('name') or 'YouTube').strip() or 'YouTube'
+    if len(name) > limit:
+        name = name[: limit - 1] + '…'
+    if not with_time:
+        return name
+    try:
+        seconds = int((item or {}).get('s') or 0)
+    except (TypeError, ValueError):
+        seconds = 0
+    if seconds < YT_RESUME_MIN_S:
+        return name
+    stamp = format_iptv_clock(seconds)
+    try:
+        duration = int((item or {}).get('duration') or 0)
+    except (TypeError, ValueError):
+        duration = 0
+    if duration > 0:
+        return f'{name}  ·  {stamp} / {format_iptv_clock(duration)}'
+    return f'{name}  ·  {stamp}'
+
+
+def youtube_continue_watching():
+    found = []
+    for item in youtube_history():
+        seconds = int(item.get('s') or 0)
+        if seconds < YT_RESUME_MIN_S:
+            continue
+        if _yt_resume_near_end(seconds, item.get('duration') or 0):
+            continue
+        found.append(item)
+    return found
+
+
+def remove_youtube_history(video_id):
+    video_id = str(video_id or '').strip()
+    if not video_id:
+        return
+    data = load()
+    items = [
+        entry for entry in (_clean_youtube_history_entry(raw) for raw in data.get('youtube_history') or [])
+        if entry and entry['id'] != video_id
+    ]
+    data['youtube_history'] = items
+    resume = dict(data.get('youtube_resume') or {})
     resume.pop(video_id, None)
     data['youtube_resume'] = resume
+    save()
+
+
+def clear_youtube_history():
+    data = load()
+    changed = bool(data.get('youtube_history') or data.get('youtube_resume'))
+    if not changed:
+        return
+    data['youtube_history'] = []
+    data['youtube_resume'] = {}
+    save()
+
+
+def _clean_youtube_queue_item(item):
+    if isinstance(item, (tuple, list)) and len(item) >= 2:
+        name, url = item[0], item[1]
+        item = {'name': name, 'url': url}
+    if not isinstance(item, dict):
+        return None
+    url = str(item.get('url') or '').strip()
+    if not url:
+        return None
+    return {
+        'name': str(item.get('name') or '').strip() or 'YouTube',
+        'url': url,
+    }
+
+
+def youtube_queue():
+    items = []
+    seen = set()
+    for raw in load().get('youtube_queue') or []:
+        entry = _clean_youtube_queue_item(raw)
+        if not entry or entry['url'] in seen:
+            continue
+        seen.add(entry['url'])
+        items.append(entry)
+    return items[:MAX_YT_QUEUE]
+
+
+def enqueue_youtube_queue(items):
+    queue = youtube_queue()
+    existing = {entry['url'] for entry in queue}
+    added = 0
+    for raw in items or []:
+        entry = _clean_youtube_queue_item(raw)
+        if not entry or entry['url'] in existing:
+            continue
+        queue.append(entry)
+        existing.add(entry['url'])
+        added += 1
+    if added:
+        data = load()
+        data['youtube_queue'] = queue[:MAX_YT_QUEUE]
+        save()
+    return added
+
+
+def pop_youtube_queue(index=0):
+    queue = youtube_queue()
+    if not (0 <= index < len(queue)):
+        return None
+    item = queue.pop(index)
+    data = load()
+    data['youtube_queue'] = queue
+    save()
+    return item
+
+
+def move_youtube_queue(index, delta):
+    queue = youtube_queue()
+    dest = index + int(delta or 0)
+    if not (0 <= index < len(queue) and 0 <= dest < len(queue)):
+        return False
+    item = queue.pop(index)
+    queue.insert(dest, item)
+    data = load()
+    data['youtube_queue'] = queue
+    save()
+    return True
+
+
+def remove_youtube_queue(index):
+    return pop_youtube_queue(index) is not None
+
+
+def clear_youtube_queue():
+    data = load()
+    if not data.get('youtube_queue'):
+        return
+    data['youtube_queue'] = []
     save()
 
 

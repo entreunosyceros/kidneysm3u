@@ -1,4 +1,4 @@
-"""Ventana de historial IPTV / seguir viendo. No registra URLs."""
+"""Ventana de historial IPTV y YouTube. No registra URLs."""
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -32,14 +32,14 @@ class HistoryWindow:
         colors = get_colors()
         window = tk.Toplevel(player.window)
         window.title('Historial')
-        window.geometry('720x480')
+        window.geometry('720x520')
         window.minsize(520, 360)
         style_window(window)
         set_window_icon(window)
-        center_window(window, 720, 480)
+        center_window(window, 720, 520)
         window.transient(player.window)
         self.window = window
-        self._urls = {}
+        self._entries = {}
 
         top = ttk.Frame(window, padding=(12, 10, 12, 6))
         top.pack(fill=tk.X)
@@ -48,7 +48,7 @@ class HistoryWindow:
         ttk.Button(top, text='Vaciar', command=self._clear).pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Label(
             window,
-            text='Últimos canales y películas a medio ver. El segundo se guarda en VOD; los directos solo quedan en recientes.',
+            text='IPTV (canales y películas) y YouTube (últimos vídeos). El segundo se guarda en VOD y en YouTube; los directos solo quedan en recientes.',
             style='Muted.TLabel',
             wraplength=680,
         ).pack(anchor=tk.W, padx=12, pady=(0, 8))
@@ -99,23 +99,35 @@ class HistoryWindow:
             self.tree.delete(*self.tree.get_children())
         except tk.TclError:
             return
-        self._urls = {}
+        self._entries = {}
         watching = app_config.iptv_continue_watching()
         recent = app_config.iptv_history()
+        yt_watching = app_config.youtube_continue_watching()
+        yt_recent = app_config.youtube_history()
         if watching:
             self.tree.insert('', 'end', iid='sec:watch', text='Seguir viendo', values=('', ''), tags=('section',))
             for index, item in enumerate(watching):
-                self._insert_row(f'w:{index}', item, watching=True)
-        self.tree.insert('', 'end', iid='sec:recent', text='Recientes', values=('', ''), tags=('section',))
-        if not recent:
-            self.tree.insert('', 'end', iid='empty', text='Aún no hay historial', values=('', ''))
-            return
-        for index, item in enumerate(recent):
-            self._insert_row(f'r:{index}', item, watching=False)
+                self._insert_iptv(f'w:{index}', item, watching=True)
+        self.tree.insert('', 'end', iid='sec:recent', text='Recientes IPTV', values=('', ''), tags=('section',))
+        if recent:
+            for index, item in enumerate(recent):
+                self._insert_iptv(f'r:{index}', item, watching=False)
+        else:
+            self.tree.insert('', 'end', iid='empty-iptv', text='Aún no hay historial IPTV', values=('', ''))
+        if yt_watching:
+            self.tree.insert('', 'end', iid='sec:ytwatch', text='Seguir viendo YouTube', values=('', ''), tags=('section',))
+            for index, item in enumerate(yt_watching):
+                self._insert_youtube(f'ytw:{index}', item, watching=True)
+        self.tree.insert('', 'end', iid='sec:ytrecent', text='Recientes YouTube', values=('', ''), tags=('section',))
+        if yt_recent:
+            for index, item in enumerate(yt_recent):
+                self._insert_youtube(f'ytr:{index}', item, watching=False)
+        else:
+            self.tree.insert('', 'end', iid='empty-yt', text='Aún no hay vídeos de YouTube', values=('', ''))
 
-    def _insert_row(self, iid, item, watching):
+    def _insert_iptv(self, iid, item, watching):
         url = item.get('url') or ''
-        self._urls[iid] = url
+        self._entries[iid] = {'kind': 'iptv', 'url': url}
         kind = 'Película / VOD' if item.get('kind') == 'vod' else 'Directo'
         if watching:
             kind = 'Seguir viendo'
@@ -133,41 +145,78 @@ class HistoryWindow:
             values=(kind, progress),
         )
 
-    def _selected_url(self):
+    def _insert_youtube(self, iid, item, watching):
+        self._entries[iid] = {
+            'kind': 'youtube',
+            'url': item.get('url') or '',
+            'id': item.get('id') or '',
+            'name': item.get('name') or 'YouTube',
+        }
+        kind = 'Seguir viendo' if watching else 'YouTube'
+        progress = ''
+        seconds = int(item.get('s') or 0)
+        if seconds >= app_config.YT_RESUME_MIN_S:
+            stamp = app_config.format_iptv_clock(seconds)
+            duration = int(item.get('duration') or 0)
+            progress = f'{stamp} / {app_config.format_iptv_clock(duration)}' if duration else stamp
+        self.tree.insert(
+            '',
+            'end',
+            iid=iid,
+            text=item.get('name') or 'YouTube',
+            values=(kind, progress),
+        )
+
+    def _selected_entry(self):
         try:
             selection = self.tree.selection()
         except tk.TclError:
-            return ''
+            return None
         if not selection:
-            return ''
-        return self._urls.get(selection[0], '')
+            return None
+        return self._entries.get(selection[0])
 
     def _play_selected(self, event=None):
-        url = self._selected_url()
+        entry = self._selected_entry()
+        if not entry:
+            return
+        url = entry.get('url') or ''
         if not url:
+            return
+        if entry.get('kind') == 'youtube':
+            play = getattr(self.player, 'play_youtube_url', None)
+            if play:
+                play(url, title=entry.get('name'), add_to_list=False)
             return
         play = getattr(self.player, 'play_history_url', None)
         if play:
             play(url)
 
     def _remove_selected(self):
-        url = self._selected_url()
-        if not url:
+        entry = self._selected_entry()
+        if not entry:
             return
-        app_config.remove_iptv_history(url)
+        if entry.get('kind') == 'youtube':
+            app_config.remove_youtube_history(entry.get('id') or '')
+        else:
+            app_config.remove_iptv_history(entry.get('url') or '')
         self.refresh()
         fill = getattr(self.player, '_fill_history_menu', None)
         if fill:
             fill()
 
     def _clear(self):
-        if not app_config.iptv_history():
+        if not app_config.iptv_history() and not app_config.youtube_history():
             return
         if not messagebox.askyesno(
             'Vaciar historial',
-            '¿Quitar todos los canales y películas del historial?',
+            '¿Quitar el historial de IPTV y de YouTube?',
             parent=self.window,
         ):
             return
         app_config.clear_iptv_history()
+        app_config.clear_youtube_history()
         self.refresh()
+        fill = getattr(self.player, '_fill_history_menu', None)
+        if fill:
+            fill()

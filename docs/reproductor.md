@@ -19,9 +19,9 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 - Doble clic — reproduce un canal. Un clic en una categoría abre ese grupo.
 - Clic derecho — reproducir desde aquí, favoritos, descargar, eliminar un ítem o vaciar la lista.
 
-Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeos se concatenan a esta lista sin cerrar la búsqueda.
+Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeos van a **Youtube → Cola de YouTube** (siguiente, quitar, reordenar), no a esta lista. Al terminar el vídeo en curso se reproduce el primero de esa cola.
 
-**Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso. **Reproducir → Historial** lista los últimos canales y las películas a medio ver; **Ver historial…** abre la ventana. **Reproducir → Guía EPG → Parrilla…** abre la parrilla; **Desde URL…** / **Desde archivo…** indican el XMLTV. **Reproducir → Preferencias** abre la misma ventana que **Archivo → Preferencias** en la principal.
+**Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso. **Reproducir → Historial** lista los últimos canales IPTV, las películas a medio ver y los últimos vídeos de YouTube; **Ver historial…** abre la ventana. **Reproducir → Guía EPG → Parrilla…** abre la parrilla; **Desde URL…** / **Desde archivo…** indican el XMLTV. **Reproducir → Preferencias** abre la misma ventana que **Archivo → Preferencias** en la principal.
 
 Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 
@@ -29,15 +29,15 @@ Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 
 Play/pausa (también **un clic en el vídeo** o `Espacio`), stop, salto atrás/adelante, **calidad / audio**, **subtítulos**, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
 
-**Calidad / audio** (botón y menú): en YouTube eliges **360p** o **720p** (también en **Preferencias**; si cambias con el vídeo en marcha, se recarga desde el segundo actual). En IPTV, si el stream trae varias pistas de audio, aparecen debajo para cambiar de idioma. YouTube solo trae una pista de audio (no hay doblajes).
+**Calidad / audio** (botón y menú): en YouTube eliges **360p**, **720p**, **1080p** o **mejor disponible** (también en **Preferencias**; si cambias con el vídeo en marcha, se recarga desde el segundo actual). En IPTV, si el stream trae varias pistas de audio, aparecen debajo para cambiar de idioma. YouTube solo trae una pista de audio (no hay doblajes).
 
-Los **subtítulos** listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC. En YouTube los subtítulos oficiales o automáticos se descargan al elegirlos.
+Los **subtítulos** listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC. En YouTube el menú pone el español primero: **auto** (transcribe el audio), los del autor, o **traducción automática** (YouTube traduce; no es un doblaje). Se descarga el idioma elegido, no un archivo en caché de otro idioma.
 
 En **pantalla completa**, menú y controles se ocultan a los 3 segundos sin usarlos. Los botones de la barra siguen sirviendo para cambiar pista.
 
 La barra de progreso aparece en YouTube y en VOD; no en un canal en directo. Los botones de ±2 s / ±10 s y el arrastre de la barra saltan a ese punto. En YouTube retransmitido (MPEG-TS local) un salto lejano puede tardar un momento: se reinicia el vídeo desde ahí.
 
-Al abrir un vídeo de YouTube, el área de vídeo muestra el título, la miniatura y una barra mientras se obtiene el stream, para que no parezca que se ha colgado. Si ya lo habías visto, se reanuda en el segundo guardado al cerrar o al cambiar de vídeo. En IPTV, **Historial** guarda los últimos canales. En VOD (`.mkv`/`.mp4` o rutas `movie`/`series`) también se guarda el segundo, como en YouTube; al volver a abrirlo continúa. Cerca del final se considera terminado. Las URLs no se escriben en el registro.
+Al abrir un vídeo de YouTube, el área de vídeo muestra el título, la miniatura y una barra mientras se obtiene el stream, para que no parezca que se ha colgado. Si ya lo habías visto, se reanuda en el segundo guardado al cerrar o al cambiar de vídeo. En IPTV, **Historial** guarda los últimos canales. En VOD (`.mkv`/`.mp4` o rutas `movie`/`series`) también se guarda el segundo, como en YouTube; al volver a abrirlo continúa. Cerca del final se considera terminado. Los últimos vídeos de YouTube salen en esa misma ventana de historial. Las URLs no se escriben en el registro.
 
 Si un canal IPTV no arranca (error de VLC, pantalla negra o el servidor no entrega vídeo), en unos segundos aparece el nombre y **Este canal por el momento no funciona**. No es un fallo del programa: el enlace de esa lista no está disponible ahora.
 

@@ -104,7 +104,7 @@ def show_keyboard_shortcuts(root):
             ("Mostrar logos de canal", "Menú Guía EPG o Preferencias")
         ]),
         ("Historial", [
-            ("Historial", "Últimos canales y seguir viendo (VOD)")
+            ("Historial", "IPTV y YouTube: últimos y seguir viendo")
         ]),
         ("General", [
             ("Alt + F4", "Cerrar ventana"),

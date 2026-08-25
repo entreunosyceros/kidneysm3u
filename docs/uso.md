@@ -39,7 +39,7 @@ En el menú **Reproducir**:
 - **Guía EPG → Mostrar logos de canal** — miniaturas en la lista y en la parrilla. En listas grandes, desactívalo.
 - **Guía EPG → Desde URL…** — guía XMLTV remota (`http`/`https`). Sirve una URL tipo `get.php?username=…&password=…` que devuelva el XMLTV; se usa tal cual.
 - **Guía EPG → Desde archivo…** — guía XMLTV local (`.xml`, `.xml.gz`).
-- **Historial** — últimos canales y **seguir viendo** en películas/VOD (se reanuda el segundo). También **Ver historial…**.
+- **Historial** — últimos canales IPTV, **seguir viendo** en películas/VOD y últimos vídeos de YouTube. También **Ver historial…**.
 - **Limpiar lista lateral** — vacía el listado de la izquierda (pide confirmación).
 
 Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir).
@@ -50,8 +50,9 @@ La sesión puede recordar la última lista lateral y el último canal **seleccio
 
 Menú **Youtube**:
 
-- Buscar vídeos, Shorts, listas o canales
+- Buscar vídeos, Shorts, listas o canales (un canal lista subidas recientes)
 - Pegar una URL (también `youtube.com/shorts/...`)
+- Cola de YouTube (siguiente, quitar, reordenar)
 - Cargar una playlist como lista lateral
 
 Guía completa: [YouTube](youtube.md).
