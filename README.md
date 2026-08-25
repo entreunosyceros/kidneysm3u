@@ -29,8 +29,8 @@ Si no existe `.venv`, se crea solo e instala lo de `requirements.txt`. La primer
 | [Instalación](docs/instalacion.md) | Requisitos, Ubuntu, Windows y entorno virtual |
 | [Uso](docs/uso.md) | Cómo empezar: cargar una lista, reproducir y preferencias |
 | [Listas M3U](docs/listas-m3u.md) | Carga, filtro y ordenación de listas |
-| [YouTube](docs/youtube.md) | Búsqueda, Shorts, playlists, cookies y descargas |
-| [Reproductor](docs/reproductor.md) | Controles, atajos, favoritos, lista lateral y bandeja |
+| [YouTube](docs/youtube.md) | Búsqueda, Shorts, playlists, cookies, yt-dlp y descargas |
+| [Reproductor](docs/reproductor.md) | Controles, atajos, PiP, grabación, lista lateral y bandeja |
 | [Notas](docs/notas.md) | Detalles técnicos, tests, monitor de CPU y problemas conocidos |
 
 Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda → Documentación** (se lee en la propia ventana).
@@ -42,6 +42,7 @@ Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda →
 - Buscar y reproducir YouTube: vídeos, **Shorts**, listas y canales.
 - Ver la guía EPG en parrilla (ahora + unas horas), con logos de canal y recarga automática.
 - Historial de canales IPTV y seguir viendo películas/VOD desde el segundo guardado.
+- Ventana PiP y reproductor siempre encima.
 - Gestionar la lista lateral (favoritos, limpiar, reproducir desde aquí).
 - Grabar el canal o vídeo en reproducción a un fichero local (hace falta [ffmpeg](https://ffmpeg.org/download.html)).
 - Descargar vídeos o solo audio (también hace falta ffmpeg).

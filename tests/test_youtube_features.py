@@ -211,3 +211,45 @@ sigue el vídeo
     assert 'align:start' not in body
     assert 'hola mundo esto' in body
 
+
+def test_yt_dlp_upgrade_command_and_pip_messages(monkeypatch):
+    from preferences import parse_yt_dlp_pip_result, yt_dlp_update_message, yt_dlp_upgrade_cmd
+
+    cmd = yt_dlp_upgrade_cmd('/tmp/fake-python')
+    assert cmd[:4] == ['/tmp/fake-python', '-m', 'pip', 'install']
+    assert '--upgrade' in cmd
+    assert 'yt-dlp[default]' in cmd
+
+    ok, detail = parse_yt_dlp_pip_result(
+        'Successfully installed yt-dlp-2026.8.24 brotli-1.0',
+        0,
+    )
+    assert ok is True
+    assert detail == '2026.8.24'
+
+    ok, detail = parse_yt_dlp_pip_result(
+        'Requirement already satisfied: yt-dlp[default] in .venv/lib',
+        0,
+    )
+    assert ok is True
+    assert detail == 'already'
+
+    ok, detail = parse_yt_dlp_pip_result(
+        'error: externally-managed-environment\nThis environment is externally managed',
+        1,
+    )
+    assert ok is False
+    assert detail == 'externally-managed'
+
+    monkeypatch.setattr('preferences.yt_dlp_installed_version', lambda: '2026.1.1')
+    success, text = yt_dlp_update_message(True, 'already')
+    assert success is True
+    assert '2026.1.1' in text
+    success, text = yt_dlp_update_message(True, '2026.8.24')
+    assert success is True
+    assert '2026.8.24' in text
+    assert 'Cierra el programa' in text
+    success, text = yt_dlp_update_message(False, 'externally-managed')
+    assert success is False
+    assert 'run_app.py' in text
+

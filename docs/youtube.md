@@ -22,6 +22,17 @@ En el reproductor (abajo a la izquierda) y en la búsqueda verás **Sesión YouT
 
 No se escribe un `cookies.txt` vacío ni uno sin cookies de login: yt-dlp lo usaría y YouTube fallaría. Si YouTube bloquea la extracción, instala **Node** o **Deno**: yt-dlp los usa para los retos de la web.
 
+## Actualizar yt-dlp
+
+YouTube cambia el extractor a menudo. Si deja de reproducir, buscar o descargar y las cookies están bien, actualiza yt-dlp:
+
+- **Archivo → Preferencias** (o **Reproducir → Preferencias**) → **Actualizar yt-dlp**
+- En el reproductor: **Youtube → Actualizar yt-dlp**
+
+Usa el mismo Python del programa (`python -m pip install --upgrade yt-dlp[default]`). Después **cierra y vuelve a abrir** el programa: el módulo ya cargado no cambia hasta entonces. No sustituye a **Reexportar cookies**.
+
+Si arrancas el Python del sistema (sin `.venv`), Ubuntu puede bloquear `pip` (PEP 668). En ese caso usa `python3 run_app.py`.
+
 ## Búsqueda
 
 <p align="center">
@@ -61,7 +72,7 @@ Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short 
 
 - Vídeo + audio, o **solo audio** (hace falta `ffmpeg` en el PATH).
 - Desde la búsqueda, el menú contextual o **Youtube → Descargar vídeo de YouTube**.
-- En la ventana principal, **Descargas** sirve para bajar cualquier URL (vídeo, imagen, texto, etc.).
+- En la ventana principal, **Archivo → Descargar** sirve para bajar cualquier URL (vídeo, imagen, texto, etc.). Puedes marcar **abrir el gestor de archivos al terminar** para que muestre el fichero guardado.
 - La carpeta inicial se elige en **Archivo → Preferencias**.
 
 ## Cómo se reproduce

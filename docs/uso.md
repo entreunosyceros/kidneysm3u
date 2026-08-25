@@ -25,7 +25,7 @@ Desde aquí filtras o abres listas y lanzas el reproductor. El flujo habitual:
 
 El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras corre.
 
-En **Archivo → Preferencias** (también **Reproducir → Preferencias** en el reproductor) unificas tema, logos de canal, volumen por defecto, carpeta de descargas, navegador de cookies, calidad de YouTube y si se recuerda la última lista. El botón **Tema claro/oscuro** de la cabecera sigue sirviendo para cambiar solo el tema.
+En **Archivo → Preferencias** (también **Reproducir → Preferencias** en el reproductor) unificas tema, logos de canal, volumen por defecto, carpeta de descargas, navegador de cookies, calidad de YouTube y si se recuerda la última lista. Ahí también puedes **actualizar yt-dlp** si YouTube deja de extraerse. El botón **Tema claro/oscuro** de la cabecera sigue sirviendo para cambiar solo el tema.
 
 Detalle del filtro y de la herramienta de ordenar: [listas M3U](listas-m3u.md).
 
@@ -41,6 +41,7 @@ En el menú **Reproducir**:
 - **Guía EPG → Desde archivo…** — guía XMLTV local (`.xml`, `.xml.gz`).
 - **Historial** — últimos canales IPTV, **seguir viendo** en películas/VOD y últimos vídeos de YouTube. También **Ver historial…**.
 - **Grabar / detener**, **Grabar en…**, **Grabaciones…** — copia local del stream en reproducción (hace falta `ffmpeg`). Detalle en [reproductor](reproductor.md).
+- **Ventana PiP** / **Siempre encima** — recuadro flotante o ventana del reproductor sobre las demás.
 - **Limpiar lista lateral** — vacía el listado de la izquierda (pide confirmación).
 
 Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir).

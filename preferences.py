@@ -1,11 +1,15 @@
 """Ventana de preferencias: tema, volumen, descargas, cookies y sesión."""
 
 import os
+import re
+import subprocess
+import sys
+import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 import app_config
-from ui_theme import apply_theme, style_window, set_window_icon, center_window
+from ui_theme import apply_theme, get_colors, style_window, set_window_icon, center_window
 
 COOKIE_LABELS = (
     ('auto', 'Automático (el que tenga sesión)'),
@@ -15,6 +19,129 @@ COOKIE_LABELS = (
     ('brave', 'Brave'),
     ('edge', 'Edge'),
 )
+
+_YT_DLP_UPDATING = False
+
+
+def yt_dlp_installed_version():
+    try:
+        from yt_dlp.version import __version__
+        return str(__version__ or '').strip()
+    except Exception:
+        return ''
+
+
+def yt_dlp_upgrade_cmd(python=None):
+    return [
+        python or sys.executable,
+        '-m', 'pip',
+        'install',
+        '--upgrade',
+        '--disable-pip-version-check',
+        'yt-dlp[default]',
+    ]
+
+
+def parse_yt_dlp_pip_result(output, returncode=0):
+    text = output or ''
+    lower = text.lower()
+    if returncode:
+        if 'externally-managed-environment' in lower:
+            return False, 'externally-managed'
+        if 'permission denied' in lower:
+            return False, 'permission'
+        lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+        return False, '\n'.join(lines[-8:]) or f'pip salió con código {returncode}'
+    match = re.search(r'Successfully installed[^\n]*yt-dlp-([0-9][0-9A-Za-z.\-]+)', text)
+    if match:
+        return True, match.group(1)
+    if 'yt-dlp' in lower and re.search(r'already (up-to-date|satisfied)', text, re.I):
+        return True, 'already'
+    return True, ''
+
+
+def run_yt_dlp_upgrade(timeout=180):
+    try:
+        completed = subprocess.run(
+            yt_dlp_upgrade_cmd(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return False, 'timeout'
+    except OSError as exc:
+        return False, str(exc)
+    output = (completed.stdout or b'').decode('utf-8', errors='replace')
+    return parse_yt_dlp_pip_result(output, completed.returncode)
+
+
+def yt_dlp_update_message(ok, detail):
+    current = yt_dlp_installed_version()
+    if ok and detail == 'already':
+        version = current or 'instalada'
+        return True, f'Ya tienes la última versión ({version}).'
+    if ok:
+        version = detail or current or 'actualizado'
+        return True, (
+            f'Se instaló yt-dlp {version}.\n'
+            'Cierra el programa y ábrelo otra vez para que cargue.'
+        )
+    if detail == 'externally-managed':
+        return False, (
+            'Este Python no deja instalar paquetes (entorno del sistema).\n'
+            'Arranca con python3 run_app.py para usar el entorno .venv.'
+        )
+    if detail == 'permission':
+        return False, (
+            'No hay permiso para instalar yt-dlp.\n'
+            'Arranca con python3 run_app.py o instálalo a mano en el entorno virtual.'
+        )
+    if detail == 'timeout':
+        return False, 'La actualización tardó demasiado. Comprueba la red e inténtalo de nuevo.'
+    return False, f'No se pudo actualizar.\n{detail or "Error desconocido."}'
+
+
+def start_yt_dlp_upgrade(parent, on_done=None, busy_widgets=None):
+    global _YT_DLP_UPDATING
+    if _YT_DLP_UPDATING:
+        messagebox.showinfo('yt-dlp', 'Ya hay una actualización en curso.', parent=parent)
+        return
+    _YT_DLP_UPDATING = True
+    for widget in busy_widgets or ():
+        try:
+            widget.configure(state='disabled')
+        except tk.TclError:
+            pass
+
+    def work():
+        ok, detail = run_yt_dlp_upgrade()
+
+        def finish():
+            global _YT_DLP_UPDATING
+            _YT_DLP_UPDATING = False
+            for widget in busy_widgets or ():
+                try:
+                    widget.configure(state='normal')
+                except tk.TclError:
+                    pass
+            success, text = yt_dlp_update_message(ok, detail)
+            try:
+                if success:
+                    messagebox.showinfo('yt-dlp', text, parent=parent)
+                else:
+                    messagebox.showerror('yt-dlp', text, parent=parent)
+            except tk.TclError:
+                pass
+            if on_done:
+                on_done(ok, detail)
+
+        try:
+            parent.after(0, finish)
+        except tk.TclError:
+            _YT_DLP_UPDATING = False
+
+    threading.Thread(target=work, daemon=True, name='yt-dlp-upgrade').start()
 
 
 def _tk_root(widget):
@@ -39,12 +166,12 @@ def show_preferences(parent, on_apply=None):
 
     window = tk.Toplevel(parent)
     window.title('Preferencias')
-    window.geometry('560x840')
-    window.minsize(500, 740)
+    window.geometry('560x680')
+    window.minsize(480, 420)
     window.transient(parent)
     style_window(window)
     set_window_icon(window)
-    center_window(window, 560, 840)
+    center_window(window, 560, 680)
     root._prefs_window = window
 
     theme_var = tk.StringVar(value=app_config.get_theme())
@@ -56,15 +183,82 @@ def show_preferences(parent, on_apply=None):
     remember_var = tk.BooleanVar(value=app_config.get_remember_last_list())
     logos_var = tk.BooleanVar(value=app_config.get_show_channel_logos())
 
-    main = ttk.Frame(window, padding=20)
-    main.pack(fill=tk.BOTH, expand=True)
+    colors = get_colors()
+    shell = ttk.Frame(window, padding=(16, 16, 12, 12))
+    shell.pack(fill=tk.BOTH, expand=True)
 
-    ttk.Label(main, text='Preferencias', style='PageTitle.TLabel').pack(anchor=tk.W)
+    ttk.Label(shell, text='Preferencias', style='PageTitle.TLabel').pack(anchor=tk.W)
     ttk.Label(
-        main,
-        text='Tema, logos, reproducción, descargas y sesión de YouTube',
+        shell,
+        text='Tema, logos, reproducción, descargas, sesión de YouTube y yt-dlp',
         style='Muted.TLabel',
-    ).pack(anchor=tk.W, pady=(0, 14))
+    ).pack(anchor=tk.W, pady=(0, 10))
+
+    body = ttk.Frame(shell)
+    body.pack(fill=tk.BOTH, expand=True)
+    body.columnconfigure(0, weight=1)
+    body.rowconfigure(0, weight=1)
+
+    canvas = tk.Canvas(body, bg=colors['bg'], highlightthickness=0, bd=0)
+    scroll = ttk.Scrollbar(body, orient=tk.VERTICAL, command=canvas.yview)
+    canvas.configure(yscrollcommand=scroll.set)
+    canvas.grid(row=0, column=0, sticky='nsew')
+    scroll.grid(row=0, column=1, sticky='ns', padx=(4, 0))
+
+    main = ttk.Frame(canvas, padding=(0, 0, 8, 4))
+    main_id = canvas.create_window((0, 0), window=main, anchor='nw')
+    _syncing = {'on': False}
+    _last_wrap = {'value': 0}
+
+    def _sync_scroll(_event=None):
+        if _syncing['on']:
+            return
+        _syncing['on'] = True
+        try:
+            width = max(1, int(canvas.winfo_width()))
+            canvas.itemconfigure(main_id, width=width)
+            wrap = max(240, width - 36)
+            if wrap != _last_wrap['value']:
+                _last_wrap['value'] = wrap
+
+                def _walk(widget):
+                    for child in widget.winfo_children():
+                        try:
+                            if int(child.cget('wraplength') or 0) > 0:
+                                child.configure(wraplength=wrap)
+                        except (tk.TclError, TypeError, ValueError):
+                            pass
+                        _walk(child)
+
+                _walk(main)
+            canvas.configure(scrollregion=canvas.bbox('all') or (0, 0, 0, 0))
+        except tk.TclError:
+            pass
+        finally:
+            _syncing['on'] = False
+
+    def _on_wheel(event):
+        if getattr(event, 'num', None) == 5:
+            steps = 1
+        elif getattr(event, 'num', None) == 4:
+            steps = -1
+        else:
+            delta = getattr(event, 'delta', 0) or 0
+            if not delta:
+                return
+            steps = int(-delta / 120) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
+        canvas.yview_scroll(steps, 'units')
+        return 'break'
+
+    def _bind_wheel(widget):
+        widget.bind('<MouseWheel>', _on_wheel)
+        widget.bind('<Button-4>', _on_wheel)
+        widget.bind('<Button-5>', _on_wheel)
+        for child in widget.winfo_children():
+            _bind_wheel(child)
+
+    main.bind('<Configure>', _sync_scroll)
+    canvas.bind('<Configure>', _sync_scroll)
 
     appearance = ttk.LabelFrame(main, text=' APARIENCIA ', padding=12)
     appearance.pack(fill=tk.X, pady=(0, 10))
@@ -182,8 +376,39 @@ def show_preferences(parent, on_apply=None):
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
 
-    buttons = ttk.Frame(main)
-    buttons.pack(fill=tk.X, pady=(8, 0))
+    tools = ttk.LabelFrame(main, text=' YT-DLP ', padding=12)
+    tools.pack(fill=tk.X, pady=(0, 10))
+    ytdlp_row = ttk.Frame(tools, style='Card.TFrame')
+    ytdlp_row.pack(fill=tk.X)
+    version_var = tk.StringVar()
+
+    def _refresh_ytdlp_version(_ok=None, _detail=None):
+        if _ok and _detail and _detail not in ('already',):
+            version_var.set(f'Versión instalada: {_detail} (reinicia el programa)')
+            return
+        version = yt_dlp_installed_version()
+        version_var.set(f'Versión instalada: {version}' if version else 'yt-dlp no está instalado')
+
+    _refresh_ytdlp_version()
+    ttk.Label(ytdlp_row, textvariable=version_var, style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
+    update_btn = ttk.Button(ytdlp_row, text='Actualizar yt-dlp')
+    update_btn.configure(
+        command=lambda: start_yt_dlp_upgrade(
+            window,
+            on_done=_refresh_ytdlp_version,
+            busy_widgets=(update_btn,),
+        )
+    )
+    update_btn.pack(side=tk.RIGHT)
+    ttk.Label(
+        tools,
+        text='YouTube cambia el extractor a menudo. Si deja de reproducir, buscar o descargar, actualiza yt-dlp y reinicia el programa. No sustituye a «Reexportar cookies».',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(8, 0))
+
+    buttons = ttk.Frame(shell)
+    buttons.pack(fill=tk.X, pady=(12, 0))
 
     def close():
         if getattr(root, '_prefs_window', None) is window:
@@ -224,6 +449,10 @@ def show_preferences(parent, on_apply=None):
 
     ttk.Button(buttons, text='Guardar', style='Accent.TButton', command=save).pack(side=tk.LEFT)
     ttk.Button(buttons, text='Cancelar', command=close).pack(side=tk.RIGHT)
+
+    _bind_wheel(canvas)
+    _bind_wheel(main)
+    window.after_idle(_sync_scroll)
 
     window.protocol('WM_DELETE_WINDOW', close)
     window.bind('<Escape>', lambda e: close())

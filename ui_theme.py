@@ -679,6 +679,12 @@ def make_control_icons(color, size=20, record_color=None):
     )
     icons['star'] = photo(img)
 
+    img = blank()
+    d = ImageDraw.Draw(img)
+    d.rectangle([p, p, size - p - 3, size - p - 3], outline=fill, width=max(1, size // 12))
+    d.rectangle([size // 2 - 1, size // 2 - 1, size - p, size - p], fill=fill)
+    icons['pip'] = photo(img)
+
     return icons
 
 

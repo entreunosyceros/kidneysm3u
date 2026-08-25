@@ -4,32 +4,115 @@ import threading
 import yt_dlp
 import os
 import re
+import sys
+import subprocess
+import pathlib
 import requests
 from urllib.parse import unquote
 from ui_theme import style_window, set_window_icon, center_window
 import app_config
 
+
+def resolve_downloaded_path(planned):
+    planned = os.path.abspath(planned or '')
+    if planned and os.path.isfile(planned):
+        return planned
+    folder = os.path.dirname(planned)
+    stem = os.path.splitext(os.path.basename(planned))[0]
+    if not folder or not stem or not os.path.isdir(folder):
+        return planned
+    matches = []
+    try:
+        for name in os.listdir(folder):
+            path = os.path.join(folder, name)
+            if name.startswith(stem) and os.path.isfile(path):
+                matches.append(path)
+    except OSError:
+        return planned
+    if not matches:
+        return planned
+    matches.sort(key=os.path.getmtime, reverse=True)
+    return matches[0]
+
+
+def reveal_in_file_manager(path):
+    """Abre el gestor de archivos del sistema y, si puede, selecciona el fichero."""
+    path = os.path.abspath(path or '')
+    if not path:
+        return False
+    folder = path if os.path.isdir(path) else os.path.dirname(path)
+    if not folder or not os.path.isdir(folder):
+        return False
+    try:
+        if sys.platform.startswith('win'):
+            if os.path.isfile(path):
+                subprocess.Popen(['explorer', '/select,', os.path.normpath(path)])
+            else:
+                subprocess.Popen(['explorer', os.path.normpath(folder)])
+            return True
+        if sys.platform == 'darwin':
+            cmd = ['open', '-R', path] if os.path.isfile(path) else ['open', folder]
+            subprocess.Popen(cmd)
+            return True
+        if os.path.isfile(path):
+            uri = pathlib.Path(path).resolve().as_uri()
+            try:
+                result = subprocess.run(
+                    [
+                        'dbus-send', '--session', '--type=method_call',
+                        '--dest=org.freedesktop.FileManager1',
+                        '/org/freedesktop/FileManager1',
+                        'org.freedesktop.FileManager1.ShowItems',
+                        f'array:string:{uri}',
+                        'string:',
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=8,
+                )
+                if result.returncode == 0:
+                    return True
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        subprocess.Popen(
+            ['xdg-open', folder],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except OSError:
+        return False
+
 class DownloadManager:
     def __init__(self, parent):
         self.window = tk.Toplevel(parent)
         self.window.title("Descargar URL")
-        self.window.geometry("640x460")
+        self.window.geometry("640x620")
         self.window.resizable(True, True)
-        self.window.minsize(520, 400)
+        self.window.minsize(520, 540)
         style_window(self.window)
         set_window_icon(self.window)
-        center_window(self.window, 640, 460)
+        center_window(self.window, 640, 620)
         
         # Variables
         self.url = tk.StringVar()
         self.output_path = tk.StringVar(value=app_config.get_download_dir())
         self.filename = tk.StringVar()
+        self.open_folder_var = tk.BooleanVar(value=app_config.get_open_folder_after_download())
         self.is_downloading = False
         
         self.create_widgets()
         
     def create_widgets(self):
-        main_frame = ttk.Frame(self.window, padding=20)
+        buttons_frame = ttk.Frame(self.window, padding=(20, 0, 20, 16))
+        buttons_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        self.download_button = ttk.Button(
+            buttons_frame, text="Descargar", style='Accent.TButton', command=self.start_download
+        )
+        self.download_button.pack(side=tk.LEFT)
+        ttk.Button(buttons_frame, text="Cancelar", command=self.window.destroy).pack(side=tk.RIGHT)
+
+        main_frame = ttk.Frame(self.window, padding=(20, 20, 20, 12))
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         ttk.Label(main_frame, text='Descargar URL', style='PageTitle.TLabel').pack(anchor=tk.W)
@@ -45,9 +128,18 @@ class DownloadManager:
         
         dest_frame = ttk.LabelFrame(main_frame, text=" CARPETA DE DESTINO ", padding=10)
         dest_frame.pack(fill=tk.X, pady=(0, 12))
-        dest_entry = ttk.Entry(dest_frame, textvariable=self.output_path)
+        dest_row = ttk.Frame(dest_frame, style='Card.TFrame')
+        dest_row.pack(fill=tk.X)
+        dest_entry = ttk.Entry(dest_row, textvariable=self.output_path)
         dest_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
-        ttk.Button(dest_frame, text="Examinar", command=self.browse_output).pack(side=tk.RIGHT)
+        ttk.Button(dest_row, text="Examinar", command=self.browse_output).pack(side=tk.RIGHT)
+        ttk.Checkbutton(
+            dest_frame,
+            text='Al terminar, abrir el gestor de archivos y mostrar el archivo',
+            variable=self.open_folder_var,
+            command=self._persist_open_folder,
+            style='Card.TCheckbutton',
+        ).pack(anchor=tk.W, pady=(10, 0))
         
         name_frame = ttk.LabelFrame(main_frame, text=" NOMBRE DEL ARCHIVO ", padding=10)
         name_frame.pack(fill=tk.X, pady=(0, 12))
@@ -60,14 +152,6 @@ class DownloadManager:
         self.progress_label = ttk.Label(self.progress_frame, text="", style='CardMuted.TLabel')
         self.progress_label.pack(anchor=tk.W)
         
-        buttons_frame = ttk.Frame(main_frame)
-        buttons_frame.pack(fill=tk.X, pady=(8, 0))
-        self.download_button = ttk.Button(
-            buttons_frame, text="Descargar", style='Accent.TButton', command=self.start_download
-        )
-        self.download_button.pack(side=tk.LEFT)
-        ttk.Button(buttons_frame, text="Cancelar", command=self.window.destroy).pack(side=tk.RIGHT)
-        
     def browse_output(self):
         folder = filedialog.askdirectory(
             parent=self.window,
@@ -76,6 +160,9 @@ class DownloadManager:
         )
         if folder:
             self.output_path.set(folder)
+
+    def _persist_open_folder(self):
+        app_config.set_open_folder_after_download(bool(self.open_folder_var.get()))
             
     def start_download(self):
         if not self.url.get():
@@ -168,8 +255,18 @@ class DownloadManager:
                     }
                 }
                 
+                saved = output_template
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([self.url.get()])
+                    info = ydl.extract_info(self.url.get(), download=True)
+                    try:
+                        if info and info.get('entries'):
+                            entry = next((item for item in info['entries'] if item), None)
+                            if entry:
+                                saved = ydl.prepare_filename(entry)
+                        elif info:
+                            saved = ydl.prepare_filename(info)
+                    except Exception:
+                        saved = output_template
             else:
                 # Para otros tipos de archivos, usar requests
                 try:
@@ -199,11 +296,13 @@ class DownloadManager:
                             for chunk in response.iter_content(chunk_size=8192):
                                 if chunk:
                                     f.write(chunk)
+                    saved = output_template
                                     
                 except requests.RequestException as e:
                     raise Exception(f"Error al descargar el archivo: {str(e)}")
             
-            self.window.after(0, self._download_complete)
+            saved = resolve_downloaded_path(saved)
+            self.window.after(0, lambda path=saved: self._download_complete(path))
             
         except Exception as e:
             self.window.after(0, self._show_error, str(e))
@@ -212,10 +311,20 @@ class DownloadManager:
         self.progress['value'] = percentage
         self.progress_label.configure(text=f"Descargando: {percent_str}")
         
-    def _download_complete(self):
+    def _download_complete(self, path=''):
         self.progress['value'] = 100
         self.progress_label.configure(text="¡Descarga completada!")
-        messagebox.showinfo("Éxito", "La descarga se ha completado correctamente")
+        self._persist_open_folder()
+        opened = False
+        if self.open_folder_var.get() and path:
+            opened = reveal_in_file_manager(path)
+        location = path or self.output_path.get()
+        text = "La descarga se ha completado correctamente."
+        if location:
+            text += f"\n\n{location}"
+        if self.open_folder_var.get() and location and not opened:
+            text += "\n\nNo se pudo abrir el gestor de archivos."
+        messagebox.showinfo("Éxito", text, parent=self.window)
         self.window.destroy()
         
     def _show_error(self, error):
