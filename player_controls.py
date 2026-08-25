@@ -133,6 +133,9 @@ class PlayerControlsMixin:
         try:
             self.save_youtube_resume()
             self.save_iptv_resume()
+            stop_rec = getattr(self, 'stop_stream_recording', None)
+            if stop_rec:
+                stop_rec(notify=False)
             # Usar método de limpieza segura
             self._cleanup_vlc_player()
             # Ocultar la barra de progreso

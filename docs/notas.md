@@ -13,7 +13,7 @@
 - **Audio y subtítulos**: VLC lista las pistas del stream (típico en IPTV/HLS) en **Calidad / audio**. YouTube: transcripción ASR, pistas del autor y traducción automática (VTT con `tlang`; el json3 traducido suele seguir en inglés). No hay cambio de idioma de audio.
 - No se usa `--no-hw-dec`: en VLC 3.0.20 esa opción puede hacer que `vlc.Instance()` falle.
 
-El reproductor está partido en `video_player.py` más mixins: `player_iptv.py` (apertura VLC y stream muerto), `player_overlay.py` (aviso en pantalla) y `player_controls.py` (barra, volumen, pantalla completa).
+El reproductor está partido en `video_player.py` más mixins: `player_iptv.py` (apertura VLC y stream muerto), `player_overlay.py` (aviso en pantalla) y `player_controls.py` (barra, volumen, pantalla completa). La grabación del stream actual está en `iptv_record.py`: `ffmpeg -c copy` a un `.ts`/`.mkv` local (carpeta de descargas de Preferencias). No sube nada ni descifra DRM.
 
 ## Tests
 

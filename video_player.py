@@ -33,6 +33,7 @@ from youtube_queue import show_youtube_queue
 from player_controls import PlayerControlsMixin
 from player_iptv import IptvPlaybackMixin
 from player_overlay import ChannelNoticeMixin
+from iptv_record import StreamRecorder, default_recording_path, show_recordings
 
 # Clase Tooltip para mostrar información al pasar el ratón
 class Tooltip:
@@ -171,6 +172,11 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
         self._iptv_relay_tmpdir = None
         self._iptv_attempts = []
         self._iptv_source_url = ''
+        self._iptv_retry_name = ''
+        self._stream_recorder = StreamRecorder(self)
+        self._recordings = []
+        self._recordings_win = None
+        self._record_watch_job = None
         self._iptv_check_gen = 0
         self._iptv_status_frame = None
         self._iptv_notice_top = None
@@ -319,7 +325,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
         # Botones de control (iconos dibujados, no dependen de glifos Unicode de la fuente)
         self.controls_buttons_frame = ttk.Frame(self.controls_frame)
         self.controls_buttons_frame.pack(side=tk.TOP, fill=tk.X)
-        self._control_icons = make_control_icons(get_colors()['text'])
+        colors = get_colors()
+        self._control_icons = make_control_icons(colors['text'], record_color=colors['danger'])
         buttons_info = [
             ('skip_back', 'Retroceder 10 segundos', lambda: self.seek_relative(-10)),
             ('rewind', 'Retroceder 2 segundos', lambda: self.seek_relative(-2)),
@@ -327,6 +334,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             ('forward', 'Avanzar 2 segundos', lambda: self.seek_relative(2)),
             ('skip_forward', 'Avanzar 10 segundos', lambda: self.seek_relative(10)),
             ('stop', 'Detener reproducción', self.stop),
+            ('record', 'Grabar', self.toggle_stream_recording),
             ('quality', 'Calidad / audio', self._popup_audio_menu),
             ('subtitles', 'Subtítulos', self._popup_subs_menu),
             ('volume', 'Silenciar / Activar sonido', self.toggle_mute),
@@ -335,6 +343,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
         ]
         self._audio_btn = None
         self._subs_btn = None
+        self._record_btn = None
         self._control_buttons = {}
         self._posted_popup = None
         self._channel_menu = None
@@ -349,7 +358,11 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             btn.pack(side=tk.LEFT, padx=4)
             btn.bind('<Button-1>', self.on_control_interact)
             tip = Tooltip(btn)
-            btn.bind('<Enter>', lambda e, t=tip, txt=tip_text: t.showtip(txt))
+            if key == 'record':
+                self._record_btn = btn
+                btn.bind('<Enter>', lambda e, t=tip: t.showtip(self._record_tip_text()))
+            else:
+                btn.bind('<Enter>', lambda e, t=tip, txt=tip_text: t.showtip(txt))
             btn.bind('<Leave>', lambda e, t=tip: t.hidetip())
             self._control_buttons[key] = btn
             if key == 'quality':
@@ -357,6 +370,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             elif key == 'subtitles':
                 self._subs_btn = btn
         self.add_volume_control()
+        self._refresh_record_button()
         #self.setup_performance_monitoring()
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.window.bind('<Escape>', lambda e: self.exit_fullscreen())
@@ -398,6 +412,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
         self._history_menu = tk.Menu(reproducir_menu, tearoff=0)
         self._history_menu.configure(postcommand=self._fill_history_menu)
         reproducir_menu.add_cascade(label="Historial", menu=self._history_menu)
+        reproducir_menu.add_separator()
+        reproducir_menu.add_command(label="Grabar / detener", command=self.toggle_stream_recording)
+        reproducir_menu.add_command(label="Grabar en…", command=lambda: self.start_stream_recording(ask_path=True))
+        reproducir_menu.add_command(label="Grabaciones…", command=lambda: show_recordings(self))
         reproducir_menu.add_separator()
         reproducir_menu.add_command(label="Limpiar lista lateral", command=self.clear_channel_list)
         reproducir_menu.add_separator()
@@ -1007,6 +1025,124 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             pass
         return 'break'
 
+    def toggle_stream_recording(self):
+        recorder = getattr(self, '_stream_recorder', None)
+        if recorder and recorder.is_recording():
+            self.stop_stream_recording(notify=True)
+        else:
+            self.start_stream_recording(ask_path=False)
+
+    def start_stream_recording(self, ask_path=False):
+        recorder = getattr(self, '_stream_recorder', None)
+        if recorder is None:
+            return
+        if recorder.is_recording():
+            messagebox.showinfo(
+                "Grabar",
+                f"Ya se está grabando:\n{recorder.path}",
+                parent=self.window,
+            )
+            return
+        source, _headers, name = recorder.current_source()
+        if not source:
+            messagebox.showinfo(
+                "Grabar",
+                "No hay un stream que se pueda copiar ahora.",
+                parent=self.window,
+            )
+            return
+        dest = default_recording_path(name)
+        if ask_path:
+            dest = filedialog.asksaveasfilename(
+                parent=self.window,
+                title='Grabar en…',
+                initialfile=os.path.basename(dest),
+                initialdir=os.path.dirname(dest),
+                defaultextension='.ts',
+                filetypes=[('MPEG-TS', '*.ts'), ('Matroska', '*.mkv'), ('Todos', '*.*')],
+            )
+            if not dest:
+                return
+        ok, detail = recorder.start(dest)
+        if not ok:
+            messagebox.showerror("Grabar", detail, parent=self.window)
+            return
+        self._refresh_record_button()
+        self._watch_recording()
+        win = getattr(self, '_recordings_win', None)
+        if win is not None:
+            try:
+                win.refresh()
+            except tk.TclError:
+                pass
+
+    def stop_stream_recording(self, notify=False):
+        self._cancel_record_watch()
+        recorder = getattr(self, '_stream_recorder', None)
+        if recorder is None:
+            return
+        was = recorder.is_recording() or bool(recorder.proc)
+        path = recorder.stop()
+        if path and was:
+            name = os.path.basename(path)
+            items = [
+                item for item in (getattr(self, '_recordings', None) or [])
+                if item.get('path') != path
+            ]
+            items.insert(0, {'name': name, 'path': path})
+            self._recordings = items[:30]
+        self._refresh_record_button()
+        win = getattr(self, '_recordings_win', None)
+        if win is not None:
+            try:
+                win.refresh()
+            except tk.TclError:
+                pass
+        if notify and path:
+            messagebox.showinfo("Grabar", f"Guardado:\n{path}", parent=self.window)
+
+    def _record_tip_text(self):
+        recorder = getattr(self, '_stream_recorder', None)
+        if recorder and recorder.is_recording():
+            return 'Detener grabación'
+        return 'Grabar'
+
+    def _refresh_record_button(self):
+        btn = getattr(self, '_record_btn', None)
+        icons = getattr(self, '_control_icons', None) or {}
+        if not btn:
+            return
+        recorder = getattr(self, '_stream_recorder', None)
+        live = bool(recorder and recorder.is_recording())
+        key = 'record_on' if live else 'record'
+        style = 'IconRecord.TButton' if live else 'Icon.TButton'
+        try:
+            btn.configure(image=icons.get(key) or icons.get('record'), style=style)
+        except tk.TclError:
+            pass
+
+    def _cancel_record_watch(self):
+        job = getattr(self, '_record_watch_job', None)
+        if job is None:
+            return
+        try:
+            self.window.after_cancel(job)
+        except (tk.TclError, ValueError, AttributeError):
+            pass
+        self._record_watch_job = None
+
+    def _watch_recording(self):
+        self._cancel_record_watch()
+        recorder = getattr(self, '_stream_recorder', None)
+        if recorder and recorder.proc is not None and recorder.proc.poll() is not None:
+            self.stop_stream_recording(notify=False)
+            return
+        if recorder and recorder.is_recording() and self._widget_exists(self.window):
+            try:
+                self._record_watch_job = self.window.after(2000, self._watch_recording)
+            except tk.TclError:
+                self._record_watch_job = None
+
     def close(self):
         """Cierra la ventana y libera recursos."""
         try:
@@ -1034,6 +1170,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             self.save_favorites()
             self.stop_update_time()
             self._cancel_epg_jobs()
+            self.stop_stream_recording(notify=False)
 
             if hasattr(self, 'youtube_handler') and self.youtube_handler:
                 try:
@@ -2884,12 +3021,15 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin):
             if menu is not None:
                 style_menu_tree(menu)
         colors = get_colors()
-        self._control_icons = make_control_icons(colors['text'])
+        self._control_icons = make_control_icons(colors['text'], record_color=colors['danger'])
         for key, btn in getattr(self, '_control_buttons', {}).items():
+            if key == 'record':
+                continue
             try:
                 btn.configure(image=self._control_icons[key])
             except tk.TclError:
                 pass
+        self._refresh_record_button()
         handler = getattr(self, 'youtube_handler', None)
         if handler:
             handler.notify_session()

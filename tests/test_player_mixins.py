@@ -16,5 +16,7 @@ def test_player_uses_iptv_overlay_and_controls_mixins():
         'toggle_play',
         'save_iptv_resume',
         'play_history_url',
+        'toggle_stream_recording',
+        'start_stream_recording',
     ):
         assert hasattr(VideoPlayer, name)

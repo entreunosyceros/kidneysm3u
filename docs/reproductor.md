@@ -27,7 +27,9 @@ Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
 
 ## Controles
 
-Play/pausa (también **un clic en el vídeo** o `Espacio`), stop, salto atrás/adelante, **calidad / audio**, **subtítulos**, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
+Play/pausa (también **un clic en el vídeo** o `Espacio`), stop, **grabar** (círculo; se pone rojo mientras copia), salto atrás/adelante, **calidad / audio**, **subtítulos**, volumen, silencio, pantalla completa y mostrar/ocultar la lista (`≡`).
+
+**Grabar** copia el stream actual a un fichero local con `ffmpeg -c copy` (no captura la pantalla ni descifra DRM). Un clic guarda en la **carpeta de descargas** de Preferencias, con nombre `Canal_AAAAMMDD-HHMMSS.ts`. Otro clic detiene y muestra la ruta. En **Reproducir → Grabar en…** eliges carpeta y extensión (`.ts` o `.mkv`). **Reproducir → Grabaciones…** lista lo guardado y permite reproducirlo. Hace falta `ffmpeg` en el PATH.
 
 **Calidad / audio** (botón y menú): en YouTube eliges **360p**, **720p**, **1080p** o **mejor disponible** (también en **Preferencias**; si cambias con el vídeo en marcha, se recarga desde el segundo actual). En IPTV, si el stream trae varias pistas de audio, aparecen debajo para cambiar de idioma. YouTube solo trae una pista de audio (no hay doblajes).
 
