@@ -23,7 +23,7 @@ Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeo
 
 **Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso. **Reproducir → Historial** lista los últimos canales IPTV, las películas a medio ver y los últimos vídeos de YouTube; **Ver historial…** abre la ventana. **Reproducir → Guía EPG → Parrilla…** abre la parrilla; **Desde URL…** / **Desde archivo…** indican el XMLTV. **Reproducir → Preferencias** abre la misma ventana que **Archivo → Preferencias** en la principal.
 
-Los favoritos se guardan en `favoritos.json` en la carpeta del programa.
+Los favoritos se guardan en `favoritos.json` en la carpeta del programa (no va al repositorio).
 
 ## Controles
 

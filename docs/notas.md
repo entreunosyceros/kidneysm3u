@@ -28,11 +28,11 @@ python3 -m pytest
 
 ## Archivos en la carpeta del programa
 
-`favoritos.json` sí va en el repositorio (lista vacía). El resto los crea o actualiza el programa en tu equipo y **no se publican** (están en `.gitignore`).
+`favoritos.json` lo crea el reproductor en tu equipo y **no se publica** (está en `.gitignore`, igual que `config.json` y las cookies). Si no existe, se usa una lista vacía.
 
 | Archivo | Uso | Si no existe |
 | --- | --- | --- |
-| `favoritos.json` | Favoritos del reproductor | Viene en el repo; si falta, el reproductor usa una lista vacía |
+| `favoritos.json` | Favoritos del reproductor | Se crea al guardar el primer favorito. Si falta, el reproductor usa una lista vacía |
 | `enlaces.json` | Enlaces guardados en el gestor | Se crea vacío al arrancar |
 | `config.json` | Preferencias (tema, logos de canal, volumen, carpeta de descargas, abrir gestor de archivos al descargar, navegador de cookies, calidad YouTube, buffer IPTV, recordar última lista, URL de guía EPG), geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube, cola de YouTube e historial IPTV / YouTube | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
 | `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube o al pulsar **Reexportar cookies**, solo si hay login vigente en el navegador. El indicador **Sesión YouTube: OK / caducada** avisa si hace falta reexportar. Detalle en [YouTube](youtube.md#cookies) |
