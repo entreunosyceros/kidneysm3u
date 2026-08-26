@@ -9,8 +9,17 @@ import subprocess
 import pathlib
 import requests
 from urllib.parse import unquote
-from ui_theme import style_window, set_window_icon, center_window
+from ui_theme import style_window, set_window_icon, center_window, style_listbox, style_menu_tree
 import app_config
+
+
+def download_history_label(item, max_len=72):
+    name = str((item or {}).get('name') or '').strip()
+    url = str((item or {}).get('url') or '').strip()
+    shown = name or url.split('#')[0].split('?')[0] or url
+    if len(shown) > max_len:
+        shown = shown[: max_len - 1] + '…'
+    return shown
 
 
 def resolve_downloaded_path(planned):
@@ -87,12 +96,12 @@ class DownloadManager:
     def __init__(self, parent):
         self.window = tk.Toplevel(parent)
         self.window.title("Descargar URL")
-        self.window.geometry("640x620")
+        self.window.geometry("640x700")
         self.window.resizable(True, True)
-        self.window.minsize(520, 540)
+        self.window.minsize(520, 600)
         style_window(self.window)
         set_window_icon(self.window)
-        center_window(self.window, 640, 620)
+        center_window(self.window, 640, 700)
         
         # Variables
         self.url = tk.StringVar()
@@ -124,7 +133,41 @@ class DownloadManager:
         
         url_frame = ttk.LabelFrame(main_frame, text=" URL ", padding=10)
         url_frame.pack(fill=tk.X, pady=(0, 12))
-        ttk.Entry(url_frame, textvariable=self.url).pack(fill=tk.X)
+        self.url_combo = ttk.Combobox(url_frame, textvariable=self.url)
+        self.url_combo.pack(fill=tk.X)
+        self.url_combo.bind('<<ComboboxSelected>>', self._on_recent_url)
+
+        recent_frame = ttk.LabelFrame(main_frame, text=" ÚLTIMAS DESCARGAS ", padding=10)
+        recent_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 12))
+        list_row = ttk.Frame(recent_frame, style='Card.TFrame')
+        list_row.pack(fill=tk.BOTH, expand=True)
+        scroll = ttk.Scrollbar(list_row)
+        self.recent_list = tk.Listbox(
+            list_row,
+            height=5,
+            activestyle='dotbox',
+            exportselection=False,
+            yscrollcommand=scroll.set,
+        )
+        self.recent_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll.config(command=self.recent_list.yview)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        style_listbox(self.recent_list)
+        self.recent_list.bind('<<ListboxSelect>>', self._on_recent_select)
+        self.recent_list.bind('<Double-Button-1>', self._on_recent_double)
+        self.recent_list.bind('<Button-3>', self._on_recent_menu)
+        self.recent_list.bind('<Control-c>', self._copy_recent_url)
+        self.recent_list.bind('<Control-Insert>', self._copy_recent_url)
+        self.recent_list.bind('<Control-v>', self._paste_url)
+        self.recent_list.bind('<Shift-Insert>', self._paste_url)
+        self.recent_list.bind('<Return>', self._redownload_item)
+        self.recent_empty = ttk.Label(
+            recent_frame,
+            text='Aún no hay descargas recientes. Las URLs se recuerdan al descargar.',
+            style='CardMuted.TLabel',
+        )
+        self._recent_items = []
+        self._refresh_recent()
         
         dest_frame = ttk.LabelFrame(main_frame, text=" CARPETA DE DESTINO ", padding=10)
         dest_frame.pack(fill=tk.X, pady=(0, 12))
@@ -151,6 +194,160 @@ class DownloadManager:
         self.progress.pack(fill=tk.X, pady=(0, 6))
         self.progress_label = ttk.Label(self.progress_frame, text="", style='CardMuted.TLabel')
         self.progress_label.pack(anchor=tk.W)
+
+    def _refresh_recent(self):
+        items = app_config.download_url_history()
+        self._recent_items = items
+        combo = getattr(self, 'url_combo', None)
+        listing = getattr(self, 'recent_list', None)
+        empty = getattr(self, 'recent_empty', None)
+        urls = [item['url'] for item in items]
+        if combo is not None:
+            try:
+                combo.configure(values=urls)
+            except tk.TclError:
+                pass
+        if listing is None:
+            return
+        self._filling_recent = True
+        try:
+            listing.delete(0, tk.END)
+            for item in items:
+                listing.insert(tk.END, download_history_label(item))
+        except tk.TclError:
+            pass
+        self._filling_recent = False
+        if empty is not None:
+            if items:
+                empty.configure(
+                    text='Doble clic para volver a descargar. Clic derecho o Ctrl+C copia la URL; Ctrl+V la pega arriba.',
+                )
+            else:
+                empty.configure(
+                    text='Aún no hay descargas recientes. Las URLs se recuerdan al descargar.',
+                )
+            empty.pack(anchor=tk.W, pady=(8, 0))
+
+    def _apply_recent_item(self, item):
+        if not item:
+            return
+        url = item.get('url') or ''
+        self.url.set(url)
+        name = (item.get('name') or '').strip()
+        if name:
+            self.filename.set(name)
+
+    def _on_recent_url(self, event=None):
+        url = (self.url.get() or '').strip()
+        for item in self._recent_items:
+            if item.get('url') == url:
+                self._apply_recent_item(item)
+                return
+
+    def _on_recent_select(self, event=None):
+        if getattr(self, '_filling_recent', False):
+            return
+        listing = getattr(self, 'recent_list', None)
+        if listing is None:
+            return
+        selection = listing.curselection()
+        if not selection:
+            return
+        index = selection[0]
+        if 0 <= index < len(self._recent_items):
+            self._apply_recent_item(self._recent_items[index])
+
+    def _recent_index_from_event(self, event=None, from_mouse=False):
+        listing = getattr(self, 'recent_list', None)
+        if listing is None:
+            return None
+        index = None
+        if from_mouse and event is not None:
+            try:
+                index = listing.nearest(event.y)
+            except tk.TclError:
+                index = None
+        if index is None:
+            selection = listing.curselection()
+            index = selection[0] if selection else None
+        if index is None:
+            return None
+        if 0 <= index < len(self._recent_items):
+            return index
+        return None
+
+    def _select_recent_index(self, index):
+        listing = getattr(self, 'recent_list', None)
+        if listing is None or index is None:
+            return
+        try:
+            listing.selection_clear(0, tk.END)
+            listing.selection_set(index)
+            listing.activate(index)
+            listing.see(index)
+        except tk.TclError:
+            pass
+
+    def _redownload_item(self, event=None, from_mouse=False):
+        index = self._recent_index_from_event(event, from_mouse=from_mouse)
+        if index is None:
+            return 'break'
+        self._select_recent_index(index)
+        self._apply_recent_item(self._recent_items[index])
+        self.start_download()
+        return 'break'
+
+    def _on_recent_double(self, event=None):
+        return self._redownload_item(event, from_mouse=True)
+
+    def _copy_recent_url(self, event=None):
+        from_mouse = event is not None and getattr(event, 'num', None) in (1, 2, 3)
+        index = self._recent_index_from_event(event, from_mouse=from_mouse)
+        if index is None:
+            return 'break'
+        self._select_recent_index(index)
+        url = (self._recent_items[index].get('url') or '').strip()
+        if not url:
+            return 'break'
+        try:
+            self.window.clipboard_clear()
+            self.window.clipboard_append(url)
+        except tk.TclError:
+            pass
+        return 'break'
+
+    def _paste_url(self, event=None):
+        try:
+            text = (self.window.clipboard_get() or '').strip()
+        except tk.TclError:
+            return 'break'
+        if text:
+            self.url.set(text)
+            try:
+                self.url_combo.focus_set()
+                self.url_combo.icursor(tk.END)
+            except tk.TclError:
+                pass
+        return 'break'
+
+    def _on_recent_menu(self, event):
+        index = self._recent_index_from_event(event, from_mouse=True)
+        if index is None:
+            return
+        self._select_recent_index(index)
+        self._apply_recent_item(self._recent_items[index])
+        menu = tk.Menu(self.window, tearoff=0)
+        style_menu_tree(menu)
+        menu.add_command(label='Copiar URL', command=self._copy_recent_url)
+        menu.add_command(label='Descargar de nuevo', command=self.start_download)
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            try:
+                menu.grab_release()
+            except tk.TclError:
+                pass
+        return 'break'
         
     def browse_output(self):
         folder = filedialog.askdirectory(
@@ -165,6 +362,8 @@ class DownloadManager:
         app_config.set_open_folder_after_download(bool(self.open_folder_var.get()))
             
     def start_download(self):
+        if str(self.download_button.cget('state')) == 'disabled':
+            return
         if not self.url.get():
             messagebox.showerror("Error", "Por favor, introduce una URL")
             return
@@ -183,9 +382,11 @@ class DownloadManager:
                     # Limitar la longitud del nombre para evitar problemas en algunos sistemas de archivos
                     suggested_name = suggested_name[:200]  # Longitud máxima razonable
                     self.filename.set(suggested_name)
-            except Exception as e:
-                print(f"Error al obtener información del video: {e}")
+            except Exception:
                 self.filename.set('video')
+
+        app_config.remember_download_url(self.url.get().strip(), self.filename.get().strip())
+        self._refresh_recent()
         
         self.download_button.configure(state='disabled')
         threading.Thread(target=self._download, daemon=True).start()
@@ -314,6 +515,7 @@ class DownloadManager:
     def _download_complete(self, path=''):
         self.progress['value'] = 100
         self.progress_label.configure(text="¡Descarga completada!")
+        app_config.remember_download_url(self.url.get().strip(), self.filename.get().strip())
         self._persist_open_folder()
         opened = False
         if self.open_folder_var.get() and path:

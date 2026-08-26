@@ -95,8 +95,9 @@ def show_keyboard_shortcuts(root):
             ("≡", "Mostrar/Ocultar lista de canales")
         ]),
         ("Favoritos", [
-            ("Ctrl + S", "Añadir a favoritos"),
+            ("Ctrl + S", "Añadir a favoritos (también desde la búsqueda)"),
             ("Ctrl + D", "Eliminar de favoritos"),
+            ("★ Añadir", "Guardar el canal seleccionado (junto al buscador)"),
             ("★ Favoritos", "Mostrar lista de favoritos"),
             ("Todos", "Mostrar todos los canales")
         ]),

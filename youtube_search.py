@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, simpledialog, messagebox, filedialog
+from tkinter import ttk, simpledialog, messagebox, filedialog, font as tkfont
 import yt_dlp
 import requests
 import webbrowser
@@ -14,6 +14,38 @@ from youtube_player import (
 )
 from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window
 import app_config
+
+
+STAR_ON = '★'
+STAR_OFF = '☆'
+
+
+def youtube_result_line(kind, title, duration_str='', favorite=False):
+    """Texto de una fila de búsqueda, con estrella clicable al inicio."""
+    mark = STAR_ON if favorite else STAR_OFF
+    name = (title or '').strip() or 'YouTube'
+    if kind == 'channel':
+        body = f'[Canal] {name}'
+    elif kind == 'playlist':
+        body = f'[Lista] {name}'
+    elif kind in ('short', 'shorts'):
+        body = f'[Short] {name}'
+    else:
+        body = f'[Vídeo] {name}'
+    extra = (duration_str or '').strip()
+    if extra:
+        body += f' [{extra}]'
+    return f'{mark} {body}'
+
+
+def youtube_star_hit(x, star_width=16):
+    """True si el clic cae sobre la estrella de la fila."""
+    try:
+        pos = int(x)
+        width = int(star_width)
+    except (TypeError, ValueError):
+        return False
+    return pos <= max(22, width + 10)
 
 
 def _hashtag_slug(query):
@@ -124,13 +156,87 @@ def youtube_channel_tab_url(url):
     return f'{text}/videos'
 
 
+_YT_VIDEO_ID_RE = re.compile(r'(?:v=|/v/|/shorts/|youtu\.be/)([^"&?/\s]{11})')
+_YT_CHANNEL_RE = re.compile(
+    r'youtube\.com/(?:channel/[^/?#]+|c/[^/?#]+|user/[^/?#]+|@[^/?#]+)',
+    re.I,
+)
+
+
+def youtube_video_id(url):
+    match = _YT_VIDEO_ID_RE.search(url or '')
+    return match.group(1) if match else None
+
+
+def is_youtube_playlist_url(url):
+    lower = (url or '').lower()
+    if 'list=' not in lower:
+        return False
+    return youtube_video_id(url) is None
+
+
+def is_youtube_channel_url(url):
+    text = url or ''
+    if youtube_video_id(text) or is_youtube_playlist_url(text):
+        return False
+    return bool(_YT_CHANNEL_RE.search(text))
+
+
+def fetch_youtube_channel_videos(channel_url, limit=30):
+    """Vídeos recientes de un canal. No registra la URL."""
+    limit = max(5, min(int(limit or 30), 50))
+    tab_url = youtube_channel_tab_url(channel_url)
+    ydl_opts = youtube_ydl_opts(
+        extract_flat='in_playlist',
+        skip_download=True,
+        force_generic_extractor=False,
+        noplaylist=False,
+        playlistend=limit,
+    )
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(tab_url, download=False)
+    videos = []
+    seen = set()
+    for entry in info.get('entries') or []:
+        if not entry or not entry.get('id'):
+            continue
+        video_id = str(entry.get('id'))
+        if len(video_id) != 11 or video_id in seen:
+            continue
+        seen.add(video_id)
+        videos.append({
+            'title': (entry.get('title') or '').strip() or 'YouTube',
+            'id': video_id,
+            'url': f'https://www.youtube.com/watch?v={video_id}',
+            'duration': entry.get('duration'),
+        })
+        if len(videos) >= limit:
+            break
+    channel_name = (info.get('channel') or info.get('uploader') or info.get('title') or '').strip()
+    return videos, channel_name
+
+
 class YouTubeSearchDialog:
-    def __init__(self, parent, play_callback, load_playlist_callback=None, enqueue_callback=None, youtube_handler=None):
+    def __init__(
+        self,
+        parent,
+        play_callback,
+        load_playlist_callback=None,
+        enqueue_callback=None,
+        youtube_handler=None,
+        favorite_callback=None,
+        unfavorite_callback=None,
+        is_favorite_callback=None,
+    ):
         self.parent = parent
         self.play_callback = play_callback
         self.load_playlist_callback = load_playlist_callback
         self.enqueue_callback = enqueue_callback
         self.youtube_handler = youtube_handler
+        self.favorite_callback = favorite_callback
+        self.unfavorite_callback = unfavorite_callback
+        self.is_favorite_callback = is_favorite_callback
+        self._posted_menu = None
         self.window = tk.Toplevel(parent)
         self.window.title("Buscar en YouTube")
         self.window.geometry("780x560")
@@ -151,7 +257,7 @@ class YouTubeSearchDialog:
         ttk.Label(main_frame, text='Buscar en YouTube', style='PageTitle.TLabel').pack(anchor=tk.W)
         ttk.Label(
             main_frame,
-            text='Vídeos, Shorts, listas y canales. La cola es una lista aparte; un canal abre sus vídeos recientes.',
+            text='Vídeos, Shorts, listas y canales. Pulsa ☆ junto al nombre para guardarlo en favoritos.',
             style='Muted.TLabel',
         ).pack(anchor=tk.W, pady=(0, 8))
 
@@ -252,8 +358,14 @@ class YouTubeSearchDialog:
         
         # Configurar el menú contextual
         self.results_listbox.bind('<Double-Button-1>', self.play_selected)
+        self.results_listbox.bind('<Button-1>', self._on_result_click, add='+')
+        self.results_listbox.bind('<Motion>', self._on_result_motion)
+        self.results_listbox.bind('<Leave>', lambda e: self._set_list_cursor(''))
         self.results_listbox.bind('<Button-3>', self.show_context_menu)
         self.results_listbox.bind('<Control-Return>', lambda e: self.enqueue_selected() or 'break')
+        self.results_listbox.bind('<Control-s>', lambda e: self.add_selected_to_favorites() or 'break')
+        self.window.bind_all('<ButtonPress-1>', self._on_press_dismiss_menu, add='+')
+        self.window.bind_all('<Escape>', self._on_escape_dismiss_menu, add='+')
 
         # Barra de progreso
         self.progress_frame = ttk.Frame(main_frame)
@@ -271,6 +383,11 @@ class YouTubeSearchDialog:
         queue_btn.pack(side=tk.LEFT, padx=(0, 5))
         if not self.enqueue_callback:
             queue_btn.configure(state='disabled')
+
+        fav_btn = ttk.Button(button_frame, text="Añadir a favoritos", command=self.add_selected_to_favorites)
+        fav_btn.pack(side=tk.LEFT, padx=(0, 5))
+        if not self.favorite_callback:
+            fav_btn.configure(state='disabled')
         
         download_video_btn = ttk.Button(button_frame, text="Descargar Vídeo+Audio", 
                                       command=lambda: self.download_selected(False))
@@ -291,6 +408,7 @@ class YouTubeSearchDialog:
         self.result_details = []
 
     def _on_close(self):
+        self._dismiss_context_menu()
         if self.youtube_handler:
             self.youtube_handler.remove_session_listener(self.update_youtube_session_ui)
         self.window.destroy()
@@ -420,9 +538,14 @@ class YouTubeSearchDialog:
                                 'id': entry.get('id'),
                                 'duration': duration,
                             })
-                            display_text = f"[Short] {title}"
-                            if duration_str:
-                                display_text += f" [{duration_str}]"
+                            display_text = youtube_result_line(
+                                'short',
+                                title,
+                                duration_str,
+                                favorite=self._url_is_favorite(
+                                    f"https://www.youtube.com/shorts/{entry.get('id')}"
+                                ),
+                            )
                             self.results_listbox.insert(tk.END, display_text)
                         self.progress_bar.stop()
                         self.progress_bar.pack_forget()
@@ -509,7 +632,14 @@ class YouTubeSearchDialog:
                                         'id': playlist_id,
                                         'duration': duration
                                     })
-                                    self.results_listbox.insert(tk.END, f"[Lista] {title}")
+                                    self.results_listbox.insert(
+                                        tk.END,
+                                        youtube_result_line(
+                                            'playlist',
+                                            title,
+                                            favorite=self._url_is_favorite(playlist_url),
+                                        ),
+                                    )
                                     found_playlist = True
                                     results_count += 1
                         elif tipo == "Vídeos":
@@ -522,9 +652,12 @@ class YouTubeSearchDialog:
                                     'id': entry.get('id'),
                                     'duration': duration
                                 })
-                                display_text = f"[Vídeo] {title}"
-                                if duration_str:
-                                    display_text += f" [{duration_str}]"
+                                display_text = youtube_result_line(
+                                    'video',
+                                    title,
+                                    duration_str,
+                                    favorite=self._url_is_favorite(url),
+                                )
                                 self.results_listbox.insert(tk.END, display_text)
                                 results_count += 1
 
@@ -538,7 +671,14 @@ class YouTubeSearchDialog:
                                     'title': title,
                                     'id': channel_id
                                 })
-                                self.results_listbox.insert(tk.END, f"[Canal] {title}")
+                                self.results_listbox.insert(
+                                    tk.END,
+                                    youtube_result_line(
+                                        'channel',
+                                        title,
+                                        favorite=self._url_is_favorite(url),
+                                    ),
+                                )
                                 results_count += 1
 
                     if tipo == "Listas de reproducción" and not found_playlist:
@@ -572,46 +712,269 @@ class YouTubeSearchDialog:
 
         threading.Thread(target=perform_search, daemon=True).start()
 
+    def _window_alive(self):
+        window = getattr(self, 'window', None)
+        if window is None:
+            return False
+        try:
+            return bool(window.winfo_exists())
+        except tk.TclError:
+            return False
+
+    def _url_is_favorite(self, url):
+        checker = self.is_favorite_callback
+        if not checker or not url:
+            return False
+        try:
+            return bool(checker(url))
+        except Exception:
+            return False
+
+    def _star_hit_width(self):
+        try:
+            face = tkfont.nametofont(self.results_listbox.cget('font'))
+            return face.measure(f'{STAR_ON} ')
+        except Exception:
+            return 16
+
+    def _set_list_cursor(self, name):
+        try:
+            self.results_listbox.configure(cursor=name)
+        except tk.TclError:
+            pass
+
+    def _on_result_motion(self, event):
+        if not self.favorite_callback:
+            return
+        index = self.results_listbox.nearest(event.y)
+        if 0 <= index < len(self.results) and youtube_star_hit(event.x, self._star_hit_width()):
+            self._set_list_cursor('hand2')
+        else:
+            self._set_list_cursor('')
+
+    def _on_result_click(self, event):
+        self._dismiss_context_menu()
+        if not self.favorite_callback:
+            return
+        index = self.results_listbox.nearest(event.y)
+        if not (0 <= index < len(self.results)):
+            return
+        if not youtube_star_hit(event.x, self._star_hit_width()):
+            return
+        self.results_listbox.selection_clear(0, tk.END)
+        self.results_listbox.selection_set(index)
+        self.results_listbox.activate(index)
+        self._toggle_favorite_at(index)
+        return 'break'
+
+    def _result_kind_label(self, index):
+        tipo = self.result_types[index] if index < len(self.result_types) else 'video'
+        url = self.results[index] if index < len(self.results) else ''
+        if tipo == 'channel':
+            return 'channel'
+        if tipo == 'playlist':
+            return 'playlist'
+        if '/shorts/' in (url or ''):
+            return 'short'
+        return 'video'
+
+    def _refresh_result_row(self, index, keep_select=True):
+        if not (0 <= index < len(self.results)):
+            return
+        duration = ''
+        if index < len(self.result_details):
+            duration = self.format_duration(self.result_details[index].get('duration'))
+        line = youtube_result_line(
+            self._result_kind_label(index),
+            self._result_title(index),
+            duration,
+            favorite=self._url_is_favorite(self.results[index]),
+        )
+        try:
+            self.results_listbox.delete(index)
+            self.results_listbox.insert(index, line)
+            if keep_select:
+                self.results_listbox.selection_set(index)
+        except tk.TclError:
+            pass
+
+    def _toggle_favorite_at(self, index):
+        if not (0 <= index < len(self.results)):
+            return
+        url = self.results[index]
+        title = self._result_title(index)
+        if self._url_is_favorite(url):
+            removed = False
+            if self.unfavorite_callback:
+                try:
+                    removed = bool(self.unfavorite_callback(title, url))
+                except Exception:
+                    removed = False
+            if removed:
+                self._set_queue_status(f'Se quitó de favoritos: {title}')
+            else:
+                self._set_queue_status(f'«{title}» no se pudo quitar de favoritos.')
+        else:
+            added = False
+            if self.favorite_callback:
+                try:
+                    added = bool(self.favorite_callback(title, url))
+                except Exception:
+                    added = False
+            if added:
+                self._set_queue_status(f'En favoritos: {title}. Ábrelos con ★ Favoritos.')
+            else:
+                self._set_queue_status(f'«{title}» ya estaba en favoritos.')
+        self._refresh_result_row(index)
+
+    def _menu_is_mapped(self, menu):
+        try:
+            return bool(menu) and menu.winfo_ismapped()
+        except tk.TclError:
+            return False
+
+    def _event_on_menu(self, event, menu):
+        if not self._menu_is_mapped(menu):
+            return False
+        try:
+            x, y = menu.winfo_rootx(), menu.winfo_rooty()
+            w, h = menu.winfo_width(), menu.winfo_height()
+            return x <= event.x_root <= x + w and y <= event.y_root <= y + h
+        except tk.TclError:
+            return False
+
+    def _dismiss_context_menu(self):
+        menu = getattr(self, '_posted_menu', None)
+        self._posted_menu = None
+        if menu is None:
+            return
+        try:
+            menu.unpost()
+        except tk.TclError:
+            pass
+        try:
+            menu.grab_release()
+        except tk.TclError:
+            pass
+        try:
+            menu.destroy()
+        except tk.TclError:
+            pass
+
+    def _on_press_dismiss_menu(self, event):
+        if not self._window_alive():
+            return
+        menu = getattr(self, '_posted_menu', None)
+        if not menu:
+            return
+        if self._event_on_menu(event, menu):
+            return
+        self._dismiss_context_menu()
+
+    def _on_escape_dismiss_menu(self, event=None):
+        if not self._window_alive():
+            return
+        if getattr(self, '_posted_menu', None):
+            self._dismiss_context_menu()
+            return 'break'
+
+    def _choose_from_menu(self, action):
+        def run():
+            self._dismiss_context_menu()
+            action()
+        if self._window_alive():
+            self.window.after_idle(run)
+        else:
+            action()
+
     def show_context_menu(self, event):
         """Muestra el menú contextual al hacer clic derecho en un elemento"""
         selection = self.results_listbox.nearest(event.y)
-        if 0 <= selection < len(self.results):
-            self.results_listbox.selection_clear(0, tk.END)
-            self.results_listbox.selection_set(selection)
-            self.results_listbox.activate(selection)
-            
-            context_menu = tk.Menu(self.window, tearoff=0)
-            style_menu_tree(context_menu)
-            tipo = self.result_types[selection]
-            
-            if tipo == "video":
-                context_menu.add_command(label="Reproducir", command=self.play_selected)
-                context_menu.add_command(label="Añadir a la cola", command=self.enqueue_selected)
-                context_menu.add_command(label="Descargar vídeo", command=lambda: self.download_selected(False))
-                context_menu.add_command(label="Descargar audio", command=lambda: self.download_selected(True))
-                context_menu.add_separator()
-                context_menu.add_command(label="Abrir en navegador", 
-                                       command=lambda: webbrowser.open_new(self.results[selection]))
-            elif tipo == "playlist":
-                context_menu.add_command(label="Cargar lista", command=self.play_selected)
-                context_menu.add_command(label="Añadir lista a la cola", command=self.enqueue_selected)
-                context_menu.add_separator()
-                context_menu.add_command(label="Abrir en navegador", 
-                                       command=lambda: webbrowser.open_new(self.results[selection]))
-            elif tipo == "channel":
-                context_menu.add_command(label="Ver vídeos recientes", command=self.play_selected)
-                context_menu.add_command(label="Añadir recientes a la cola", command=self.enqueue_selected)
-                context_menu.add_separator()
-                context_menu.add_command(label="Abrir en navegador",
-                                       command=lambda: webbrowser.open_new(self.results[selection]))
-            
+        if not (0 <= selection < len(self.results)):
+            return
+        self._dismiss_context_menu()
+        self.results_listbox.selection_clear(0, tk.END)
+        self.results_listbox.selection_set(selection)
+        self.results_listbox.activate(selection)
+
+        context_menu = tk.Menu(self.window, tearoff=0)
+        style_menu_tree(context_menu)
+        tipo = self.result_types[selection]
+        choose = self._choose_from_menu
+
+        if tipo == "video":
+            context_menu.add_command(label="Reproducir", command=lambda: choose(self.play_selected))
+            context_menu.add_command(label="Añadir a la cola", command=lambda: choose(self.enqueue_selected))
+            if self.favorite_callback:
+                context_menu.add_command(
+                    label="Añadir a favoritos",
+                    command=lambda: choose(self.add_selected_to_favorites),
+                )
+            context_menu.add_command(
+                label="Descargar vídeo",
+                command=lambda: choose(lambda: self.download_selected(False)),
+            )
+            context_menu.add_command(
+                label="Descargar audio",
+                command=lambda: choose(lambda: self.download_selected(True)),
+            )
+            context_menu.add_separator()
+            context_menu.add_command(
+                label="Abrir en navegador",
+                command=lambda: choose(lambda: webbrowser.open_new(self.results[selection])),
+            )
+        elif tipo == "playlist":
+            context_menu.add_command(label="Cargar lista", command=lambda: choose(self.play_selected))
+            context_menu.add_command(
+                label="Añadir lista a la cola",
+                command=lambda: choose(self.enqueue_selected),
+            )
+            if self.favorite_callback:
+                context_menu.add_command(
+                    label="Añadir a favoritos",
+                    command=lambda: choose(self.add_selected_to_favorites),
+                )
+            context_menu.add_separator()
+            context_menu.add_command(
+                label="Abrir en navegador",
+                command=lambda: choose(lambda: webbrowser.open_new(self.results[selection])),
+            )
+        elif tipo == "channel":
+            context_menu.add_command(
+                label="Ver vídeos recientes",
+                command=lambda: choose(self.play_selected),
+            )
+            context_menu.add_command(
+                label="Añadir recientes a la cola",
+                command=lambda: choose(self.enqueue_selected),
+            )
+            if self.favorite_callback:
+                context_menu.add_command(
+                    label="Añadir canal a favoritos",
+                    command=lambda: choose(self.add_selected_to_favorites),
+                )
+            context_menu.add_separator()
+            context_menu.add_command(
+                label="Abrir en navegador",
+                command=lambda: choose(lambda: webbrowser.open_new(self.results[selection])),
+            )
+        else:
             try:
-                context_menu.tk_popup(event.x_root, event.y_root)
-            finally:
-                try:
-                    context_menu.grab_release()
-                except tk.TclError:
-                    pass
+                context_menu.destroy()
+            except tk.TclError:
+                pass
+            return
+
+        try:
+            context_menu.post(event.x_root, event.y_root)
+            context_menu.update_idletasks()
+            self._posted_menu = context_menu
+        except tk.TclError:
+            try:
+                context_menu.destroy()
+            except tk.TclError:
+                pass
+            self._posted_menu = None
 
     def play_selected(self, event=None):
         selection = self.results_listbox.curselection()
@@ -635,9 +998,52 @@ class YouTubeSearchDialog:
         if details and details.get('title'):
             return details['title']
         try:
-            return self.results_listbox.get(index)
+            text = self.results_listbox.get(index)
         except tk.TclError:
             return 'YouTube'
+        if text.startswith(STAR_ON) or text.startswith(STAR_OFF):
+            text = text[1:].lstrip()
+        return text or 'YouTube'
+
+    def add_selected_to_favorites(self, event=None):
+        if not self.favorite_callback:
+            self._set_queue_status('Abre la búsqueda desde el reproductor para guardar favoritos.')
+            return
+        selection = self.results_listbox.curselection()
+        if not selection:
+            self._set_queue_status('Selecciona un resultado para guardarlo en favoritos.')
+            return
+        added = 0
+        skipped = 0
+        last_title = ''
+        for index in selection:
+            url = self.results[index] if index < len(self.results) else ''
+            title = self._result_title(index)
+            last_title = title
+            if not url:
+                skipped += 1
+                continue
+            try:
+                if self.favorite_callback(title, url):
+                    added += 1
+                else:
+                    skipped += 1
+            except Exception:
+                skipped += 1
+        if added == 1 and skipped == 0:
+            self._set_queue_status(f'En favoritos: {last_title}. Ábrelos con ★ Favoritos.')
+        elif added:
+            extra = f' ({skipped} ya estaban o no se pudieron guardar)' if skipped else ''
+            self._set_queue_status(f'{added} resultados en favoritos.{extra}')
+        else:
+            self._set_queue_status('Esos resultados ya estaban en favoritos.')
+        for index in selection:
+            self._refresh_result_row(index, keep_select=False)
+        for index in selection:
+            try:
+                self.results_listbox.selection_set(index)
+            except tk.TclError:
+                pass
 
     def _set_queue_status(self, text):
         label = getattr(self, 'queue_status', None)
@@ -969,43 +1375,17 @@ class YouTubeSearchDialog:
                 'id': item.get('id'),
                 'duration': duration,
             })
-            display = f"[Vídeo] {item.get('title') or 'YouTube'}"
-            if duration_str:
-                display += f" [{duration_str}]"
+            display = youtube_result_line(
+                'video',
+                item.get('title') or 'YouTube',
+                duration_str,
+                favorite=self._url_is_favorite(item['url']),
+            )
             self.results_listbox.insert(tk.END, display)
         self._set_queue_status(status)
 
     def _fetch_channel_videos(self, channel_url, limit=30):
-        limit = max(5, min(int(limit or 30), 50))
-        tab_url = youtube_channel_tab_url(channel_url)
-        ydl_opts = youtube_ydl_opts(
-            extract_flat='in_playlist',
-            skip_download=True,
-            force_generic_extractor=False,
-            noplaylist=False,
-            playlistend=limit,
-        )
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(tab_url, download=False)
-        videos = []
-        seen = set()
-        for entry in info.get('entries') or []:
-            if not entry or not entry.get('id'):
-                continue
-            video_id = str(entry.get('id'))
-            if len(video_id) != 11 or video_id in seen:
-                continue
-            seen.add(video_id)
-            videos.append({
-                'title': (entry.get('title') or '').strip() or 'YouTube',
-                'id': video_id,
-                'url': f'https://www.youtube.com/watch?v={video_id}',
-                'duration': entry.get('duration'),
-            })
-            if len(videos) >= limit:
-                break
-        channel_name = (info.get('channel') or info.get('uploader') or info.get('title') or '').strip()
-        return videos, channel_name
+        return fetch_youtube_channel_videos(channel_url, limit=limit)
 
     def _fetch_playlist_videos(self, playlist_url):
         ydl_opts = youtube_ydl_opts(

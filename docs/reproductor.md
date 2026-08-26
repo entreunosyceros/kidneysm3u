@@ -10,12 +10,12 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 
 - **★ Favoritos** / **Todos** — filtra o restaura el listado.
 - **Limpiar** — vacía la lista de esta sesión (pide confirmación). El aviso queda sobre esta ventana; no pasa al frente la principal. Si en **Preferencias** está activa «recordar última lista», al volver a abrir el programa se restaura lo último que había; si no había lista, no se muestra nada. No reproduce solo.
-- Cuadro de **búsqueda** — filtra por nombre o grupo.
+- Cuadro de **búsqueda** — filtra por nombre o grupo. El botón **★ Añadir** (o `Ctrl+S`) guarda el canal seleccionado en favoritos; sirve igual si estás filtrando. Los favoritos se marcan con ★ en la lista. **★ Favoritos** muestra solo esos canales (la búsqueda también filtra esa vista); **Todos** vuelve a la lista completa.
 - Si el M3U trae `group-title`, arriba aparecen **pestañas** (pocos grupos) o un desplegable **Grupo** (muchos). En **Todos** ves las categorías (Deportes, Películas, España…); un clic entra en ese grupo. **← Grupos** o la pestaña **Todos** vuelve al listado de categorías.
 - Abajo: **Sesión YouTube: OK / caducada** y **Reexportar cookies** (también en el menú **Youtube**). Si YouTube pide login o un bot-check, el indicador pasa a caducada.
 - Al pasar el ratón por un título se ve el nombre completo; si hay EPG (`tvg-id` + XMLTV), también **ahora / a continuación**. Al seleccionar un canal, lo mismo aparece bajo la búsqueda. En la fila se ve el programa en curso y, si el M3U trae `tvg-logo`, una miniatura (caché local `epg_cache/`). Los logos se activan o desactivan en **Reproducir → Guía EPG → Mostrar logos de canal** o en **Preferencias**; en listas grandes conviene apagarlos para que la lista no se retrase. **Guía** o **Reproducir → Guía EPG → Parrilla…** (tecla `G`) abre una parrilla de ahora + 6 horas del grupo visible. La guía se recarga sola cada 30 minutos. Si la lista no trae URL de guía, **Desde URL…** o **Desde archivo…**. Vale una dirección tipo `get.php?username=…&password=…` que devuelva XMLTV; se usa tal cual, sin inventar otras rutas, y no se escribe en el registro.
 - Si no hay `group-title` y hay miles de canales, la lista es virtual: solo se pintan las filas visibles.
-- Cargar un M3U o una playlist de YouTube no bloquea la ventana: se leen en segundo plano. El cuadro de búsqueda de una lista enorme recorre los nombres fuera del hilo de la interfaz; al aplicar el resultado, pintar miles de filas aún puede congelar un instante.
+- Cargar un M3U o una playlist de YouTube no bloquea la ventana: se leen en segundo plano. Mientras dura, el área de vídeo muestra una barra de progreso (porcentaje al leer el archivo; animada si se descarga y el servidor no indica el tamaño). El cuadro de búsqueda de una lista enorme recorre los nombres fuera del hilo de la interfaz; al aplicar el resultado, pintar miles de filas aún puede congelar un instante.
 - Doble clic — reproduce un canal. Un clic en una categoría abre ese grupo.
 - Clic derecho — reproducir desde aquí, favoritos, descargar, eliminar un ítem o vaciar la lista.
 
@@ -23,7 +23,7 @@ Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeo
 
 **Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso. **Reproducir → Historial** lista los últimos canales IPTV, las películas a medio ver y los últimos vídeos de YouTube; **Ver historial…** abre la ventana. **Reproducir → Guía EPG → Parrilla…** abre la parrilla; **Desde URL…** / **Desde archivo…** indican el XMLTV. **Reproducir → Preferencias** abre la misma ventana que **Archivo → Preferencias** en la principal.
 
-Los favoritos se guardan en `favoritos.json` en la carpeta del programa (no va al repositorio).
+Los favoritos se guardan en `favoritos.json` en la carpeta del programa (no va al repositorio). Un canal de YouTube guardado no se reproduce como vídeo: al abrirlo se cargan las subidas recientes.
 
 ## Controles
 
@@ -43,7 +43,7 @@ La barra de progreso aparece en YouTube y en VOD; no en un canal en directo. Los
 
 Al abrir un vídeo de YouTube, el área de vídeo muestra el título, la miniatura y una barra mientras se obtiene el stream, para que no parezca que se ha colgado. Si ya lo habías visto, se reanuda en el segundo guardado al cerrar o al cambiar de vídeo. En IPTV, **Historial** guarda los últimos canales. En VOD (`.mkv`/`.mp4` o rutas `movie`/`series`) también se guarda el segundo, como en YouTube; al volver a abrirlo continúa. Cerca del final se considera terminado. Los últimos vídeos de YouTube salen en esa misma ventana de historial. Las URLs no se escriben en el registro.
 
-Si un canal IPTV no arranca (error de VLC, pantalla negra o el servidor no entrega vídeo), en unos segundos aparece el nombre y **Este canal por el momento no funciona**. No es un fallo del programa: el enlace de esa lista no está disponible ahora. Si el canal **sí llega a verse** y luego el buffer se queda seco, se reconecta una vez el mismo enlace. El tamaño de esa caché se elige en **Preferencias → Buffer IPTV** ([detalle](listas-m3u.md#buffer-iptv)).
+Si un canal IPTV no arranca (error de VLC, pantalla negra o el servidor no entrega vídeo), en unos segundos aparece el nombre y **Este canal por el momento no funciona**. No es un fallo del programa: el enlace de esa lista no está disponible ahora. Si el canal **sí llega a verse** y luego el buffer se queda seco, se reconecta una vez el mismo enlace. Si un FHD sigue cortando con datos llegando, se sube la caché una vez (sin cambiar Preferencias). El tamaño de esa caché se elige en **Preferencias → Buffer IPTV** ([detalle](listas-m3u.md#buffer-iptv)).
 
 ## Atajos de teclado
 <p align="center">
@@ -58,7 +58,7 @@ Si un canal IPTV no arranca (error de VLC, pantalla negra o el servidor no entre
 | `Esc` | Salir de pantalla completa |
 | `M` | Silencio |
 | `←` / `→` | Retroceder / avanzar 2 s |
-| `Ctrl+S` | Añadir a favoritos |
+| `Ctrl+S` | Añadir a favoritos (también con el foco en la búsqueda) |
 | `Ctrl+D` | Quitar de favoritos |
 | `G` | Parrilla EPG (si el foco no está en un cuadro de texto) |
 | `Alt+F4` | Cerrar la ventana del reproductor |

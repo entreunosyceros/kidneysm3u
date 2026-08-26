@@ -52,8 +52,9 @@ También puedes filtrar por fecha, duración (no aplica a Shorts) y número de r
 
 - Doble clic o **Reproducir** añade el vídeo a la lista lateral y lo pone en marcha (cierra la búsqueda).
 - **Añadir a la cola** (o clic derecho) lo deja en la **cola de YouTube**, una lista aparte (**Youtube → Cola de YouTube**): siguiente, quitar, subir/bajar. No se mezcla con la lista IPTV. Puedes marcar varios con Ctrl o Mayús. `Ctrl+Enter` hace lo mismo.
+- **Añadir a favoritos**: pulsa **☆** al inicio de la fila (pasa a **★**; otro clic lo quita), el botón de abajo, clic derecho o `Ctrl+S`. Quedan en ★ Favoritos del reproductor.
 - Una **lista**: **Cargar lista** sustituye la barra lateral; **Añadir lista a la cola** mete esos vídeos en la cola.
-- Un **canal**: doble clic o **Ver vídeos recientes** lista las subidas nuevas aquí mismo (no solo abre el navegador). **Añadir recientes a la cola** encola esos vídeos. El navegador sigue disponible en el menú contextual.
+- Un **canal**: doble clic o **Ver vídeos recientes** lista las subidas nuevas aquí mismo (no solo abre el navegador). **Añadir recientes a la cola** encola esos vídeos. Pulsa **☆** en el nombre para guardarlo. Desde **★ Favoritos**, un canal abre sus vídeos recientes y reproduce el primero (no es un ID de vídeo). El navegador sigue disponible en el menú contextual.
 
 Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short de la búsqueda.
 
@@ -72,7 +73,7 @@ Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short 
 
 - Vídeo + audio, o **solo audio** (hace falta `ffmpeg` en el PATH).
 - Desde la búsqueda, el menú contextual o **Youtube → Descargar vídeo de YouTube**.
-- En la ventana principal, **Archivo → Descargar** sirve para bajar cualquier URL (vídeo, imagen, texto, etc.). Puedes marcar **abrir el gestor de archivos al terminar** para que muestre el fichero guardado; esa casilla se recuerda.
+- En la ventana principal, **Archivo → Descargar** sirve para bajar cualquier URL (vídeo, imagen, texto, etc.). Puedes marcar **abrir el gestor de archivos al terminar** para que muestre el fichero guardado; esa casilla se recuerda. Las últimas URLs usadas aparecen en esa misma ventana: un clic las pone en el campo, **doble clic** las vuelve a descargar, y **Ctrl+C** o clic derecho copia la URL (Ctrl+V la pega).
 - La carpeta inicial se elige en **Archivo → Preferencias**. Los botones de la ventana de descarga quedan fijos abajo.
 
 ## Cómo se reproduce

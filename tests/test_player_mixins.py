@@ -1,7 +1,7 @@
 from player_controls import PlayerControlsMixin
 from player_iptv import IptvPlaybackMixin
 from player_overlay import ChannelNoticeMixin
-from player_pip import PlayerPipMixin
+from player_pip import PlayerPipMixin, pip_surface_ready
 from video_player import VideoPlayer, popup_menu_origin
 
 
@@ -40,6 +40,27 @@ def test_pip_mixin_uses_main_frame_when_closed():
     dummy = Dummy()
     assert dummy._video_target_frame() is dummy.video_frame
     assert dummy.pip_is_open() is False
+
+
+def test_pip_mixin_uses_pip_frame_when_open():
+    class Dummy(PlayerPipMixin):
+        video_frame = object()
+        _pip_frame = object()
+        _pip_window = object()
+
+        def _widget_exists(self, widget):
+            return widget is not None
+
+    dummy = Dummy()
+    assert dummy._video_target_frame() is dummy._pip_frame
+    assert dummy.pip_is_open() is True
+
+
+def test_pip_surface_needs_real_size():
+    assert pip_surface_ready(480, 270, True) is True
+    assert pip_surface_ready(1, 1, True) is False
+    assert pip_surface_ready(480, 270, False) is False
+    assert pip_surface_ready('x', 270, True) is False
 
 
 def test_popup_menu_opens_below_when_there_is_room():

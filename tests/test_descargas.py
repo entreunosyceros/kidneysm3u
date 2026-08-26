@@ -1,8 +1,7 @@
-import os
 from pathlib import Path
 
 import app_config
-from descargas import resolve_downloaded_path
+from descargas import download_history_label, resolve_downloaded_path
 
 
 def _isolate_config(tmp_path, monkeypatch):
@@ -20,6 +19,32 @@ def test_open_folder_after_download_pref(tmp_path, monkeypatch):
         assert app_config.get_open_folder_after_download() is False
         app_config.set_open_folder_after_download(True)
         assert app_config.get_open_folder_after_download() is True
+    finally:
+        app_config._cache = previous
+
+
+def test_download_url_history_unique_and_capped(tmp_path, monkeypatch):
+    previous = _isolate_config(tmp_path, monkeypatch)
+    try:
+        assert app_config.download_url_history() == []
+        app_config.remember_download_url('  ')
+        assert app_config.download_url_history() == []
+        first = 'https://www.youtube.com/watch?v=abcdefghijk'
+        second = 'https://cdn.example/file.mp4?token=secret'
+        app_config.remember_download_url(first, 'Uno')
+        app_config.remember_download_url(second, 'Dos')
+        app_config.remember_download_url(first, 'Uno otra vez')
+        items = app_config.download_url_history()
+        assert [item['url'] for item in items] == [first, second]
+        assert items[0]['name'] == 'Uno otra vez'
+        for index in range(20):
+            app_config.remember_download_url(f'https://cdn.example/v{index}.mp4', f'V{index}')
+        items = app_config.download_url_history()
+        assert len(items) == app_config.MAX_DOWNLOAD_URLS
+        assert items[0]['name'] == 'V19'
+        label = download_history_label({'url': second, 'name': ''})
+        assert 'token=' not in label
+        assert 'secret' not in label
     finally:
         app_config._cache = previous
 

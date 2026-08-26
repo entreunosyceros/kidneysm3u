@@ -5,6 +5,16 @@ import tkinter as tk
 from ui_theme import set_window_icon, style_window
 
 
+def pip_surface_ready(width, height, viewable):
+    """VLC en X11 necesita un recuadro ya mapeado y con tamaño real."""
+    try:
+        w = int(width)
+        h = int(height)
+    except (TypeError, ValueError):
+        return False
+    return bool(viewable) and w >= 16 and h >= 16
+
+
 class PlayerPipMixin:
     def _video_target_frame(self):
         frame = getattr(self, '_pip_frame', None)
@@ -39,7 +49,10 @@ class PlayerPipMixin:
             return
         if getattr(self, 'is_fullscreen', False):
             self.exit_fullscreen()
-        pip = tk.Toplevel(self.window)
+        try:
+            pip = tk.Toplevel(self.window, class_='Kidneysm3u')
+        except tk.TclError:
+            pip = tk.Toplevel(self.window)
         pip.title('PiP')
         pip.geometry('480x270')
         pip.minsize(280, 160)
@@ -57,17 +70,26 @@ class PlayerPipMixin:
         pip.protocol('WM_DELETE_WINDOW', self.close_pip)
         pip.bind('<Escape>', lambda e: self.close_pip())
         pip.bind('<Double-Button-1>', lambda e: self.close_pip())
+        frame.bind('<Double-Button-1>', lambda e: self.close_pip())
         click = getattr(self, '_on_video_click', None)
         if click:
             frame.bind('<Button-1>', click)
-        self._reembed_vlc()
+        frame.bind('<Map>', lambda e: self._schedule_pip_embed(20))
         try:
-            pip.after_idle(self._reembed_vlc)
+            pip.update_idletasks()
+            pip.update()
         except tk.TclError:
             pass
         self._apply_topmost()
+        self._schedule_pip_embed(30)
+        try:
+            pip.after(120, lambda: self._schedule_pip_embed(0))
+            pip.after(350, lambda: self._schedule_pip_embed(0))
+        except tk.TclError:
+            pass
 
     def close_pip(self):
+        self._cancel_pip_embed()
         pip = getattr(self, '_pip_window', None)
         self._pip_window = None
         self._pip_frame = None
@@ -79,13 +101,105 @@ class PlayerPipMixin:
                 pass
         self._apply_topmost()
 
-    def _reembed_vlc(self):
-        ready = getattr(self, '_vlc_is_ready', None)
-        if callable(ready) and not ready():
+    def _cancel_pip_embed(self):
+        job = getattr(self, '_pip_embed_job', None)
+        self._pip_embed_job = None
+        if not job:
             return
-        embed = getattr(self, '_embed_vlc_in_frame', None)
-        if embed and self.player:
+        host = getattr(self, '_pip_window', None) or getattr(self, 'window', None)
+        if not self._widget_exists(host):
+            return
+        try:
+            host.after_cancel(job)
+        except tk.TclError:
+            pass
+
+    def _schedule_pip_embed(self, delay_ms=50):
+        self._cancel_pip_embed()
+        host = getattr(self, '_pip_window', None) or getattr(self, 'window', None)
+        if not self._widget_exists(host):
+            return
+        wait = max(0, int(delay_ms or 0))
+        if wait == 0:
+            self._reembed_vlc()
+            return
+        try:
+            self._pip_embed_job = host.after(wait, self._reembed_vlc)
+        except tk.TclError:
+            self._pip_embed_job = None
+
+    def _pip_target_ready(self, target):
+        if not self._widget_exists(target):
+            return False
+        if not self.pip_is_open():
+            return True
+        try:
+            return pip_surface_ready(
+                target.winfo_width(),
+                target.winfo_height(),
+                target.winfo_viewable(),
+            )
+        except tk.TclError:
+            return False
+
+    def _player_state_name(self):
+        try:
+            state = self.player.get_state()
+        except Exception:
+            return ''
+        name = getattr(state, 'name', None)
+        if name:
+            return str(name)
+        text = str(state)
+        return text.rsplit('.', 1)[-1]
+
+    def _reembed_vlc(self):
+        self._pip_embed_job = None
+        target = self._video_target_frame()
+        if not self.player or not self._widget_exists(target):
+            return
+        if not self._pip_target_ready(target):
+            self._schedule_pip_embed(80)
+            return
+        name = self._player_state_name()
+        active = name in ('Playing', 'Paused', 'Buffering', 'Opening')
+        paused = name == 'Paused'
+        elapsed = 0
+        if active:
             try:
-                embed()
+                elapsed = int(self.player.get_time() or 0)
+            except Exception:
+                elapsed = 0
+            try:
+                self.player.stop()
             except Exception:
                 pass
+        embed = getattr(self, '_embed_vlc_in_frame', None)
+        if not embed:
+            return
+        try:
+            embed()
+        except Exception as err:
+            print(f'[PiP] No se pudo enganchar VLC: {err}')
+            return
+        if not active:
+            return
+        try:
+            self.player.play()
+        except Exception as err:
+            print(f'[PiP] No se pudo reanudar el vídeo: {err}')
+            return
+        if paused:
+            try:
+                self.player.pause()
+            except Exception:
+                pass
+        can_seek = elapsed >= 500 and (
+            getattr(self, '_playing_youtube', False)
+            or int(getattr(self, '_known_duration_ms', 0) or 0) > 0
+        )
+        apply = getattr(self, '_apply_seek', None)
+        if can_seek and callable(apply):
+            host = getattr(self, '_pip_window', None) or getattr(self, 'window', None)
+            if self._widget_exists(host):
+                host.after(280, lambda ms=elapsed: apply(ms))

@@ -3,7 +3,15 @@ import pathlib
 import time
 import shutil
 import psutil
-from favorites_manager import FavoritesManager
+from favorites_manager import (
+    FavoritesManager,
+    add_favorite,
+    favorite_name,
+    favorite_url,
+    favorites_contain,
+    normalize_favorites,
+    remove_favorite,
+)
 import vlc
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
@@ -14,7 +22,12 @@ import threading
 import yt_dlp
 import traceback
 from youtube_player import YouTubeHandler, youtube_ydl_opts
-from youtube_search import YouTubeSearchDialog
+from youtube_search import (
+    YouTubeSearchDialog,
+    fetch_youtube_channel_videos,
+    is_youtube_channel_url,
+    is_youtube_playlist_url,
+)
 from ui_theme import (
     get_colors, get_font, style_window, style_menu_tree,
     set_window_icon, make_control_icons,
@@ -168,6 +181,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.empty_menu = None  # Menú vacío para ocultar en fullscreen
         self.volume = app_config.get_volume()
         self.favorites = []
+        self._showing_favorites = False
         self.all_channels = []
         self.is_seeking = False
         self._progress_internal = False
@@ -266,10 +280,15 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         ttk.Button(favorites_buttons_frame, text="Guía", command=self.open_epg_grid).pack(side=tk.LEFT, padx=(6, 0))
 
         # Búsqueda
+        search_row = ttk.Frame(self.channels_frame)
+        search_row.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 8))
         self.search_var = tk.StringVar()
         self.search_var.trace('w', self.filter_channels)
-        self.search_entry = ttk.Entry(self.channels_frame, textvariable=self.search_var)
-        self.search_entry.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 8))
+        self.search_entry = ttk.Entry(search_row, textvariable=self.search_var)
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(search_row, text='★ Añadir', command=self.add_to_favorites).pack(
+            side=tk.LEFT, padx=(6, 0),
+        )
 
         self._epg_label = ttk.Label(
             self.channels_frame,
@@ -292,6 +311,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.sidebar = ChannelSidebar(self.channels_frame)
         self.sidebar.now_text = self._epg_now_title
         self.sidebar.row_image = self._logo_photo
+        self.sidebar.is_favorite = self._channel_is_favorite
         self.sidebar.on_view_change = self._prefetch_visible_logos
         self.channels_listbox = self.sidebar.tree
         self.channels_listbox.bind('<Double-Button-1>', self.play_selected)
@@ -506,6 +526,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         # Asegurarse de que el listbox también recibe los eventos
         self.channels_listbox.bind('<Control-s>', self.handle_add_favorite)
         self.channels_listbox.bind('<Control-d>', self.handle_remove_favorite)
+        self.search_entry.bind('<Control-s>', self.handle_add_favorite)
+        self.search_entry.bind('<Control-d>', self.handle_remove_favorite)
 
     def _menu_is_mapped(self, menu):
         try:
@@ -1238,6 +1260,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             close_pip = getattr(self, 'close_pip', None)
             if close_pip:
                 close_pip()
+            self._load_gen = getattr(self, '_load_gen', 0) + 1
+            self._clear_busy()
 
             if hasattr(self, 'youtube_handler') and self.youtube_handler:
                 try:
@@ -1278,10 +1302,16 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         except Exception:
             pass
         try:
-            self.window.update_idletasks()
+            top = target.winfo_toplevel()
+            if self._widget_exists(top):
+                top.update_idletasks()
+            elif self._widget_exists(self.window):
+                self.window.update_idletasks()
             target.update_idletasks()
-            wid = target.winfo_id()
-        except tk.TclError:
+            wid = int(target.winfo_id())
+        except (tk.TclError, TypeError, ValueError):
+            return
+        if not wid:
             return
         if sys.platform.startswith('win'):
             self.player.set_hwnd(wid)
@@ -1506,6 +1536,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
 
     def save_favorites(self):
         try:
+            self.favorites = normalize_favorites(self.favorites)
             with open('favoritos.json', 'w', encoding='utf-8') as f:
                 json.dump(self.favorites, f, ensure_ascii=False, indent=4)
         except Exception as e:
@@ -1514,30 +1545,65 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
     def load_favorites(self):
         try:
             with open('favoritos.json', 'r', encoding='utf-8') as f:
-                self.favorites = json.load(f)
+                self.favorites = normalize_favorites(json.load(f))
         except FileNotFoundError:
             self.favorites = []
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron cargar los favoritos: {e}")
 
+    def _favorite_rows(self):
+        rows = []
+        groups = []
+        tvg_ids = []
+        logos = []
+        for item in normalize_favorites(self.favorites):
+            name, url = favorite_name(item), favorite_url(item)
+            rows.append((name, url))
+            groups.append('')
+            tvg_ids.append(self._tvg_id_for_url(url) if hasattr(self, '_tvg_id_for_url') else '')
+            logos.append(self._logo_for_url(url) if hasattr(self, '_logo_for_url') else '')
+        return rows, groups, tvg_ids, logos
+
+    def _refresh_favorite_marks(self):
+        sidebar = getattr(self, 'sidebar', None)
+        if sidebar:
+            sidebar.refresh_rows()
+
+    def _channel_is_favorite(self, index):
+        if index is None or not (0 <= index < len(self.channels)):
+            return False
+        name, url = self.channels[index]
+        return favorites_contain(self.favorites, name, url)
+
     def show_favorites(self):
         if not self.favorites:
             messagebox.showinfo("Favoritos", "Por el momento no hay favoritos añadidos.")
             return
-        self.temp_channels = self.channels.copy()
-        self.channels = list(self.favorites)
-        self._groups = [''] * len(self.channels)
-        self._tvg_ids = [self._tvg_id_for_url(url) for _name, url in self.channels]
-        self._logos = [self._logo_for_url(url) for _name, url in self.channels]
+        self._showing_favorites = True
+        if getattr(self, 'search_var', None):
+            try:
+                if (self.search_var.get() or '').strip():
+                    self._apply_channel_filter()
+                    return
+            except tk.TclError:
+                pass
+        self.channels, self._groups, self._tvg_ids, self._logos = self._favorite_rows()
         self._rebuild_sidebar()
         self._set_epg_label('')
 
-    
     def restore_all_channels(self):
+        self._showing_favorites = False
         self.channels = self.all_channels.copy()
         self._groups = list(self._groups_all)
         self._tvg_ids = list(self._tvg_ids_all) if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
         self._logos = list(self._logos_all) if len(getattr(self, '_logos_all', [])) == len(self.all_channels) else [''] * len(self.all_channels)
+        if getattr(self, 'search_var', None):
+            try:
+                if (self.search_var.get() or '').strip():
+                    self._apply_channel_filter()
+                    return
+            except tk.TclError:
+                pass
         self._rebuild_sidebar()
 
     def prompt_url(self):
@@ -1604,15 +1670,16 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._start_epg(notify=notify and bool(text))
         self._persist_sidebar()
 
-    def _set_busy(self, text=None):
+    def _set_busy(self, text=None, percent=None):
         if not self._widget_exists(self.window):
             return
+        label = (text or '').strip() or 'Cargando…'
         try:
             self.window.config(cursor='watch')
-            if text:
-                self.window.title(f'Reproductor de vídeo · {text}')
+            self.window.title(f'Reproductor de vídeo · {label}')
         except tk.TclError:
             pass
+        self._show_busy_overlay(label, percent)
 
     def _clear_busy(self):
         if not self._widget_exists(self.window):
@@ -1622,6 +1689,123 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             self.window.title('Reproductor de vídeo')
         except tk.TclError:
             pass
+        self._hide_busy_overlay()
+
+    def _hide_busy_overlay(self):
+        bar = getattr(self, '_busy_bar', None)
+        if bar is not None:
+            try:
+                bar.stop()
+            except tk.TclError:
+                pass
+        self._busy_bar = None
+        self._busy_label = None
+        frame = getattr(self, '_busy_frame', None)
+        self._busy_frame = None
+        if frame is not None:
+            try:
+                frame.destroy()
+            except tk.TclError:
+                pass
+
+    def _show_busy_overlay(self, text, percent=None):
+        if not self._widget_exists(self.window):
+            return
+        parent = getattr(self, 'player_frame', None) or getattr(self, 'video_frame', None)
+        video = getattr(self, 'video_frame', None)
+        if not self._widget_exists(parent):
+            return
+        frame = getattr(self, '_busy_frame', None)
+        if not self._widget_exists(frame):
+            colors = get_colors()
+            overlay = tk.Frame(parent, bg='#000000', highlightthickness=0)
+            try:
+                if self._widget_exists(video):
+                    overlay.place(in_=video, relx=0, rely=0, relwidth=1, relheight=1)
+                    overlay.lift(video)
+                else:
+                    overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+            except tk.TclError:
+                overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+            card = tk.Frame(
+                overlay,
+                bg=colors['surface'],
+                highlightbackground=colors['border'],
+                highlightthickness=1,
+                padx=22,
+                pady=16,
+            )
+            card.place(relx=0.5, rely=0.5, anchor='center')
+            label = tk.Label(
+                card,
+                text=text,
+                font=get_font(12, 'bold'),
+                bg=colors['surface'],
+                fg=colors['text'],
+            )
+            label.pack(anchor=tk.W)
+            hint = tk.Label(
+                card,
+                text='La lista se lee en segundo plano; la ventana no se ha colgado.',
+                font=get_font(9),
+                bg=colors['surface'],
+                fg=colors['text_muted'],
+            )
+            hint.pack(anchor=tk.W, pady=(4, 10))
+            bar = ttk.Progressbar(card, length=360, mode='indeterminate')
+            bar.pack(fill=tk.X)
+            self._busy_frame = overlay
+            self._busy_label = label
+            self._busy_bar = bar
+            self._busy_indeterminate = True
+            try:
+                bar.start(12)
+            except tk.TclError:
+                pass
+        else:
+            label = getattr(self, '_busy_label', None)
+            bar = getattr(self, '_busy_bar', None)
+            if label is not None:
+                try:
+                    label.configure(text=text)
+                except tk.TclError:
+                    pass
+        bar = getattr(self, '_busy_bar', None)
+        if bar is None:
+            return
+        if percent is None:
+            if not getattr(self, '_busy_indeterminate', False):
+                try:
+                    bar.stop()
+                    bar.configure(mode='indeterminate')
+                    bar.start(12)
+                except tk.TclError:
+                    pass
+                self._busy_indeterminate = True
+            return
+        try:
+            value = max(0.0, min(100.0, float(percent)))
+        except (TypeError, ValueError):
+            value = 0.0
+        try:
+            if getattr(self, '_busy_indeterminate', False):
+                bar.stop()
+                bar.configure(mode='determinate', maximum=100)
+                self._busy_indeterminate = False
+            bar['value'] = value
+        except tk.TclError:
+            pass
+
+    def _report_load_progress(self, window, gen, text, percent=None):
+        if gen != getattr(self, '_load_gen', 0):
+            return
+
+        def apply():
+            if gen != getattr(self, '_load_gen', 0):
+                return
+            self._set_busy(text, percent=percent)
+
+        self._after_window(window, apply)
 
     def _after_window(self, window, callback):
         try:
@@ -1634,29 +1818,42 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.ensure_window()
         gen = self._load_gen + 1
         self._load_gen = gen
-        self._set_busy('Cargando lista…')
+        self._set_busy('Cargando lista…', percent=0)
         window = self.window
 
         def work():
             err = None
             parsed = None
+            epg_urls = []
             try:
                 with open(filename, 'rb') as f:
                     content = decode_m3u_bytes(f.read())
-                parsed = parse_m3u_channels(content)
+                self._report_load_progress(window, gen, 'Leyendo canales…', 8)
+
+                def on_progress(frac):
+                    self._report_load_progress(
+                        window, gen, 'Leyendo canales…', 8 + frac * 82,
+                    )
+
+                parsed = parse_m3u_channels(content, on_progress=on_progress)
                 epg_urls = parse_m3u_epg_urls(content)
             except Exception as exc:
                 err = exc
-                epg_urls = []
 
             def apply():
                 if gen != self._load_gen:
                     return
-                self._clear_busy()
                 if err:
+                    self._clear_busy()
                     messagebox.showerror("Error", f"No se pudo cargar el archivo M3U: {err}")
                     return
+                self._set_busy('Mostrando canales…', percent=95)
+                try:
+                    self.window.update_idletasks()
+                except tk.TclError:
+                    pass
                 self._apply_parsed_channels(parsed, filename, 'file', notify, epg_urls=epg_urls)
+                self._clear_busy()
                 if on_done:
                     on_done()
 
@@ -1675,24 +1872,60 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         def work():
             err = None
             parsed = None
+            epg_urls = []
             try:
                 import urllib.request
                 with urllib.request.urlopen(url) as response:
-                    content = decode_m3u_bytes(response.read())
-                parsed = parse_m3u_channels(content)
+                    total = 0
+                    try:
+                        total = int(response.headers.get('Content-Length') or 0)
+                    except (TypeError, ValueError):
+                        total = 0
+                    chunks = []
+                    read = 0
+                    last_pct = -1
+                    while True:
+                        if gen != getattr(self, '_load_gen', 0):
+                            return
+                        block = response.read(256 * 1024)
+                        if not block:
+                            break
+                        chunks.append(block)
+                        read += len(block)
+                        if total > 0:
+                            pct = min(40.0, (read / total) * 40.0)
+                            if pct - last_pct >= 1:
+                                last_pct = pct
+                                self._report_load_progress(
+                                    window, gen, 'Descargando lista…', pct,
+                                )
+                content = decode_m3u_bytes(b''.join(chunks))
+                self._report_load_progress(window, gen, 'Leyendo canales…', 42)
+
+                def on_progress(frac):
+                    self._report_load_progress(
+                        window, gen, 'Leyendo canales…', 42 + frac * 48,
+                    )
+
+                parsed = parse_m3u_channels(content, on_progress=on_progress)
                 epg_urls = parse_m3u_epg_urls(content)
             except Exception as exc:
                 err = exc
-                epg_urls = []
 
             def apply():
                 if gen != self._load_gen:
                     return
-                self._clear_busy()
                 if err:
+                    self._clear_busy()
                     messagebox.showerror("Error", f"No se pudo cargar la URL M3U: {err}")
                     return
+                self._set_busy('Mostrando canales…', percent=95)
+                try:
+                    self.window.update_idletasks()
+                except tk.TclError:
+                    pass
                 self._apply_parsed_channels(parsed, url, 'url', notify, epg_urls=epg_urls)
+                self._clear_busy()
                 if on_done:
                     on_done()
 
@@ -1765,11 +1998,13 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._groups_all = list(self._groups)
         self._tvg_ids_all = list(self._tvg_ids)
         self._logos_all = list(self._logos)
+        self._showing_favorites = False
         self._playlist_source = source
         self._playlist_kind = kind
         self._rebuild_sidebar()
         self._start_epg(epg_urls)
         self._persist_sidebar()
+        self._clear_busy()
         if notify:
             messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
 
@@ -2254,15 +2489,22 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             def apply():
                 if gen != self._load_gen:
                     return
-                self._clear_busy()
                 if err:
+                    self._clear_busy()
                     messagebox.showerror("Error", f"No se pudo cargar la playlist: {err}")
                     return
                 if not parsed:
+                    self._clear_busy()
                     messagebox.showinfo("Info", "No se encontraron vídeos en la playlist.")
                     return
+                self._set_busy('Mostrando lista…')
+                try:
+                    self.window.update_idletasks()
+                except tk.TclError:
+                    pass
                 self.channels = parsed
                 self.all_channels = list(parsed)
+                self._showing_favorites = False
                 self._groups = [''] * len(parsed)
                 self._groups_all = list(self._groups)
                 self._tvg_ids = [''] * len(parsed)
@@ -2277,6 +2519,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 self._playlist_kind = 'youtube_playlist'
                 self._rebuild_sidebar()
                 self._persist_sidebar()
+                self._clear_busy()
                 if notify:
                     messagebox.showinfo("Éxito", f"Playlist cargada: {len(parsed)} vídeos")
                 if on_done:
@@ -2303,9 +2546,19 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             
     def play_channel(self, index):
         if 0 <= index < len(self.channels):
+            name, url = self.channels[index]
+            if is_youtube_channel_url(url):
+                self.current_channel = index
+                app_config.remember_channel(index, name, url)
+                self.play_youtube_channel(url, title=name)
+                return
+            if is_youtube_playlist_url(url):
+                self.current_channel = index
+                app_config.remember_channel(index, name, url)
+                self.load_youtube_playlist(url, notify=False, on_done=lambda: self.play_channel(0))
+                return
             self.save_youtube_resume()
             self.save_iptv_resume()
-            name, url = self.channels[index]
             self.current_channel = index
             self._refresh_epg_label(index)
             app_config.remember_channel(index, name, url)
@@ -2753,17 +3006,20 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 search_term = ''
         gen = self._filter_gen + 1
         self._filter_gen = gen
+        if getattr(self, '_showing_favorites', False):
+            snapshot, groups_all, tvg_all, logos_all = self._favorite_rows()
+        else:
+            snapshot = list(self.all_channels)
+            groups_all = self._groups_all if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
+            tvg_all = self._tvg_ids_all if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
+            logos_all = self._logos_all if len(getattr(self, '_logos_all', [])) == len(self.all_channels) else [''] * len(self.all_channels)
         if not search_term:
-            self.channels = list(self.all_channels)
-            self._groups = list(self._groups_all) if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
-            self._tvg_ids = list(self._tvg_ids_all) if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
-            self._logos = list(self._logos_all) if len(self._logos_all) == len(self.all_channels) else [''] * len(self.all_channels)
+            self.channels = list(snapshot)
+            self._groups = list(groups_all)
+            self._tvg_ids = list(tvg_all)
+            self._logos = list(logos_all)
             self._rebuild_sidebar()
             return
-        groups_all = self._groups_all if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
-        tvg_all = self._tvg_ids_all if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
-        logos_all = self._logos_all if len(getattr(self, '_logos_all', [])) == len(self.all_channels) else [''] * len(self.all_channels)
-        snapshot = self.all_channels
         groups_snap = groups_all
         tvg_snap = tvg_all
         logos_snap = logos_all
@@ -2909,8 +3165,65 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
     def play_youtube_queue_next(self):
         self.play_youtube_queue_index(0)
 
+    def play_youtube_channel(self, url, title=None):
+        """Un favorito de canal no es un vídeo: carga las subidas recientes y reproduce la primera."""
+        if getattr(self, '_loading_yt_channel', False):
+            return
+        self.ensure_window()
+        self._loading_yt_channel = True
+        label = (title or '').strip() or 'canal'
+        self._set_busy(f'Cargando vídeos de {label}…')
+        window = self.window
+
+        def work():
+            err = None
+            videos = []
+            channel_name = label
+            try:
+                videos, channel_name = fetch_youtube_channel_videos(url, limit=30)
+                channel_name = channel_name or label
+            except Exception as exc:
+                err = exc
+
+            def apply():
+                self._loading_yt_channel = False
+                if err:
+                    self._clear_busy()
+                    messagebox.showerror(
+                        "YouTube",
+                        f"No se pudieron leer los vídeos recientes de {label}.",
+                    )
+                    return
+                if not videos:
+                    self._clear_busy()
+                    messagebox.showinfo(
+                        "YouTube",
+                        f"No se encontraron vídeos recientes de {label}.",
+                    )
+                    return
+                self._set_busy('Mostrando lista…')
+                try:
+                    self.window.update_idletasks()
+                except tk.TclError:
+                    pass
+                items = [(item['title'], item['url']) for item in videos]
+                self.cargar_videos_playlist(items)
+                self._clear_busy()
+                if items:
+                    self.play_channel(0)
+
+            self._after_window(window, apply)
+
+        threading.Thread(target=work, daemon=True).start()
+
     def play_youtube_url(self, url, title=None, add_to_list=True):
         """Delega la reproducción de YouTube al manejador y añade el vídeo a la lista si falta."""
+        if is_youtube_channel_url(url):
+            self.play_youtube_channel(url, title=title)
+            return
+        if is_youtube_playlist_url(url):
+            self.load_youtube_playlist(url, notify=False, on_done=lambda: self.play_channel(0))
+            return
         if add_to_list:
             existing = next((name for name, item_url in self.all_channels if item_url == url), None)
             if existing and existing not in ('YouTube', url):
@@ -2930,6 +3243,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         """Carga los vídeos de una playlist de YouTube como canales en el listado."""
         self.channels = canales
         self.all_channels = canales.copy()
+        self._showing_favorites = False
         self._groups = [''] * len(canales)
         self._groups_all = list(self._groups)
         self._tvg_ids = [''] * len(canales)
@@ -3118,6 +3432,9 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             self.load_playlist_callback,
             self.enqueue_youtube_queue,
             youtube_handler=self.youtube_handler,
+            favorite_callback=self.add_favorite_entry,
+            unfavorite_callback=self.remove_favorite_entry,
+            is_favorite_callback=lambda url: favorites_contain(self.favorites, '', url),
         )
 
     def load_playlist_callback(self, channels_list):
@@ -3126,6 +3443,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
              self.ensure_window()
              self.channels = list(channels_list)
              self.all_channels = list(channels_list)
+             self._showing_favorites = False
              self._groups = [''] * len(channels_list)
              self._groups_all = list(self._groups)
              self._tvg_ids = [''] * len(channels_list)
@@ -3487,6 +3805,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         try:
             self.channels.clear()
             self.all_channels.clear()
+            self._showing_favorites = False
             self._groups.clear()
             self._groups_all.clear()
             self._tvg_ids.clear()
@@ -3515,19 +3834,48 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             return sidebar.selected_index()
         return None
 
+    def add_favorite_entry(self, name, url, notify=False):
+        """Guarda un canal (de la lista o de una búsqueda) en favoritos.json."""
+        title = (name or '').strip() or 'Canal'
+        self.favorites, added = add_favorite(self.favorites, title, url)
+        if added:
+            self.save_favorites()
+            self._refresh_favorite_marks()
+            if notify:
+                messagebox.showinfo(
+                    "Favoritos",
+                    f"«{title}» está en favoritos. Pulsa ★ Favoritos para verlos.",
+                )
+        elif notify:
+            if not str(url or '').strip():
+                messagebox.showinfo("Información", "Por favor, selecciona un canal primero")
+            else:
+                messagebox.showinfo("Información", f"«{title}» ya está en favoritos")
+        return added
+
+    def remove_favorite_entry(self, name, url, notify=False):
+        title = (name or '').strip() or 'Canal'
+        self.favorites, removed = remove_favorite(self.favorites, title, url)
+        if removed:
+            self.save_favorites()
+            if getattr(self, '_showing_favorites', False):
+                self._apply_channel_filter()
+            else:
+                self._refresh_favorite_marks()
+            if notify:
+                messagebox.showinfo("Favoritos", f"«{title}» se quitó de favoritos")
+        elif notify:
+            messagebox.showinfo("Información", f"«{title}» no estaba en favoritos")
+        return removed
+
     def add_to_favorites(self):
-        """Añade el canal seleccionado a favoritos"""
+        """Añade el canal seleccionado a favoritos (también desde una búsqueda)."""
         selected_index = self._selected_channel_index()
         if selected_index is None:
-            messagebox.showinfo("Información", "Por favor, selecciona un canal primero")
+            messagebox.showinfo("Información", "Selecciona un canal de la búsqueda o de la lista.")
             return
-        channel = self.channels[selected_index]
-        if channel not in self.favorites:
-            self.favorites.append(channel)
-            self.save_favorites()
-            messagebox.showinfo("Éxito", f"Canal '{channel[0]}' añadido a favoritos")
-        else:
-            messagebox.showinfo("Información", f"El canal '{channel[0]}' ya está en favoritos")
+        name, url = self.channels[selected_index]
+        self.add_favorite_entry(name, url, notify=True)
 
     def remove_from_favorites(self):
         """Elimina el canal seleccionado de favoritos"""
@@ -3535,13 +3883,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         if selected_index is None:
             messagebox.showinfo("Información", "Por favor, selecciona un canal primero")
             return
-        channel = self.channels[selected_index]
-        if channel in self.favorites:
-            self.favorites.remove(channel)
-            self.save_favorites()
-            messagebox.showinfo("Éxito", f"Canal '{channel[0]}' eliminado de favoritos")
-        else:
-            messagebox.showinfo("Información", f"El canal '{channel[0]}' no estaba en favoritos")
+        name, url = self.channels[selected_index]
+        self.remove_favorite_entry(name, url, notify=True)
 
     def show_channel_context_menu(self, event):
         selection = self._selected_channel_index(event)

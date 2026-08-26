@@ -84,6 +84,7 @@ class ChannelSidebar:
         self.on_view_change = None
         self.now_text = None
         self.row_image = None
+        self.is_favorite = None
 
         self.tree.bind('<<TreeviewOpen>>', self._on_open)
         self.tree.bind('<<TreeviewClose>>', self._on_close)
@@ -211,9 +212,17 @@ class ChannelSidebar:
         getter = self.now_text
         extra = getter(index) if callable(getter) else ''
         extra = (extra or '').strip()
+        mark = ''
+        if callable(self.is_favorite):
+            try:
+                if self.is_favorite(index):
+                    mark = '★ '
+            except Exception:
+                mark = ''
+        title = f'{mark}{name}'
         if extra:
-            return f'{name}  ·  {extra}'
-        return name
+            return f'{title}  ·  {extra}'
+        return title
 
     def _image_for(self, index):
         getter = self.row_image

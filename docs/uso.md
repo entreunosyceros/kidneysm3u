@@ -58,7 +58,7 @@ En el menú **Reproducir**:
 - **Ventana PiP** / **Siempre encima** — recuadro flotante o ventana del reproductor sobre las demás.
 - **Limpiar lista lateral** — vacía el listado de la izquierda (pide confirmación).
 
-Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir).
+Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir). En la búsqueda, **★ Añadir** o `Ctrl+S` guarda el resultado en favoritos.
 
 La sesión puede recordar la última lista lateral y el último canal **seleccionado**, no lo reproduce solo al abrir. Eso se activa o desactiva en **Preferencias**. **Limpiar** solo vacía la lista en esta sesión; si «recordar última lista» está activo, al arrancar de nuevo se muestra lo último que había. Si no había lista, no muestra nada.
 

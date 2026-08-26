@@ -104,12 +104,29 @@ def parse_m3u_epg_urls(content):
     return urls
 
 
-def parse_m3u_channels(content):
+def parse_m3u_channels(content, on_progress=None):
     """Devuelve [(nombre, url, grupo, tvg-id, logo), ...] ignorando comentarios entre EXTINF y la URL."""
     if isinstance(content, bytes):
         content = _decode_bytes(content)
     lines = content.replace('\r\n', '\n').replace('\r', '\n').split('\n')
     entries = []
+    total = len(lines)
+    step = max(1, total // 50)
+    last_tick = -step
+
+    def tick(at):
+        nonlocal last_tick
+        if not on_progress:
+            return
+        if at < total and at - last_tick < step:
+            return
+        last_tick = at
+        try:
+            on_progress(1.0 if total <= 0 else min(1.0, at / total))
+        except Exception:
+            pass
+
+    tick(0)
     i = 0
     while i < len(lines):
         line = lines[i].strip()
@@ -136,6 +153,8 @@ def parse_m3u_channels(content):
                 i += 1
         else:
             i += 1
+        tick(i)
+    tick(total)
     return entries
 
 

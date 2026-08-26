@@ -9,24 +9,29 @@ PROFILE_LABELS = {
 
 _CACHE_MS = {
     'fast': {
-        'mpegts': 1000,
-        'hls': 2500,
-        'container': 2000,
-        'local': 800,
+        'mpegts': 2000,
+        'hls': 5000,
+        'container': 3000,
+        'local': 1000,
     },
     'balanced': {
-        'mpegts': 2000,
-        'hls': 4000,
-        'container': 3000,
-        'local': 1200,
+        'mpegts': 5000,
+        'hls': 8000,
+        'container': 4000,
+        'local': 1500,
     },
     'stable': {
-        'mpegts': 3500,
-        'hls': 6000,
-        'container': 4000,
-        'local': 1800,
+        'mpegts': 8000,
+        'hls': 12000,
+        'container': 6000,
+        'local': 2000,
     },
 }
+
+CACHE_MS_MAX = 15000
+SOFT_REBUFFER_NEED = 3
+SOFT_REBUFFER_WINDOW_S = 30
+SOFT_REBUFFER_EXTRA_MS = 3000
 
 _PROFILE_ALIASES = {
     'rapido': 'fast',
@@ -50,18 +55,24 @@ def normalize_iptv_buffer_profile(value):
     return _PROFILE_ALIASES.get(text, 'balanced')
 
 
-def iptv_cache_ms(kind, *, vod=False, local=False, profile='balanced', force_ts=False):
+def iptv_cache_ms(kind, *, vod=False, local=False, profile='balanced', force_ts=False, extra_ms=0):
     """Milisegundos de network/live/file-caching para este enlace."""
     table = _CACHE_MS[normalize_iptv_buffer_profile(profile)]
     if local:
-        return table['local']
-    if force_ts:
-        return table['mpegts']
-    if vod or kind == 'container':
-        return table['container']
-    if kind == 'hls':
-        return table['hls']
-    return table['mpegts']
+        base = table['local']
+    elif force_ts:
+        base = table['mpegts']
+    elif vod or kind == 'container':
+        base = table['container']
+    elif kind == 'hls':
+        base = table['hls']
+    else:
+        base = table['mpegts']
+    try:
+        extra = max(0, int(extra_ms or 0))
+    except (TypeError, ValueError):
+        extra = 0
+    return min(CACHE_MS_MAX, base + extra)
 
 
 def iptv_is_live(kind, *, vod=False, force_ts=False):
@@ -79,11 +90,17 @@ def iptv_vlc_buffer_options(
     local=False,
     profile='balanced',
     force_ts=False,
+    extra_ms=0,
     prefix=':',
 ):
     """Opciones de media de VLC (caché y reloj). No incluye la URL."""
     cache = iptv_cache_ms(
-        kind, vod=vod, local=local, profile=profile, force_ts=force_ts,
+        kind,
+        vod=vod,
+        local=local,
+        profile=profile,
+        force_ts=force_ts,
+        extra_ms=extra_ms,
     )
     options = [
         f'{prefix}network-caching={cache}',
@@ -92,10 +109,10 @@ def iptv_vlc_buffer_options(
         f'{prefix}sout-mux-caching={cache}',
     ]
     if iptv_is_live(kind, vod=vod, force_ts=force_ts):
-        # PCR irregular de IPTV: no detener el vídeo para resincronizar el reloj.
+        # PCR irregular de IPTV, con margen de jitter igual a la caché (no 0).
         options.extend([
             f'{prefix}clock-synchro=0',
-            f'{prefix}clock-jitter=0',
+            f'{prefix}clock-jitter={cache}',
         ])
     return options
 
@@ -209,3 +226,38 @@ def iptv_rebuffer_decision(
     if stall_ticks >= 8:
         return 'fail'
     return 'wait'
+
+
+def iptv_soft_rebuffer_note(times, now, window_s=SOFT_REBUFFER_WINDOW_S, is_new_event=True):
+    """Marcas de microcorte (Buffering con bytes llegando) dentro de la ventana."""
+    kept = []
+    try:
+        stamp = float(now)
+        window = float(window_s)
+    except (TypeError, ValueError):
+        return list(times or [])
+    for item in times or ():
+        try:
+            when = float(item)
+        except (TypeError, ValueError):
+            continue
+        if stamp - when <= window:
+            kept.append(when)
+    if is_new_event:
+        kept.append(stamp)
+    return kept
+
+
+def iptv_soft_rebuffer_should_bump(soft_count, already_bumped, need=SOFT_REBUFFER_NEED):
+    """Tras varios microcortes con datos, subir caché una vez (no cambia Preferencias)."""
+    if already_bumped:
+        return False
+    try:
+        count = int(soft_count or 0)
+    except (TypeError, ValueError):
+        count = 0
+    try:
+        threshold = int(need)
+    except (TypeError, ValueError):
+        threshold = SOFT_REBUFFER_NEED
+    return count >= threshold

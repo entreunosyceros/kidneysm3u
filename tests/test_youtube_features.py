@@ -1,6 +1,13 @@
 import app_config
 from youtube_player import youtube_format_selector
-from youtube_search import youtube_channel_tab_url
+from youtube_search import (
+    youtube_channel_tab_url,
+    youtube_result_line,
+    youtube_star_hit,
+    is_youtube_channel_url,
+    is_youtube_playlist_url,
+    youtube_video_id,
+)
 
 
 def _isolate_config(tmp_path, monkeypatch):
@@ -93,6 +100,35 @@ def test_youtube_channel_tab_url():
     assert youtube_channel_tab_url('https://www.youtube.com/@demo/videos') == (
         'https://www.youtube.com/@demo/videos'
     )
+
+
+def test_youtube_channel_and_playlist_urls_are_not_videos():
+    channel = 'https://www.youtube.com/channel/UCabcdefghijklmnop'
+    handle = 'https://www.youtube.com/@demo'
+    playlist = 'https://www.youtube.com/playlist?list=PLabcdefghij'
+    watch = 'https://www.youtube.com/watch?v=abcdefghijk'
+    short = 'https://www.youtube.com/shorts/abcdefghijk'
+    assert is_youtube_channel_url(channel) is True
+    assert is_youtube_channel_url(handle) is True
+    assert is_youtube_channel_url(youtube_channel_tab_url(channel)) is True
+    assert is_youtube_channel_url(watch) is False
+    assert is_youtube_channel_url(short) is False
+    assert is_youtube_channel_url(playlist) is False
+    assert is_youtube_playlist_url(playlist) is True
+    assert is_youtube_playlist_url(watch + '&list=PLabcdefghij') is False
+    assert youtube_video_id(watch) == 'abcdefghijk'
+    assert youtube_video_id(channel) is None
+    empty = youtube_result_line('channel', 'La 1 HD', favorite=False)
+    saved = youtube_result_line('channel', 'La 1 HD', favorite=True)
+    assert empty.startswith('☆ ')
+    assert saved.startswith('★ ')
+    assert '[Canal] La 1 HD' in empty
+    assert youtube_star_hit(8) is True
+    assert youtube_star_hit(12, star_width=16) is True
+    assert youtube_star_hit(80) is False
+    video = youtube_result_line('video', 'Clip', duration_str='1:02', favorite=False)
+    assert video.startswith('☆ ')
+    assert '[Vídeo] Clip [1:02]' in video
 
 
 def _sub_entries(ext='json3'):

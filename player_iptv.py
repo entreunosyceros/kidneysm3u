@@ -14,10 +14,13 @@ import vlc
 import app_config
 from iptv_buffer import (
     PROFILE_LABELS,
+    SOFT_REBUFFER_EXTRA_MS,
     iptv_bytes_progress,
     iptv_cache_ms,
     iptv_deadman_should_fail,
     iptv_rebuffer_decision,
+    iptv_soft_rebuffer_note,
+    iptv_soft_rebuffer_should_bump,
     iptv_startup_decision,
     iptv_vlc_buffer_options,
     vlc_state_name,
@@ -55,6 +58,10 @@ class IptvPlaybackMixin:
         self._iptv_bytes_prev = 0
         self._iptv_reconnects = 0
         self._iptv_rebuffer_stall = 0
+        self._iptv_cache_extra_ms = 0
+        self._iptv_soft_bumped = False
+        self._iptv_soft_times = []
+        self._iptv_soft_was_buffering = False
         self._iptv_check_gen = getattr(self, '_iptv_check_gen', 0) + 1
         check_gen = self._iptv_check_gen
         self._start_vlc_remote(name, url, kind)
@@ -95,6 +102,12 @@ class IptvPlaybackMixin:
                 continue
         return False
 
+    def _iptv_cache_extra(self):
+        try:
+            return max(0, int(getattr(self, '_iptv_cache_extra_ms', 0) or 0))
+        except (TypeError, ValueError):
+            return 0
+
     def _iptv_remote_options(self, kind, force_ts=False):
         url = getattr(self, '_iptv_source_url', '') or ''
         vod = is_iptv_vod(url) or kind == 'container'
@@ -105,6 +118,7 @@ class IptvPlaybackMixin:
             local=False,
             profile=profile,
             force_ts=force_ts,
+            extra_ms=self._iptv_cache_extra(),
         )
         options.extend([
             ':avcodec-hw=none',
@@ -139,6 +153,7 @@ class IptvPlaybackMixin:
             vod=is_iptv_vod(url) or kind == 'container',
             profile=app_config.get_iptv_buffer(),
             force_ts=force_ts,
+            extra_ms=self._iptv_cache_extra(),
         )
         label = PROFILE_LABELS.get(app_config.get_iptv_buffer(), app_config.get_iptv_buffer())
         print(f"[IPTV] Abriendo {describe_iptv_url(url)} ({how}) buffer={cache}ms ({label})")
@@ -251,6 +266,7 @@ class IptvPlaybackMixin:
             vod=False,
             local=True,
             profile=profile,
+            extra_ms=self._iptv_cache_extra(),
             prefix='',
         )
         options.extend([
@@ -306,12 +322,31 @@ class IptvPlaybackMixin:
             self._media_started = True
         started = bool(getattr(self, '_media_started', False))
         stall = int(getattr(self, '_iptv_rebuffer_stall', 0) or 0)
-        if started and vlc_state_name(state) == 'Buffering' and bytes_now <= bytes_prev:
+        state_name = vlc_state_name(state)
+        growing = bytes_now > bytes_prev
+        if started and state_name == 'Buffering' and not growing:
             stall += 1
         else:
             stall = 0
         self._iptv_rebuffer_stall = stall
         url = getattr(self, '_iptv_source_url', '') or ''
+        vod = is_iptv_vod(url)
+        was_soft = bool(getattr(self, '_iptv_soft_was_buffering', False))
+        bump_now = False
+        if started and state_name == 'Buffering' and growing and not vod:
+            times = iptv_soft_rebuffer_note(
+                getattr(self, '_iptv_soft_times', []),
+                time.time(),
+                is_new_event=not was_soft,
+            )
+            self._iptv_soft_times = times
+            self._iptv_soft_was_buffering = True
+            bump_now = iptv_soft_rebuffer_should_bump(
+                len(times),
+                getattr(self, '_iptv_soft_bumped', False),
+            )
+        else:
+            self._iptv_soft_was_buffering = False
         action = iptv_rebuffer_decision(
             started=started,
             state=state,
@@ -319,7 +354,7 @@ class IptvPlaybackMixin:
             bytes_now=bytes_now,
             bytes_prev=bytes_prev,
             reconnects=int(getattr(self, '_iptv_reconnects', 0) or 0),
-            vod=is_iptv_vod(url),
+            vod=vod,
         )
         self._iptv_bytes_prev = max(bytes_prev, bytes_now)
         if action == 'reconnect':
@@ -334,6 +369,21 @@ class IptvPlaybackMixin:
             name = getattr(self, '_iptv_retry_name', '') or ''
             self._iptv_report_unavailable(name)
             return
+        elif bump_now:
+            name = getattr(self, '_iptv_retry_name', '') or ''
+            kind = getattr(self, '_iptv_kind', 'mpegts')
+            self._iptv_soft_bumped = True
+            self._iptv_cache_extra_ms = SOFT_REBUFFER_EXTRA_MS
+            cache = iptv_cache_ms(
+                kind,
+                vod=vod or kind == 'container',
+                profile=app_config.get_iptv_buffer(),
+                extra_ms=self._iptv_cache_extra(),
+            )
+            print(f'[IPTV] buffer corto en alta calidad; subo caché a {cache}ms')
+            self._iptv_rebuffer_stall = 0
+            self._iptv_bytes_prev = 0
+            self._start_vlc_remote(name, url, kind)
         if self._widget_exists(getattr(self, 'window', None)):
             self.window.after(2000, lambda: self._check_iptv_stream(check_gen))
 

@@ -590,6 +590,19 @@ class YouTubeHandler:
             save_resume()
         video_id = self.extract_youtube_id(url)
         if not video_id:
+            player = getattr(self, 'video_player', None)
+            if player is not None:
+                from youtube_search import is_youtube_channel_url, is_youtube_playlist_url
+                if is_youtube_channel_url(url):
+                    play = getattr(player, 'play_youtube_channel', None)
+                    if play:
+                        play(url, title=title)
+                        return
+                if is_youtube_playlist_url(url):
+                    load = getattr(player, 'load_youtube_playlist', None)
+                    if load:
+                        load(url, notify=False, on_done=lambda: player.play_channel(0))
+                        return
             messagebox.showerror("Error", "No se pudo extraer el ID del vídeo de YouTube")
             return
         self.video_player._playing_youtube = True

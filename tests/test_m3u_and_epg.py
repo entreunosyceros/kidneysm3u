@@ -151,6 +151,16 @@ class TestParseChannels:
         assert 'Cañón' in decoded
         assert parse_m3u_entries(raw)[0][0] == 'Cañón'
 
+    def test_on_progress_starts_and_ends(self):
+        ticks = []
+        text = ''.join(f'#EXTINF:-1,C{i}\nhttp://x/{i}\n' for i in range(80))
+        channels = parse_m3u_channels(text, on_progress=ticks.append)
+        assert len(channels) == 80
+        assert ticks[0] == 0.0
+        assert ticks[-1] == 1.0
+        assert all(0.0 <= t <= 1.0 for t in ticks)
+        assert ticks == sorted(ticks)
+
 
 class TestClassifyIptv:
     def test_hls_container_mpegts(self):

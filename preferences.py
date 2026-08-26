@@ -325,7 +325,7 @@ def show_preferences(parent, on_apply=None):
     ttk.Radiobutton(buffer_row, text='Estable', variable=buffer_var, value='stable').pack(side=tk.LEFT)
     ttk.Label(
         playback,
-        text='Caché de VLC al ver un canal. Equilibrado usa menos en MPEG-TS (cambio de canal más ágil) y más en HLS. Rápido reduce la espera; Estable aguanta mejor los microcortes. El siguiente canal ya usa el valor nuevo.',
+        text='Caché de VLC al ver un canal. Equilibrado deja ~5 s en MPEG-TS y ~8 s en HLS (canales FHD). Rápido reduce la espera; Estable aguanta mejor los microcortes. El siguiente canal ya usa el valor nuevo.',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))

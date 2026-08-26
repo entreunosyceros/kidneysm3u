@@ -10,6 +10,7 @@ from m3u_parse import is_iptv_vod
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 MAX_RECENT = 12
+MAX_DOWNLOAD_URLS = 12
 MAX_YT_RESUME = 80
 MAX_YT_HISTORY = 40
 MAX_YT_QUEUE = 80
@@ -25,6 +26,7 @@ COOKIE_BROWSERS = ('auto', 'firefox', 'chrome', 'chromium', 'brave', 'edge')
 _DEFAULTS = {
     'theme': 'dark',
     'recent_files': [],
+    'recent_download_urls': [],
     'patterns': [
         'tvg-name="ES"',
         'group-title="',
@@ -266,6 +268,52 @@ def remember_playlist(path, kind='file'):
             'sidebar': [],
         }
     save(updates)
+
+
+def _clean_download_url_entry(raw):
+    if isinstance(raw, str):
+        url = raw.strip()
+        return {'url': url, 'name': ''} if url else None
+    if not isinstance(raw, dict):
+        return None
+    url = str(raw.get('url') or '').strip()
+    if not url:
+        return None
+    return {
+        'url': url,
+        'name': str(raw.get('name') or '').strip(),
+    }
+
+
+def download_url_history():
+    items = []
+    seen = set()
+    for raw in load().get('recent_download_urls') or []:
+        entry = _clean_download_url_entry(raw)
+        if not entry or entry['url'] in seen:
+            continue
+        seen.add(entry['url'])
+        items.append(entry)
+    return items[:MAX_DOWNLOAD_URLS]
+
+
+def remember_download_url(url, name=''):
+    url = str(url or '').strip()
+    if not url:
+        return
+    name = str(name or '').strip()
+    items = []
+    previous = None
+    for entry in download_url_history():
+        if entry['url'] == url:
+            previous = entry
+            continue
+        items.append(entry)
+    items.insert(0, {
+        'url': url,
+        'name': name or (previous or {}).get('name') or '',
+    })
+    save({'recent_download_urls': items[:MAX_DOWNLOAD_URLS]})
 
 
 def remember_sidebar(items, source='', kind='items', groups=None, tvg_ids=None, epg_urls=None, logos=None):
