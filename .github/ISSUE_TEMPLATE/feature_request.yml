@@ -1,0 +1,58 @@
+name: Solicitud de mejora
+description: Proponer una nueva función o mejora
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe el problema o la necesidad antes que la solución concreta. Así es más fácil valorar la propuesta para **Kidneysm3u**.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - Reproductor IPTV (buffer, PiP, grabación)
+        - YouTube (búsqueda, cola, calidad, subtítulos)
+        - Listas M3U (filtro, grupos, listas grandes)
+        - Guía EPG / logos
+        - Descargas
+        - Favoritos / historial / sesión
+        - Interfaz, tema y accesibilidad
+        - Documentación
+        - Instalación / empaquetado `.deb`
+        - Otro
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: ¿Qué problema o necesidad quieres resolver?
+      placeholder: "Ej.: Al cargar una lista enorme no se ve si el reproductor sigue trabajando."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solución propuesta (opcional)
+      description: Cómo imaginas que debería funcionar en Kidneysm3u
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Alcance
+      options:
+        - label: Estoy dispuesto/a a contribuir con un PR si la propuesta encaja
+          required: false

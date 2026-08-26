@@ -52,6 +52,10 @@ Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda →
 
 Más detalle en las páginas de [uso](docs/uso.md), [listas M3U](docs/listas-m3u.md) y [YouTube](docs/youtube.md).
 
+## Contribuir
+
+Issues y pull requests son bienvenidos. Lee [CONTRIBUTING.md](CONTRIBUTING.md), el [código de conducta](CODE_OF_CONDUCT.md) y [SECURITY.md](SECURITY.md) para vulnerabilidades.
+
 ## Licencia
 
 [MIT License](./LICENSE)

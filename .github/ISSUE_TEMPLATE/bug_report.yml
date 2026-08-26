@@ -1,0 +1,111 @@
+name: Informe de error
+description: Algo no funciona como debería
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por reportar un error en **Kidneysm3u**. Cuanta más información des, más fácil será reproducirlo.
+
+        ⚠️ No incluyas cookies, tokens ni URLs de listas/EPG con usuario y contraseña.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área afectada
+      options:
+        - Reproductor IPTV (VLC, buffer, reconexión)
+        - YouTube (búsqueda, reproducción, cookies, cola)
+        - Listas M3U (carga, filtro, grupos)
+        - Guía EPG / logos
+        - Descargas (Archivo → Descargar)
+        - Favoritos / historial / sesión
+        - Interfaz, tema o bandeja del sistema
+        - Instalación o arranque (`run_app.py`, `.deb`)
+        - Otro
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Versión
+      description: Versión de Kidneysm3u (`packaging/VERSION`) o commit si ejecutas desde código fuente
+      placeholder: "1.2.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducir
+      description: Lista numerada de acciones hasta ver el fallo. No pegues URLs con credenciales.
+      placeholder: |
+        1. Abrir Kidneysm3u con `python3 run_app.py`
+        2. Reproducir → Cargar URL
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamiento esperado
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportamiento actual
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs o capturas
+      description: Salida de terminal al ejecutar `python3 run_app.py`, traceback o capturas (sin URLs ni cookies)
+      render: shell
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Entorno
+      options:
+        - Código fuente (`python3 run_app.py`)
+        - Paquete Ubuntu (`.deb` / comando `kidneysm3u`)
+        - Linux (escritorio)
+        - Windows
+        - No lo sé
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Versión de Python
+      placeholder: "3.12.x"
+
+  - type: input
+    id: vlc
+    attributes:
+      label: Versión de VLC (si aplica)
+      placeholder: "3.0.20"
+
+  - type: input
+    id: desktop
+    attributes:
+      label: Entorno de escritorio (si aplica)
+      placeholder: "GNOME, KDE, etc."
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmación
+      options:
+        - label: He buscado en issues abiertas y cerradas y no he encontrado un duplicado
+          required: true
+        - label: Este informe no incluye cookies, tokens ni URLs con usuario y contraseña
+          required: true
