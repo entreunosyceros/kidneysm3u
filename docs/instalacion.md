@@ -69,7 +69,21 @@ El icono del lanzador y la ventana del programa comparten el mismo identificador
 > [!NOTE]
 > El primer arranque tarda más porque crea el entorno virtual e instala dependencias. Los siguientes son más rápidos. Si actualizas el `.deb` y ya tenías una copia en `~/.local/share/kidneysm3u`, el siguiente arranque sustituye el código de esa carpeta.
 
-Siguiente: [uso básico](uso.md).
+### Desinstalar
+
+```bash
+sudo apt remove kidneysm3u
+```
+
+Eso quita el programa de `/usr` (binario, lanzador y copia en `/usr/share/kidneysm3u`). **No borra** `~/.local/share/kidneysm3u`: ahí están tus datos (`config.json`, cookies, favoritos, `epg_cache/`, `.venv`). `apt purge` tampoco la elimina: el paquete no escribe en el home y el script de desinstalación no debe borrar carpetas de usuario (corre como root; con `sudo`, `$HOME` suele ser el de root, no el tuyo).
+
+Si quieres borrar también esa copia local:
+
+```bash
+rm -rf ~/.local/share/kidneysm3u
+```
+
+Sin esa carpeta, un reinstalado arranca como la primera vez (vuelve a copiar el código y a crear `.venv`).
 
 ## Instalación en Windows
 

@@ -28,7 +28,7 @@ python3 -m pytest
 
 ## Archivos en la carpeta del programa
 
-`favoritos.json` lo crea el reproductor en tu equipo y **no se publica** (está en `.gitignore`, igual que `config.json` y las cookies). Si no existe, se usa una lista vacía.
+`favoritos.json` lo crea el reproductor en tu equipo y **no se publica** (está en `.gitignore`, igual que `config.json` y las cookies). Si no existe, se usa una lista vacía. Con el `.deb`, esos archivos viven en `~/.local/share/kidneysm3u`, no en `/usr/share/kidneysm3u`. Desinstalar el paquete **no borra** esa carpeta; hay que hacerlo a mano. Detalle en [instalación](instalacion.md#desinstalar).
 
 | Archivo | Uso | Si no existe |
 | --- | --- | --- |
