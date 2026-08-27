@@ -17,9 +17,10 @@ import atexit
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 import tkinter as tk
-from tkinter import messagebox, simpledialog, filedialog, ttk
+from tkinter import messagebox, filedialog, ttk
 import app_config
 from app_paths import data_dir
+from ui_clipboard import ask_string
 from youtube_subs import (
     collect_youtube_subs,
     ensure_caption_tlang,
@@ -765,7 +766,14 @@ class YouTubeHandler:
         
     def prompt_youtube_url(self, url=None):
         if url is None:
-            url = simpledialog.askstring("Cargar YouTube", "Introduce la URL del video de YouTube:")
+            ensure = getattr(self.video_player, 'ensure_window', None)
+            if ensure:
+                ensure()
+            url = ask_string(
+                self.video_player.window,
+                "Cargar YouTube",
+                "Introduce la URL del video de YouTube:",
+            )
         if url:
             self.play_youtube_url(url)
 
@@ -1617,7 +1625,14 @@ class YouTubeHandler:
     def download_youtube_video(self, url=None):
         """Permite al usuario descargar un vídeo de YouTube."""
         if url is None:
-            url = simpledialog.askstring("Descargar vídeo de YouTube", "Introduce la URL del video de YouTube:")
+            ensure = getattr(self.video_player, 'ensure_window', None)
+            if ensure:
+                ensure()
+            url = ask_string(
+                self.video_player.window,
+                "Descargar vídeo de YouTube",
+                "Introduce la URL del video de YouTube:",
+            )
         
         if not url:
             return

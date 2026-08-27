@@ -16,6 +16,7 @@ from ui_theme import (
     apply_theme, get_colors, style_window, style_menu_tree,
     set_window_icon, center_window,
 )
+from ui_clipboard import ask_string
 import app_config
 from app_paths import data_dir
 import sys
@@ -458,7 +459,7 @@ class M3UProcessor:
         return self.video_player
 
     def load_url(self):
-        url = tk.simpledialog.askstring("Cargar URL", "Introduce la URL de la lista M3U:")
+        url = ask_string(self.root, "Cargar URL", "Introduce la URL de la lista M3U:")
         if url:
             player = self._ensure_player()
             if not player:

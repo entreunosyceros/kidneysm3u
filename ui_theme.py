@@ -410,6 +410,8 @@ def apply_theme(root, dark=False):
         background=[('selected', colors['surface'])],
         foreground=[('selected', colors['text'])],
     )
+    from ui_clipboard import install_entry_clipboard
+    install_entry_clipboard(root)
 
 
 def _configure_button(style, name, bg, fg, border, hover, disabled_bg, disabled_fg):
@@ -443,6 +445,8 @@ def style_window(window):
         window.configure(bg=colors['bg'])
     except tk.TclError:
         pass
+    from ui_clipboard import install_entry_clipboard
+    install_entry_clipboard(window)
 
 
 def style_listbox(listbox):

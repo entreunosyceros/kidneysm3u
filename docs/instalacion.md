@@ -106,15 +106,17 @@ Si el audio o el vídeo fallan, comprueba que VLC está en el PATH y que `python
 
 Para YouTube, Chrome y Edge en Windows casi nunca van a funcionar: cifran las cookies y el programa no puede leerlas. En **Preferencias** deja el navegador de cookies en **Automático** o en **Firefox**, inicia sesión en youtube.com con Firefox, ciérralo y pulsa **Reexportar cookies**. Detalle en [YouTube](youtube.md#windows-firefox-no-chrome-ni-edge).
 
-### Generar el `.exe` (Linux o Windows)
+### Instalador de Windows
 
-No hace falta un PC con Windows. Desde la carpeta del proyecto, en Linux Mint u otro Linux (o en Windows):
+El usuario instala **Kidneysm3u-Setup-1.2.1.exe** (asistente de Inno Setup): Program Files, menú Inicio y desinstalador. Hace falta [VLC](https://www.videolan.org/vlc/) en el PATH.
+
+Para generar el instalador desde Linux (Docker) o desde Windows:
 
 ```bash
 bash build-windows.sh
 ```
 
-Eso instala PyInstaller si falta y deja `dist/kidneysm3u.exe`. Receta equivalente a mano: `python3 -m PyInstaller --noconfirm --clean kidneysm3u.spec`. En el equipo donde lo abras sigue haciendo falta [VLC](https://www.videolan.org/vlc/) en el PATH.
+El archivo queda en `dist/Kidneysm3u-Setup-1.2.1.exe`. Las preferencias y cookies van a `%LOCALAPPDATA%\kidneysm3u`. Al desinstalar, el asistente pregunta si quieres borrar también esa carpeta. Editor/compañía: **entreunosyceros**.
 
 ## Siguiente
 

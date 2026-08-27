@@ -14,7 +14,7 @@ from favorites_manager import (
 )
 import vlc
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, simpledialog
+from tkinter import ttk, messagebox, filedialog
 import json
 import sys
 import re
@@ -32,6 +32,7 @@ from ui_theme import (
     get_colors, get_font, style_window, style_menu_tree,
     set_window_icon, make_control_icons,
 )
+from ui_clipboard import ask_string
 import app_config
 from iptv_buffer import vlc_aout_instance_args, vlc_aout_option
 from m3u_parse import (
@@ -1609,7 +1610,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._rebuild_sidebar()
 
     def prompt_url(self):
-        url = simpledialog.askstring("Cargar URL", "Introduce la URL de la lista M3U:")
+        self.ensure_window()
+        url = ask_string(self.window, "Cargar URL", "Introduce la URL de la lista M3U:")
         if url:
             self.load_m3u_url(url)
 
@@ -1628,10 +1630,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         current = (self._epg_url_manual or app_config.get_epg_url() or '').strip()
         if current and not current.lower().startswith(('http://', 'https://')):
             current = ''
-        url = simpledialog.askstring(
+        url = ask_string(
+            self.window,
             "Guía EPG",
             "URL de la guía XMLTV (http o https):",
-            parent=self.window,
             initialvalue=current,
         )
         if url is None:
@@ -2455,7 +2457,11 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
 
     def prompt_youtube_playlist(self):
         """Solicita URL de playlist de YouTube y la carga."""
-        playlist_url = simpledialog.askstring("Cargar Playlist de YouTube", "Introduce la URL de la playlist de YouTube:")
+        playlist_url = ask_string(
+            self.window,
+            "Cargar Playlist de YouTube",
+            "Introduce la URL de la playlist de YouTube:",
+        )
         if playlist_url:
             self.load_youtube_playlist(playlist_url)
 

@@ -1,7 +1,9 @@
+import os
 import tkinter as tk
 from tkinter import ttk
 import webbrowser
 from PIL import Image, ImageTk
+from app_paths import resource_dir
 from ui_theme import style_window, set_window_icon, center_window, get_colors, get_font
 
 def show_about(root):
@@ -26,7 +28,7 @@ def show_about(root):
     ).pack(pady=(0, 16))
 
     try:
-        image = Image.open('img/logo.png')
+        image = Image.open(os.path.join(resource_dir(), 'img', 'logo.png'))
         image = image.resize((110, 132), Image.Resampling.LANCZOS)
         photo = ImageTk.PhotoImage(image)
         image_label = ttk.Label(main_frame, image=photo)

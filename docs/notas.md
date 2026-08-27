@@ -63,7 +63,7 @@ Aparecerá el porcentaje abajo a la derecha, actualizado cada segundo.
 </p>
 
 > [!IMPORTANT]
-> El desarrollo y las pruebas se hacen sobre todo en Linux. En Windows puede haber fallos no vistos. El reproductor usa `trace_add` (Tcl 8.7 / Python 3.13) y no fuerza ALSA, que no existe en Windows. El `.exe` se puede generar **desde Linux** con `bash build-windows.sh` (PyInstaller).
+> El desarrollo y las pruebas se hacen sobre todo en Linux. En Windows puede haber fallos no vistos. El reproductor usa `trace_add` (Tcl 8.7 / Python 3.13) y no fuerza ALSA, que no existe en Windows. El instalador de Windows se genera con `bash build-windows.sh` (Docker: PyInstaller/Wine + Inno Setup).
 
 - En **Windows**, Chrome y Edge casi nunca sirven para leer las cookies de YouTube (van cifradas). En **Preferencias** deja el navegador de cookies en **Automático** o **Firefox**, inicia sesión en Firefox, ciérralo y pulsa **Reexportar cookies**. Detalle en [YouTube](youtube.md#windows-firefox-no-chrome-ni-edge).
 - Algunos vídeos de YouTube no tienen stream compatible o están restringidos. Si de pronto no extrae ninguno, actualiza yt-dlp en **Preferencias** (o **Youtube → Actualizar yt-dlp**) y reinicia.

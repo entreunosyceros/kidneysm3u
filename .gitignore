@@ -5,8 +5,19 @@ __pycache__/
 debian-package/
 packaging/
 *.deb
+
+# Empaquetado Windows (local; no va al repositorio)
 dist/
 build/
+.sign/
+img/logo.ico
+*.exe
+build-windows.sh
+kidneysm3u.spec
+kidneysm3u.iss
+file_version_info.txt
+installer-windows.txt
+sign-windows.ps1
 
 # Datos locales del usuario (no van al repositorio)
 config.json
@@ -14,8 +25,3 @@ cookies.txt
 enlaces.json
 favoritos.json
 
-# Datos locales del usuario (no van al repositorio)
-config.json
-cookies.txt
-enlaces.json
-favoritos.json
