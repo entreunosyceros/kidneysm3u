@@ -36,6 +36,7 @@ El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras co
 | Volumen por defecto | Al abrir el reproductor. |
 | Calidad YouTube | Tope de altura: 360p, 720p, 1080p o **Mejor**. Si cambias con un vídeo en marcha, se recarga desde el segundo actual. |
 | Buffer IPTV | **Rápido**, **Equilibrado** (por defecto) o **Estable**. El siguiente canal ya usa el valor. Detalle en [listas M3U](listas-m3u.md#buffer-iptv). |
+| Subtítulos | Tamaño, color, opacidad, contorno, caja de fondo (color y transparencia), margen y retraso. Solo afecta a subtítulos de texto (SRT, YouTube). En YouTube se recarga el vídeo al guardar; en IPTV, al siguiente canal. |
 | Recordar última lista | Restaura la lista lateral al abrir; no reproduce solo. |
 | Carpeta de descargas | Destino inicial de vídeos, audio y grabaciones. |
 | Navegador de cookies | **Automático** o **Firefox**. Automático prueba Firefox y, si puede, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer: usa Firefox. Detalle en [YouTube](youtube.md#cookies). |

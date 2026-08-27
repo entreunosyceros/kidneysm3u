@@ -775,6 +775,9 @@ class YouTubeHandler:
                 "Introduce la URL del video de YouTube:",
             )
         if url:
+            player = getattr(self, 'video_player', None)
+            if player is not None:
+                player._yt_standalone = not getattr(player, 'is_sequential_playback', False)
             self.play_youtube_url(url)
 
     def play_youtube_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, title=None, resume_s=None):
@@ -1746,8 +1749,12 @@ class YouTubeHandler:
             matches.append(os.path.join(directory, name))
         if not matches:
             return None
-        vlc_ready = [path for path in matches if path.endswith('.vlc.vtt')]
-        return sorted(vlc_ready or matches)[0]
+        vlc_ready = [
+            path for path in matches
+            if path.endswith('.vlc.srt') or path.endswith('.vlc.vtt')
+        ]
+        srt_ready = [path for path in vlc_ready if path.endswith('.vlc.srt')]
+        return sorted(srt_ready or vlc_ready or matches)[0]
 
     def _write_subs_from_info(self, ydl, info, items):
         """Guarda el ASR original (o el primero) y lo deja en un VTT que VLC no atasca."""
@@ -1830,13 +1837,11 @@ class YouTubeHandler:
     def fetch_subtitle_file(self, lang, auto=False, url=None, ext='vtt', path=None, vtt_url=None):
         """Usa el archivo ya extraído o descarga json3/vtt y lo convierte para VLC."""
         if path and os.path.isfile(path) and filename_matches_sub_lang(path, lang):
-            ready = path if path.endswith('.vlc.vtt') else prepare_subtitle_for_vlc(path, ext=ext)
+            ready = prepare_subtitle_for_vlc(path, ext=ext)
             if ready:
                 return ready
         found = self._find_sub_file(getattr(self.video_player, '_yt_sub_dir', None), lang)
         if found and filename_matches_sub_lang(found, lang):
-            if found.endswith('.vlc.vtt'):
-                return found
             ready = prepare_subtitle_for_vlc(found)
             if ready:
                 return ready

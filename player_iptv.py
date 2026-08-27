@@ -33,6 +33,7 @@ from m3u_parse import (
     iptv_upstream_candidates,
     is_iptv_vod,
 )
+from subtitle_style import vlc_media_options
 from youtube_player import _GrowingTSHandler
 
 
@@ -135,6 +136,7 @@ class IptvPlaybackMixin:
             options.extend([':demux=ts', ':no-ts-trust-pcr'])
         elif kind == 'mpegts':
             options.append(':no-ts-trust-pcr')
+        options.extend(vlc_media_options())
         return options
 
     def _start_vlc_remote(self, name, url, kind, force_ts=False):
@@ -281,6 +283,7 @@ class IptvPlaybackMixin:
         aout = vlc_aout_option(prefix='')
         if aout:
             options.append(aout)
+        options.extend(vlc_media_options(prefix=''))
         return options
 
     def _start_vlc_local_ts(self, name, url):

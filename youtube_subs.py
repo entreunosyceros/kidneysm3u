@@ -89,7 +89,7 @@ def filename_matches_sub_lang(name, lang):
     lang = str(lang or '').lower().strip()
     if not base or not lang:
         return False
-    for suffix in ('.vlc.vtt', '.json3', '.srv3', '.ttml', '.vtt', '.srt'):
+    for suffix in ('.vlc.srt', '.vlc.vtt', '.json3', '.srv3', '.ttml', '.vtt', '.srt'):
         if base.endswith(suffix):
             base = base[: -len(suffix)]
             break
@@ -222,12 +222,27 @@ def _ms_to_stamp(ms):
     return f'{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}'
 
 
+def _cue_lines(text):
+    return [line for line in (text or '').split('\n') if line.strip()]
+
+
 def _clean_cue_text(text):
     text = _CUE_TAGS.sub('', text or '')
     text = _HTML_TAGS.sub('', text)
     text = text.replace('\u200b', '')
     lines = [' '.join(line.split()) for line in text.splitlines()]
     return '\n'.join(line for line in lines if line).strip()
+
+
+def _drop_rollup_prefix(text, previous_lines):
+    """Quita líneas ya mostradas (ventana roll-up de YouTube). Una sola línea para VLC."""
+    lines = _cue_lines(text)
+    if not lines:
+        return ''
+    previous = set(previous_lines or [])
+    while len(lines) > 1 and lines[0] in previous:
+        lines.pop(0)
+    return ' '.join(lines)
 
 
 def _dedupe_and_deoverlap(cues):
@@ -258,11 +273,21 @@ def _dedupe_and_deoverlap(cues):
             merged[-1][1] = max(merged[-1][1], end)
             continue
         merged.append([start, end, text])
-    for index, cue in enumerate(merged[:-1]):
-        nxt = merged[index + 1]
-        if cue[1] > nxt[0]:
-            cue[1] = max(cue[0] + 80, nxt[0])
-    return [cue for cue in merged if cue[1] > cue[0]]
+    previous_lines = []
+    flattened = []
+    for start, end, text in merged:
+        original_lines = _cue_lines(text)
+        flat = _drop_rollup_prefix(text, previous_lines)
+        previous_lines = original_lines
+        if flat:
+            flattened.append([start, end, flat])
+    for index, cue in enumerate(flattened[:-1]):
+        nxt = flattened[index + 1]
+        # Hueco de 1 ms: si coinciden, VLC apila y sube el bloque.
+        limit = nxt[0] - 1
+        if cue[1] > limit:
+            cue[1] = max(cue[0] + 40, limit)
+    return [cue for cue in flattened if cue[1] > cue[0]]
 
 
 def _cues_to_vtt(cues):
@@ -272,6 +297,45 @@ def _cues_to_vtt(cues):
         lines.append(f'{_ms_to_stamp(start)} --> {_ms_to_stamp(end)}')
         lines.append(text)
         lines.append('')
+    return '\n'.join(lines)
+
+
+def _ms_to_srt_stamp(ms):
+    ms = max(0, int(ms))
+    hours, rest = divmod(ms, 3600000)
+    minutes, rest = divmod(rest, 60000)
+    seconds, millis = divmod(rest, 1000)
+    return f'{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}'
+
+
+def vtt_to_srt(raw):
+    """VTT limpio a SRT. VLC aplica freetype a SRT; el WebVTT suele ignorarlo."""
+    vtt = sanitize_youtube_vtt(raw)
+    lines = []
+    index = 1
+    for block in vtt.split('\n\n'):
+        rows = [row for row in block.split('\n') if row.strip()]
+        header = None
+        payload = []
+        for row in rows:
+            match = _VTT_TIME.match(row.strip())
+            if match and header is None:
+                header = match
+                continue
+            if header is not None:
+                payload.append(row)
+        if not header:
+            continue
+        text = _clean_cue_text('\n'.join(payload))
+        if not text:
+            continue
+        start = _ms_to_srt_stamp(_stamp_to_ms(header.group(1)))
+        end = _ms_to_srt_stamp(_stamp_to_ms(header.group(2)))
+        lines.append(str(index))
+        lines.append(f'{start} --> {end}')
+        lines.append(text)
+        lines.append('')
+        index += 1
     return '\n'.join(lines)
 
 
@@ -357,7 +421,7 @@ def subtitle_bytes_to_vtt(raw, ext=None):
 
 
 def prepare_subtitle_for_vlc(path, ext=None):
-    """Escribe un VTT simple junto al archivo original. No registra URLs."""
+    """Escribe un SRT simple junto al archivo original. No registra URLs."""
     if not path or not os.path.isfile(path):
         return None
     ext = (ext or os.path.splitext(path)[1].lstrip('.') or 'vtt').lower()
@@ -369,12 +433,15 @@ def prepare_subtitle_for_vlc(path, ext=None):
     vtt = subtitle_bytes_to_vtt(raw, ext=ext)
     if '-->' not in vtt:
         return None
+    srt = vtt_to_srt(vtt)
+    if '-->' not in srt:
+        return None
     dest = path
-    if not dest.lower().endswith('.vlc.vtt'):
-        dest = os.path.splitext(path)[0] + '.vlc.vtt'
+    if not dest.lower().endswith('.vlc.srt'):
+        dest = os.path.splitext(path)[0] + '.vlc.srt'
     try:
         with open(dest, 'w', encoding='utf-8') as handle:
-            handle.write(vtt)
+            handle.write(srt)
     except OSError:
         return None
     return dest

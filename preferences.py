@@ -6,9 +6,10 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, colorchooser
 
 import app_config
+import subtitle_style
 from ui_theme import apply_theme, get_colors, style_window, set_window_icon, center_window
 
 COOKIE_LABELS = (
@@ -179,6 +180,16 @@ def show_preferences(parent, on_apply=None):
     cookie_var = tk.StringVar(value=app_config.get_cookie_browser())
     remember_var = tk.BooleanVar(value=app_config.get_remember_last_list())
     logos_var = tk.BooleanVar(value=app_config.get_show_channel_logos())
+    sub_cfg = app_config.get_subtitle_style()
+    sub_size_var = tk.StringVar(value=str(sub_cfg['subtitle_size']))
+    sub_color_var = tk.StringVar(value=sub_cfg['subtitle_color'])
+    sub_outline_var = tk.StringVar(value=str(sub_cfg['subtitle_outline']))
+    sub_outline_color_var = tk.StringVar(value=sub_cfg['subtitle_outline_color'])
+    sub_bg_color_var = tk.StringVar(value=sub_cfg['subtitle_bg_color'])
+    sub_text_op_label = tk.StringVar()
+    sub_bg_op_label = tk.StringVar()
+    sub_margin_label = tk.StringVar()
+    sub_delay_label = tk.StringVar()
 
     colors = get_colors()
     shell = ttk.Frame(window, padding=(16, 16, 12, 12))
@@ -187,7 +198,7 @@ def show_preferences(parent, on_apply=None):
     ttk.Label(shell, text='Preferencias', style='PageTitle.TLabel').pack(anchor=tk.W)
     ttk.Label(
         shell,
-        text='Tema, logos, reproducción, descargas, sesión de YouTube y yt-dlp',
+        text='Tema, logos, reproducción, subtítulos, descargas, sesión de YouTube y yt-dlp',
         style='Muted.TLabel',
     ).pack(anchor=tk.W, pady=(0, 10))
 
@@ -326,6 +337,135 @@ def show_preferences(parent, on_apply=None):
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
 
+    subs = ttk.LabelFrame(main, text=' SUBTÍTULOS ', padding=12)
+    subs.pack(fill=tk.X, pady=(0, 10))
+
+    def _paint_swatch(swatch, var):
+        try:
+            swatch.configure(bg=var.get())
+        except tk.TclError:
+            swatch.configure(bg='#FFFFFF')
+
+    def _color_row(parent, text, var):
+        row = ttk.Frame(parent, style='Card.TFrame')
+        row.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(row, text=text, style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
+        swatch = tk.Frame(
+            row,
+            width=36,
+            height=20,
+            bg=var.get(),
+            highlightthickness=1,
+            highlightbackground=colors['border'],
+        )
+        swatch.pack(side=tk.LEFT, padx=(0, 8))
+        swatch.pack_propagate(False)
+
+        def pick():
+            _rgb, chosen = colorchooser.askcolor(color=var.get(), parent=window, title=text)
+            if chosen:
+                var.set(subtitle_style.normalize_hex_color(chosen, var.get()))
+                _paint_swatch(swatch, var)
+
+        ttk.Button(row, text='Elegir', command=pick).pack(side=tk.RIGHT)
+        swatch.bind('<Button-1>', lambda _e: pick())
+        return swatch
+
+    size_row = ttk.Frame(subs, style='Card.TFrame')
+    size_row.pack(fill=tk.X)
+    ttk.Label(size_row, text='Tamaño', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
+    for value, label in subtitle_style.SUBTITLE_SIZES:
+        ttk.Radiobutton(size_row, text=label, variable=sub_size_var, value=str(value)).pack(
+            side=tk.LEFT, padx=(0, 8)
+        )
+
+    _color_row(subs, 'Color del texto', sub_color_var)
+
+    text_op_row = ttk.Frame(subs, style='Card.TFrame')
+    text_op_row.pack(fill=tk.X)
+    ttk.Label(text_op_row, text='Opacidad del texto', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
+    ttk.Label(text_op_row, textvariable=sub_text_op_label, style='CardMuted.TLabel', width=6).pack(side=tk.RIGHT)
+
+    def _on_text_op(value):
+        try:
+            sub_text_op_label.set(f'{int(float(value))} %')
+        except (TypeError, ValueError):
+            pass
+
+    text_op_scale = ttk.Scale(subs, from_=20, to=100, command=_on_text_op)
+    text_op_scale.set(subtitle_style.opacity_percent(sub_cfg['subtitle_opacity']))
+    text_op_scale.pack(fill=tk.X, pady=(4, 10))
+    _on_text_op(text_op_scale.get())
+
+    outline_row = ttk.Frame(subs, style='Card.TFrame')
+    outline_row.pack(fill=tk.X)
+    ttk.Label(outline_row, text='Contorno', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
+    for value, label in subtitle_style.SUBTITLE_OUTLINES:
+        ttk.Radiobutton(outline_row, text=label, variable=sub_outline_var, value=str(value)).pack(
+            side=tk.LEFT, padx=(0, 8)
+        )
+    _color_row(subs, 'Color del contorno', sub_outline_color_var)
+    _color_row(subs, 'Color de fondo', sub_bg_color_var)
+
+    bg_op_row = ttk.Frame(subs, style='Card.TFrame')
+    bg_op_row.pack(fill=tk.X)
+    ttk.Label(bg_op_row, text='Transparencia del fondo', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
+    ttk.Label(bg_op_row, textvariable=sub_bg_op_label, style='CardMuted.TLabel', width=6).pack(side=tk.RIGHT)
+
+    def _on_bg_op(value):
+        try:
+            percent = int(float(value))
+        except (TypeError, ValueError):
+            return
+        if percent <= 0:
+            sub_bg_op_label.set('nada')
+        else:
+            sub_bg_op_label.set(f'{percent} %')
+
+    bg_op_scale = ttk.Scale(subs, from_=0, to=100, command=_on_bg_op)
+    bg_op_scale.set(subtitle_style.opacity_percent(sub_cfg['subtitle_bg_opacity']))
+    bg_op_scale.pack(fill=tk.X, pady=(4, 10))
+    _on_bg_op(bg_op_scale.get())
+
+    margin_row = ttk.Frame(subs, style='Card.TFrame')
+    margin_row.pack(fill=tk.X)
+    ttk.Label(margin_row, text='Margen inferior', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
+    ttk.Label(margin_row, textvariable=sub_margin_label, style='CardMuted.TLabel', width=6).pack(side=tk.RIGHT)
+
+    def _on_margin(value):
+        try:
+            sub_margin_label.set(f'{int(float(value))} px')
+        except (TypeError, ValueError):
+            pass
+
+    margin_scale = ttk.Scale(subs, from_=0, to=150, command=_on_margin)
+    margin_scale.set(sub_cfg['subtitle_margin'])
+    margin_scale.pack(fill=tk.X, pady=(4, 10))
+    _on_margin(margin_scale.get())
+
+    delay_row = ttk.Frame(subs, style='Card.TFrame')
+    delay_row.pack(fill=tk.X)
+    ttk.Label(delay_row, text='Retraso', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
+    ttk.Label(delay_row, textvariable=sub_delay_label, style='CardMuted.TLabel', width=8).pack(side=tk.RIGHT)
+
+    def _on_delay(value):
+        try:
+            tenths = int(round(float(value)))
+        except (TypeError, ValueError):
+            return
+        sub_delay_label.set(subtitle_style.delay_label(tenths))
+
+    delay_scale = ttk.Scale(subs, from_=-50, to=50, command=_on_delay)
+    delay_scale.set(sub_cfg['subtitle_delay_ds'])
+    delay_scale.pack(fill=tk.X, pady=(4, 0))
+    _on_delay(delay_scale.get())
+    ttk.Label(
+        subs,
+        text='Solo cambia subtítulos de texto (SRT y YouTube). Los de imagen del propio canal no se pueden restilar. En YouTube se recarga el vídeo al guardar; en IPTV rige el siguiente canal.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(8, 0))
+
     session = ttk.LabelFrame(main, text=' SESIÓN ', padding=12)
     session.pack(fill=tk.X, pady=(0, 10))
     ttk.Checkbutton(
@@ -443,7 +583,42 @@ def show_preferences(parent, on_apply=None):
             volume = max(0, min(100, int(float(volume_scale.get()))))
         except (TypeError, ValueError, tk.TclError):
             volume = app_config.get_volume()
-        app_config.save({
+        try:
+            sub_size = int(sub_size_var.get())
+        except (TypeError, ValueError):
+            sub_size = 0
+        try:
+            sub_outline = int(sub_outline_var.get())
+        except (TypeError, ValueError):
+            sub_outline = 1
+        try:
+            text_pct = int(float(text_op_scale.get()))
+        except (TypeError, ValueError, tk.TclError):
+            text_pct = 100
+        try:
+            bg_pct = int(float(bg_op_scale.get()))
+        except (TypeError, ValueError, tk.TclError):
+            bg_pct = 0
+        try:
+            sub_margin = int(float(margin_scale.get()))
+        except (TypeError, ValueError, tk.TclError):
+            sub_margin = 0
+        try:
+            sub_delay = int(round(float(delay_scale.get())))
+        except (TypeError, ValueError, tk.TclError):
+            sub_delay = 0
+        sub_payload = subtitle_style.normalize_subtitle_style({
+            'subtitle_size': sub_size,
+            'subtitle_color': sub_color_var.get(),
+            'subtitle_opacity': subtitle_style.percent_to_opacity(text_pct),
+            'subtitle_outline': sub_outline,
+            'subtitle_outline_color': sub_outline_color_var.get(),
+            'subtitle_bg_color': sub_bg_color_var.get(),
+            'subtitle_bg_opacity': subtitle_style.percent_to_opacity(bg_pct),
+            'subtitle_margin': sub_margin,
+            'subtitle_delay_ds': sub_delay,
+        })
+        payload = {
             'theme': 'dark' if theme_var.get() == 'dark' else 'light',
             'volume': volume,
             'download_dir': folder,
@@ -452,7 +627,9 @@ def show_preferences(parent, on_apply=None):
             'show_channel_logos': bool(logos_var.get()),
             'youtube_quality': app_config.normalize_youtube_quality(quality),
             'iptv_buffer': app_config.normalize_iptv_buffer_profile(buffer_var.get()),
-        })
+        }
+        payload.update(sub_payload)
+        app_config.save(payload)
         close()
         apply_theme(root, app_config.get_theme() == 'dark')
         if on_apply:

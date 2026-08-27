@@ -46,7 +46,7 @@ Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda →
 - Grabar el canal o vídeo en reproducción a un fichero local (hace falta [ffmpeg](https://ffmpeg.org/download.html)).
 - Descargar vídeos o solo audio (también hace falta ffmpeg).
 - Ordenar listas M3U desde la interfaz.
-- Ajustar tema, volumen, descargas, cookies, calidad de YouTube y buffer IPTV en **Preferencias**.
+- Ajustar tema, volumen, descargas, cookies, calidad de YouTube, buffer IPTV y estilo de subtítulos en **Preferencias**.
 
 Más detalle en las páginas de [uso](docs/uso.md), [listas M3U](docs/listas-m3u.md) y [YouTube](docs/youtube.md).
 

@@ -15,6 +15,7 @@ MAX_DOWNLOAD_URLS = 12
 MAX_YT_RESUME = 80
 MAX_YT_HISTORY = 40
 MAX_YT_QUEUE = 80
+MAX_YT_SEARCHES = 5
 MAX_IPTV_HISTORY = 25
 YT_RESUME_MIN_S = 15
 YT_RESUME_END_S = 20
@@ -55,9 +56,19 @@ _DEFAULTS = {
     'youtube_resume': {},
     'youtube_history': [],
     'youtube_queue': [],
+    'youtube_searches': [],
     'iptv_history': [],
     'youtube_quality': 720,
     'iptv_buffer': 'balanced',
+    'subtitle_size': 0,
+    'subtitle_color': '#FFFFFF',
+    'subtitle_opacity': 255,
+    'subtitle_outline': 1,
+    'subtitle_outline_color': '#000000',
+    'subtitle_bg_color': '#000000',
+    'subtitle_bg_opacity': 0,
+    'subtitle_margin': 0,
+    'subtitle_delay_ds': 0,
 }
 
 _cache = None
@@ -255,6 +266,16 @@ def set_iptv_buffer(value):
     save({'iptv_buffer': normalize_iptv_buffer_profile(value)})
 
 
+def get_subtitle_style():
+    from subtitle_style import normalize_subtitle_style
+    return normalize_subtitle_style(load())
+
+
+def set_subtitle_style(values):
+    from subtitle_style import normalize_subtitle_style
+    save(normalize_subtitle_style(values))
+
+
 def remember_playlist(path, kind='file'):
     if not path:
         return
@@ -315,6 +336,99 @@ def remember_download_url(url, name=''):
         'name': name or (previous or {}).get('name') or '',
     })
     save({'recent_download_urls': items[:MAX_DOWNLOAD_URLS]})
+
+
+YT_SEARCH_TYPES = ('Vídeos', 'Shorts', 'Listas de reproducción', 'Canales')
+YT_SEARCH_DATES = ('Cualquier fecha', 'Hoy', 'Esta semana', 'Este mes', 'Este año')
+YT_SEARCH_DURATIONS = (
+    'Cualquier duración',
+    'Corto (<4 min)',
+    'Medio (4-20 min)',
+    'Largo (>20 min)',
+)
+YT_SEARCH_SORTS = ('Relevancia', 'Fecha', 'Vistas', 'Valoración')
+
+
+def _clean_youtube_search_entry(raw):
+    if isinstance(raw, str):
+        query = raw.strip()
+        raw = {'query': query} if query else None
+    if not isinstance(raw, dict):
+        return None
+    query = str(raw.get('query') or '').strip()
+    if not query:
+        return None
+    kind = raw.get('type') if raw.get('type') in YT_SEARCH_TYPES else 'Vídeos'
+    date = raw.get('date') if raw.get('date') in YT_SEARCH_DATES else 'Cualquier fecha'
+    duration = raw.get('duration') if raw.get('duration') in YT_SEARCH_DURATIONS else 'Cualquier duración'
+    sort = raw.get('sort') if raw.get('sort') in YT_SEARCH_SORTS else 'Relevancia'
+    return {
+        'query': query[:120],
+        'type': kind,
+        'date': date,
+        'duration': duration,
+        'sort': sort,
+    }
+
+
+def youtube_search_key(entry):
+    item = _clean_youtube_search_entry(entry)
+    if not item:
+        return None
+    return (
+        item['query'].casefold(),
+        item['type'],
+        item['date'],
+        item['duration'],
+        item['sort'],
+    )
+
+
+def youtube_search_label(entry):
+    item = _clean_youtube_search_entry(entry)
+    if not item:
+        return ''
+    extras = []
+    if item['type'] != 'Vídeos':
+        extras.append(item['type'])
+    if item['date'] != 'Cualquier fecha':
+        extras.append(item['date'])
+    if item['duration'] != 'Cualquier duración':
+        extras.append(item['duration'])
+    if item['sort'] != 'Relevancia':
+        extras.append(item['sort'])
+    if extras:
+        return f"{item['query']}  ·  {' · '.join(extras)}"
+    return item['query']
+
+
+def youtube_search_history():
+    items = []
+    seen = set()
+    for raw in load().get('youtube_searches') or []:
+        entry = _clean_youtube_search_entry(raw)
+        key = youtube_search_key(entry)
+        if not entry or key in seen:
+            continue
+        seen.add(key)
+        items.append(entry)
+    return items[:MAX_YT_SEARCHES]
+
+
+def remember_youtube_search(query, type_name='Vídeos', date='Cualquier fecha', duration='Cualquier duración', sort='Relevancia'):
+    entry = _clean_youtube_search_entry({
+        'query': query,
+        'type': type_name,
+        'date': date,
+        'duration': duration,
+        'sort': sort,
+    })
+    key = youtube_search_key(entry)
+    if not key:
+        return
+    items = [item for item in youtube_search_history() if youtube_search_key(item) != key]
+    items.insert(0, entry)
+    save({'youtube_searches': items[:MAX_YT_SEARCHES]})
 
 
 def remember_sidebar(items, source='', kind='items', groups=None, tvg_ids=None, epg_urls=None, logos=None):

@@ -7,17 +7,211 @@ import threading
 import os
 import re
 import subprocess
-from datetime import datetime, timedelta
+import base64
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, quote_plus
 from youtube_player import (
     youtube_ydl_opts, youtube_auth_blocked, youtube_auth_help, slim_youtube_cookies_file,
 )
-from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window
+from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window, get_colors
 import app_config
 
 
 STAR_ON = '★'
 STAR_OFF = '☆'
+
+_YT_SORT = {'relevance': 0, 'rating': 1, 'date': 2, 'views': 3}
+_YT_TYPE = {'video': 1, 'channel': 2, 'playlist': 3, 'movie': 4, 'shorts': 9}
+_YT_UPLOADED = {'hour': 1, 'today': 2, 'week': 3, 'month': 4, 'year': 5}
+_YT_DURATION = {'short': 1, 'long': 2, 'medium': 3}
+_UI_SORT = {
+    'Relevancia': 'relevance',
+    'Fecha': 'date',
+    'Vistas': 'views',
+    'Valoración': 'rating',
+}
+_UI_TYPE = {
+    'Vídeos': 'video',
+    'Shorts': 'shorts',
+    'Listas de reproducción': 'playlist',
+    'Canales': 'channel',
+}
+_UI_DATE = {
+    'Hoy': 'today',
+    'Esta semana': 'week',
+    'Este mes': 'month',
+    'Este año': 'year',
+}
+_UI_DURATION = {
+    'Corto (<4 min)': 'short',
+    'Medio (4-20 min)': 'medium',
+    'Largo (>20 min)': 'long',
+}
+
+
+def _pb_varint(value):
+    value = int(value)
+    chunks = []
+    while value > 0x7F:
+        chunks.append((value & 0x7F) | 0x80)
+        value >>= 7
+    chunks.append(value & 0x7F)
+    return bytes(chunks)
+
+
+def _pb_key(field, wire=0):
+    return _pb_varint((field << 3) | wire)
+
+
+def youtube_search_sp(sort='relevance', result_type='video', uploaded=None, duration=None):
+    """Protobuf `sp` de YouTube: tipo + orden + filtros. Fecha = más recientes primero."""
+    filters = b''
+    if uploaded in _YT_UPLOADED:
+        filters += _pb_key(1) + _pb_varint(_YT_UPLOADED[uploaded])
+    if result_type in _YT_TYPE:
+        filters += _pb_key(2) + _pb_varint(_YT_TYPE[result_type])
+    if duration in _YT_DURATION:
+        filters += _pb_key(3) + _pb_varint(_YT_DURATION[duration])
+    params = b''
+    sort_n = _YT_SORT.get(sort, 0)
+    if sort_n:
+        params += _pb_key(1) + _pb_varint(sort_n)
+    if filters:
+        params += _pb_key(2, 2) + _pb_varint(len(filters)) + filters
+    # El extra de yt-dlp (campo 30) rompe el orden por fecha; solo en vídeos por relevancia.
+    if result_type == 'video' and not sort_n and uploaded is None and duration is None:
+        params += b'\xf0\x01\x01'
+    if not params:
+        return None
+    return base64.urlsafe_b64encode(params).decode()
+
+
+_ES_RELATIVE_UNITS = {
+    'segundo': 'seconds',
+    'segundos': 'seconds',
+    'minuto': 'minutes',
+    'minutos': 'minutes',
+    'hora': 'hours',
+    'horas': 'hours',
+    'dia': 'days',
+    'dias': 'days',
+    'día': 'days',
+    'días': 'days',
+    'semana': 'weeks',
+    'semanas': 'weeks',
+    'mes': 'days',
+    'meses': 'days',
+    'año': 'days',
+    'años': 'days',
+}
+_ES_RELATIVE_MULTIPLIER = {
+    'mes': 30,
+    'meses': 30,
+    'año': 365,
+    'años': 365,
+}
+_YT_RELATIVE_TIME_PATCHED = False
+
+
+def parse_relative_upload_text(text):
+    """Convierte «hace 3 días» / «ayer» en datetime UTC (naive), como yt-dlp."""
+    raw = (text or '').strip().lower()
+    if not raw:
+        return None
+    if re.search(r'\bhoy\b|\bahora\b|un momento', raw):
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+    if re.search(r'\bayer\b', raw):
+        return datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+    match = re.search(
+        r'hace\s+(?:un[a]?\s+)?(\d+)?\s*'
+        r'(segundos?|minutos?|horas?|días?|dias?|semanas?|meses?|años?)\b',
+        raw,
+    )
+    if not match:
+        return None
+    amount = int(match.group(1) or 1)
+    unit = match.group(2)
+    amount *= _ES_RELATIVE_MULTIPLIER.get(unit, 1)
+    field = _ES_RELATIVE_UNITS.get(unit)
+    if not field:
+        return None
+    return datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(**{field: amount})
+
+
+def _ensure_spanish_relative_time():
+    """yt-dlp solo entiende «3 days ago»; con el idioma en español las fechas son «hace 3 días»."""
+    global _YT_RELATIVE_TIME_PATCHED
+    if _YT_RELATIVE_TIME_PATCHED:
+        return
+    from yt_dlp.extractor.youtube._base import YoutubeBaseInfoExtractor
+
+    original = YoutubeBaseInfoExtractor.extract_relative_time
+
+    @classmethod
+    def extract_relative_time(cls, relative_time_text):
+        parsed = original(relative_time_text)
+        if parsed is not None:
+            return parsed
+        return parse_relative_upload_text(relative_time_text)
+
+    YoutubeBaseInfoExtractor.extract_relative_time = extract_relative_time
+    _YT_RELATIVE_TIME_PATCHED = True
+
+
+def _search_ydl_opts(**extra):
+    """Fechas aproximadas sin traducir los títulos al inglés."""
+    _ensure_spanish_relative_time()
+    return youtube_ydl_opts(
+        extractor_args={
+            'youtubetab': {'approximate_date': ['']},
+        },
+        **extra,
+    )
+
+
+def youtube_search_sp_from_ui(tipo, sort_label, date_label=None, duration_label=None):
+    result_type = _UI_TYPE.get(tipo, 'video')
+    duration = None if result_type == 'shorts' else _UI_DURATION.get(duration_label)
+    return youtube_search_sp(
+        sort=_UI_SORT.get(sort_label, 'relevance'),
+        result_type=result_type,
+        uploaded=_UI_DATE.get(date_label),
+        duration=duration,
+    )
+
+
+def _entry_recency(entry):
+    if not isinstance(entry, dict):
+        return 0
+    for key in ('timestamp', 'release_timestamp'):
+        try:
+            value = int(entry.get(key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            return value
+    raw = str(entry.get('upload_date') or entry.get('release_date') or '').strip()
+    digits = ''.join(ch for ch in raw if ch.isdigit())[:8]
+    if len(digits) == 8:
+        try:
+            return int(
+                datetime.strptime(digits, '%Y%m%d').replace(tzinfo=timezone.utc).timestamp()
+            )
+        except ValueError:
+            return 0
+    return 0
+
+
+def sort_search_entries(entries, sort_label):
+    """Si hay fechas, deja los más recientes primero al ordenar por Fecha."""
+    items = [entry for entry in (entries or []) if entry]
+    if _UI_SORT.get(sort_label) != 'date' or len(items) < 2:
+        return items
+    keyed = [(_entry_recency(entry), index, entry) for index, entry in enumerate(items)]
+    if not any(recency for recency, _index, _entry in keyed):
+        return items
+    keyed.sort(key=lambda item: (-item[0], item[1]))
+    return [entry for _recency, _index, entry in keyed]
 
 
 def youtube_result_line(kind, title, duration_str='', favorite=False):
@@ -53,15 +247,6 @@ def _hashtag_slug(query):
     return re.sub(r'[^\w]+', '', text, flags=re.UNICODE)
 
 
-def _is_youtube_short(entry):
-    if not entry:
-        return False
-    for key in ('url', 'original_url', 'webpage_url'):
-        if '/shorts/' in str(entry.get(key) or ''):
-            return True
-    return False
-
-
 def _fill_short_titles(entries):
     missing = [entry for entry in entries if not (entry.get('title') or '').strip()]
     if not missing:
@@ -89,11 +274,28 @@ def _fill_short_titles(entries):
         worker.join(timeout=8)
 
 
-def _search_youtube_shorts(query, max_results, extra_query=''):
-    """Busca Shorts reales: pestaña /hashtag/.../shorts y filtro de búsqueda."""
+def _search_youtube_shorts(query, max_results, extra_query='', search_sp=None, channel_url=None):
+    """Busca Shorts: pestaña del canal, búsqueda y hashtag.
+
+    Devuelve (entradas, keep_order). keep_order es True si ya vienen del canal
+    (más recientes primero) y no hay que reordenar por fechas aproximadas.
+    """
+    fetch_limit = max(max_results + 10, 20)
+    if channel_url:
+        try:
+            entries, _name = fetch_youtube_channel_tab_entries(
+                channel_url, 'shorts', fetch_limit,
+            )
+            found = [entry for entry in entries if entry and entry.get('id')]
+            if found:
+                print(f"[Shorts] {len(found)}/{max_results} del canal")
+                _fill_short_titles(found)
+                return found[:max_results], True
+        except Exception as err:
+            print(f"[Shorts] No se pudo leer el canal ({err})")
+
     seen = set()
     found = []
-    fetch_limit = max(max_results + 10, 20)
     sources = []
     slugs = []
     full_slug = _hashtag_slug(query)
@@ -103,24 +305,27 @@ def _search_youtube_shorts(query, max_results, extra_query=''):
         word_slug = _hashtag_slug(word)
         if word_slug and word_slug not in slugs:
             slugs.append(word_slug)
+    search_text = (query + extra_query).strip()
+    sp = search_sp or 'EgIQCQ=='
+    search_url = (
+        f'https://www.youtube.com/results?search_query={quote_plus(search_text)}'
+        f'&sp={quote(sp, safe="")}'
+    )
+    sources.append((search_url, False))
     for slug in slugs:
         sources.append((f'https://www.youtube.com/hashtag/{quote(slug)}/shorts', True))
-    search_text = (query + extra_query).strip()
-    sources.append((
-        f'https://www.youtube.com/results?search_query={quote_plus(search_text)}&sp=EgIQCQ%3D%3D',
-        False,
-    ))
 
-    for url, from_shorts_tab in sources:
+    for url, _from_shorts_tab in sources:
         if len(found) >= max_results:
             break
-        ydl_opts = youtube_ydl_opts(
+        ydl_opts = _search_ydl_opts(
             extract_flat='in_playlist',
             skip_download=True,
             force_generic_extractor=False,
             noplaylist=False,
             playlistend=fetch_limit,
             use_cookiefile=False,
+            silent=True,
         )
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -131,10 +336,8 @@ def _search_youtube_shorts(query, max_results, extra_query=''):
         for entry in info.get('entries') or []:
             if not entry or not entry.get('id'):
                 continue
-            if not from_shorts_tab and not _is_youtube_short(entry):
-                continue
-            video_id = entry['id']
-            if video_id in seen:
+            video_id = str(entry['id'])
+            if len(video_id) != 11 or video_id in seen:
                 continue
             seen.add(video_id)
             found.append(entry)
@@ -143,17 +346,100 @@ def _search_youtube_shorts(query, max_results, extra_query=''):
 
     print(f"[Shorts] {len(found)}/{max_results} resultados")
     _fill_short_titles(found)
-    return found
+    return found, False
 
 
-def youtube_channel_tab_url(url):
+_CHANNEL_TABS = ('videos', 'streams', 'shorts', 'releases', 'playlists')
+_YT_HANDLE_RE = re.compile(r'^@[\w.-]{2,32}$', re.I)
+
+
+def youtube_channel_tab_url(url, tab='videos'):
     text = (url or '').strip().rstrip('/')
     if not text:
         return text
+    if tab not in _CHANNEL_TABS:
+        tab = 'videos'
     lower = text.lower()
-    if any(lower.endswith(suffix) for suffix in ('/videos', '/streams', '/shorts', '/releases')):
-        return text
-    return f'{text}/videos'
+    for suffix in _CHANNEL_TABS:
+        token = '/' + suffix
+        if lower.endswith(token):
+            text = text[: -len(token)].rstrip('/')
+            break
+    return f'{text}/{tab}'
+
+
+def channel_url_from_query(query):
+    """URL de canal si la búsqueda es un @handle o un enlace de canal."""
+    text = (query or '').strip()
+    if not text:
+        return None
+    if _YT_HANDLE_RE.match(text):
+        return f'https://www.youtube.com/{text}'
+    if not re.match(r'^https?://', text, re.I):
+        if re.match(r'^(www\.)?youtube\.com/', text, re.I):
+            text = 'https://' + text
+    if is_youtube_channel_url(text):
+        return text.split('#')[0].split('?')[0].rstrip('/')
+    return None
+
+
+def channel_name_matches_query(query, *names):
+    key = re.sub(r'[^a-z0-9]+', '', (query or '').strip().lower().lstrip('@'))
+    if len(key) < 3:
+        return False
+    for name in names:
+        other = re.sub(r'[^a-z0-9]+', '', str(name or '').strip().lower().lstrip('@'))
+        if other and other == key:
+            return True
+    return False
+
+
+def _search_matching_channel(query):
+    """Canal cuyo nombre o handle coincide con la búsqueda (para ordenar por fecha)."""
+    direct = channel_url_from_query(query)
+    if direct:
+        return direct
+    sp = youtube_search_sp(result_type='channel') or 'EgIQAg=='
+    search_url = (
+        f'https://www.youtube.com/results?search_query={quote_plus(query)}'
+        f'&sp={quote(sp, safe="")}'
+    )
+    ydl_opts = _search_ydl_opts(
+        extract_flat=True,
+        skip_download=True,
+        force_generic_extractor=False,
+        noplaylist=False,
+        playlistend=5,
+        use_cookiefile=False,
+        silent=True,
+    )
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_url, download=False)
+    except Exception as err:
+        print(f'[YouTube] No se pudo resolver el canal ({err})')
+        return None
+    for entry in info.get('entries') or []:
+        if not entry:
+            continue
+        if not channel_name_matches_query(
+            query,
+            entry.get('channel'),
+            entry.get('title'),
+            entry.get('uploader'),
+            entry.get('uploader_id'),
+        ):
+            continue
+        channel_url = entry.get('channel_url') or entry.get('url')
+        if channel_url and is_youtube_channel_url(str(channel_url)):
+            return str(channel_url).split('#')[0].split('?')[0].rstrip('/')
+        channel_id = entry.get('channel_id') or entry.get('id')
+        if channel_id and str(channel_id).startswith('UC'):
+            return f'https://www.youtube.com/channel/{channel_id}'
+        handle = str(entry.get('uploader_id') or '')
+        if handle.startswith('@'):
+            return f'https://www.youtube.com/{handle}'
+    return None
 
 
 _YT_VIDEO_ID_RE = re.compile(r'(?:v=|/v/|/shorts/|youtu\.be/)([^"&?/\s]{11})')
@@ -182,20 +468,21 @@ def is_youtube_channel_url(url):
     return bool(_YT_CHANNEL_RE.search(text))
 
 
-def fetch_youtube_channel_videos(channel_url, limit=30):
-    """Vídeos recientes de un canal. No registra la URL."""
+def fetch_youtube_channel_tab_entries(channel_url, tab='videos', limit=30):
+    """Entradas de una pestaña del canal (vídeos o Shorts). No registra la URL."""
     limit = max(5, min(int(limit or 30), 50))
-    tab_url = youtube_channel_tab_url(channel_url)
-    ydl_opts = youtube_ydl_opts(
+    tab_url = youtube_channel_tab_url(channel_url, tab)
+    ydl_opts = _search_ydl_opts(
         extract_flat='in_playlist',
         skip_download=True,
         force_generic_extractor=False,
         noplaylist=False,
         playlistend=limit,
+        silent=True,
     )
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(tab_url, download=False)
-    videos = []
+    entries = []
     seen = set()
     for entry in info.get('entries') or []:
         if not entry or not entry.get('id'):
@@ -204,15 +491,25 @@ def fetch_youtube_channel_videos(channel_url, limit=30):
         if len(video_id) != 11 or video_id in seen:
             continue
         seen.add(video_id)
+        entries.append(entry)
+        if len(entries) >= limit:
+            break
+    channel_name = (info.get('channel') or info.get('uploader') or info.get('title') or '').strip()
+    return entries, channel_name
+
+
+def fetch_youtube_channel_videos(channel_url, limit=30):
+    """Vídeos recientes de un canal. No registra la URL."""
+    entries, channel_name = fetch_youtube_channel_tab_entries(channel_url, 'videos', limit)
+    videos = []
+    for entry in entries:
+        video_id = str(entry.get('id'))
         videos.append({
             'title': (entry.get('title') or '').strip() or 'YouTube',
             'id': video_id,
             'url': f'https://www.youtube.com/watch?v={video_id}',
             'duration': entry.get('duration'),
         })
-        if len(videos) >= limit:
-            break
-    channel_name = (info.get('channel') or info.get('uploader') or info.get('title') or '').strip()
     return videos, channel_name
 
 
@@ -251,13 +548,30 @@ class YouTubeSearchDialog:
         self.window.protocol('WM_DELETE_WINDOW', self._on_close)
 
     def create_widgets(self):
-        main_frame = ttk.Frame(self.window, padding=16)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        colors = get_colors()
+        shell = ttk.Frame(self.window, padding=(16, 16, 12, 12))
+        shell.pack(fill=tk.BOTH, expand=True)
+
+        body = ttk.Frame(shell)
+        body.pack(fill=tk.BOTH, expand=True)
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(0, weight=1)
+
+        canvas = tk.Canvas(body, bg=colors['bg'], highlightthickness=0, bd=0)
+        scroll = ttk.Scrollbar(body, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.grid(row=0, column=0, sticky='nsew')
+        scroll.grid(row=0, column=1, sticky='ns', padx=(4, 0))
+        self._search_canvas = canvas
+
+        main_frame = ttk.Frame(canvas, padding=(0, 0, 8, 4))
+        self._search_main_id = canvas.create_window((0, 0), window=main_frame, anchor='nw')
+        self._search_scroll_syncing = False
 
         ttk.Label(main_frame, text='Buscar en YouTube', style='PageTitle.TLabel').pack(anchor=tk.W)
         ttk.Label(
             main_frame,
-            text='Vídeos, Shorts, listas y canales. Pulsa ☆ junto al nombre para guardarlo en favoritos.',
+            text='Vídeos, Shorts, listas y canales. Las 5 últimas búsquedas están debajo: un clic las vuelve a lanzar. Pulsa ☆ junto al nombre para guardarlo en favoritos.',
             style='Muted.TLabel',
         ).pack(anchor=tk.W, pady=(0, 8))
 
@@ -275,12 +589,34 @@ class YouTubeSearchDialog:
         search_frame.pack(fill=tk.X, pady=(0, 10))
 
         self.search_var = tk.StringVar()
-        search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
-        search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        search_entry.bind('<Return>', lambda e: self.search())
-        search_entry.focus_set()
+        self.search_combo = ttk.Combobox(search_frame, textvariable=self.search_var)
+        self.search_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.search_combo.bind('<Return>', lambda e: self.search())
+        self.search_combo.bind('<<ComboboxSelected>>', self._on_recent_search)
+        self.search_combo.focus_set()
 
         ttk.Button(search_frame, text="Buscar", style='Accent.TButton', command=self.search).pack(side=tk.LEFT, padx=(8, 0))
+
+        recent_frame = ttk.LabelFrame(main_frame, text=" ÚLTIMAS BÚSQUEDAS ", padding=8)
+        recent_frame.pack(fill=tk.X, pady=(0, 10))
+        self._recent_empty = ttk.Label(
+            recent_frame,
+            text='Aún no hay búsquedas. Las 5 últimas se pueden repetir desde aquí.',
+            style='Muted.TLabel',
+        )
+        list_row = ttk.Frame(recent_frame, style='Card.TFrame')
+        self._recent_list_row = list_row
+        self.recent_list = tk.Listbox(
+            list_row,
+            height=5,
+            activestyle='dotbox',
+            exportselection=False,
+        )
+        self.recent_list.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        style_listbox(self.recent_list)
+        self.recent_list.bind('<ButtonRelease-1>', self._on_recent_list_click)
+        self.recent_list.bind('<Return>', self._on_recent_list_select)
+        self._refresh_search_history()
 
         # Frame de filtros
         filter_frame = ttk.Frame(main_frame)
@@ -340,7 +676,7 @@ class YouTubeSearchDialog:
         
         # Frame para la lista de resultados y barra de desplazamiento
         results_list_frame = ttk.Frame(main_frame)
-        results_list_frame.pack(fill=tk.BOTH, expand=True)
+        results_list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 4))
         
         # Scrollbar
         scrollbar = ttk.Scrollbar(results_list_frame)
@@ -349,6 +685,7 @@ class YouTubeSearchDialog:
         # Listbox
         self.results_listbox = tk.Listbox(
             results_list_frame,
+            height=14,
             yscrollcommand=scrollbar.set,
             selectmode=tk.EXTENDED,
         )
@@ -407,6 +744,59 @@ class YouTubeSearchDialog:
         self.result_types = []
         self.result_details = []
 
+        main_frame.bind('<Configure>', self._sync_search_scroll)
+        canvas.bind('<Configure>', self._sync_search_scroll)
+        self._bind_search_wheel(self.window)
+        self.window.after_idle(self._sync_search_scroll)
+
+    def _sync_search_scroll(self, event=None):
+        canvas = getattr(self, '_search_canvas', None)
+        main_id = getattr(self, '_search_main_id', None)
+        if canvas is None or main_id is None:
+            return
+        if getattr(self, '_search_scroll_syncing', False):
+            return
+        self._search_scroll_syncing = True
+        try:
+            width = max(1, int(canvas.winfo_width()))
+            canvas.itemconfigure(main_id, width=width)
+            canvas.configure(scrollregion=canvas.bbox('all') or (0, 0, 0, 0))
+        except tk.TclError:
+            pass
+        finally:
+            self._search_scroll_syncing = False
+
+    def _on_search_wheel(self, event):
+        canvas = getattr(self, '_search_canvas', None)
+        if canvas is None:
+            return
+        if getattr(event, 'num', None) == 5:
+            steps = 1
+        elif getattr(event, 'num', None) == 4:
+            steps = -1
+        else:
+            delta = getattr(event, 'delta', 0) or 0
+            if not delta:
+                return
+            steps = int(-delta / 120) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
+        widget = getattr(event, 'widget', None)
+        if isinstance(widget, tk.Listbox):
+            widget.yview_scroll(steps, 'units')
+            return 'break'
+        canvas.yview_scroll(steps, 'units')
+        return 'break'
+
+    def _bind_search_wheel(self, widget):
+        widget.bind('<MouseWheel>', self._on_search_wheel)
+        widget.bind('<Button-4>', self._on_search_wheel)
+        widget.bind('<Button-5>', self._on_search_wheel)
+        try:
+            children = widget.winfo_children()
+        except tk.TclError:
+            return
+        for child in children:
+            self._bind_search_wheel(child)
+
     def _on_close(self):
         self._dismiss_context_menu()
         if self.youtube_handler:
@@ -442,6 +832,104 @@ class YouTubeSearchDialog:
         if shorts:
             self.duration_var.set("Cualquier duración")
 
+    def _refresh_search_history(self):
+        self._search_history = app_config.youtube_search_history()
+        labels = [app_config.youtube_search_label(item) for item in self._search_history]
+        combo = getattr(self, 'search_combo', None)
+        if combo is not None:
+            current = self.search_var.get()
+            combo.configure(values=labels)
+            if current:
+                self.search_var.set(current)
+        listing = getattr(self, 'recent_list', None)
+        empty = getattr(self, '_recent_empty', None)
+        row = getattr(self, '_recent_list_row', None)
+        if listing is None:
+            return
+        applying = getattr(self, '_applying_recent', False)
+        self._applying_recent = True
+        try:
+            listing.delete(0, tk.END)
+            for label in labels:
+                listing.insert(tk.END, label)
+        finally:
+            self._applying_recent = applying
+        if labels:
+            if empty is not None:
+                empty.pack_forget()
+            if row is not None and not row.winfo_ismapped():
+                row.pack(fill=tk.X)
+        else:
+            if row is not None:
+                row.pack_forget()
+            if empty is not None:
+                empty.pack(anchor=tk.W)
+        self.window.after_idle(self._sync_search_scroll)
+
+    def _reuse_search_at(self, index):
+        history = getattr(self, '_search_history', None) or []
+        if not (0 <= index < len(history)):
+            return
+        item = history[index]
+        self._applying_recent = True
+        try:
+            self.search_var.set(item['query'])
+            self.type_var.set(item['type'])
+            self.date_var.set(item['date'])
+            self.duration_var.set(item['duration'])
+            self.sort_var.set(item['sort'])
+            self._on_type_change()
+        finally:
+            self._applying_recent = False
+        self.search()
+
+    def _on_recent_list_click(self, event=None):
+        if getattr(self, '_applying_recent', False):
+            return
+        listing = getattr(self, 'recent_list', None)
+        if listing is None or event is None:
+            return
+        try:
+            index = listing.nearest(event.y)
+        except tk.TclError:
+            return
+        self._reuse_search_at(index)
+
+    def _on_recent_list_select(self, event=None):
+        if getattr(self, '_applying_recent', False):
+            return
+        listing = getattr(self, 'recent_list', None)
+        if listing is None:
+            return
+        selection = listing.curselection()
+        if not selection:
+            return
+        self._reuse_search_at(selection[0])
+
+    def _on_recent_search(self, event=None):
+        if getattr(self, '_applying_recent', False):
+            return
+        combo = getattr(self, 'search_combo', None)
+        history = getattr(self, '_search_history', None) or []
+        if combo is None or not history:
+            return
+        index = -1
+        try:
+            index = int(combo.current())
+        except (TypeError, ValueError, tk.TclError):
+            index = -1
+        if not (0 <= index < len(history)):
+            label = (self.search_var.get() or '').strip()
+            index = next(
+                (
+                    item_index
+                    for item_index, item in enumerate(history)
+                    if app_config.youtube_search_label(item) == label
+                ),
+                -1,
+            )
+        self._reuse_search_at(index)
+
     def format_duration(self, seconds):
         """Formatea la duración en segundos a formato HH:MM:SS o MM:SS"""
         if not seconds:
@@ -469,6 +957,15 @@ class YouTubeSearchDialog:
         if not query:
             messagebox.showinfo("Info", "Introduce un término de búsqueda.")
             return
+
+        app_config.remember_youtube_search(
+            query,
+            type_name=self.type_var.get(),
+            date=self.date_var.get(),
+            duration=self.duration_var.get(),
+            sort=self.sort_var.get(),
+        )
+        self._refresh_search_history()
         
         self.results_listbox.delete(0, tk.END)
         self.results = []
@@ -477,39 +974,16 @@ class YouTubeSearchDialog:
         
         self.progress_bar.pack(fill=tk.X, expand=True)
         self.progress_bar.start(10)
-        
-        search_query = query
-        
-        # Filtro de fecha
-        date_filter = self.date_var.get()
-        date_query = ""
-        if date_filter == "Hoy":
-            date_query = " after:today"
-        elif date_filter == "Esta semana":
-            date_query = f" after:{(datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')}"
-        elif date_filter == "Este mes":
-            date_query = f" after:{(datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')}"
-        elif date_filter == "Este año":
-            date_query = f" after:{(datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')}"
-        
-        # Filtro de duración
-        duration_filter = self.duration_var.get()
-        duration_query = ""
-        if duration_filter == "Corto (<4 min)":
-            duration_query = " short"
-        elif duration_filter == "Medio (4-20 min)":
-            duration_query = " medium"
-        elif duration_filter == "Largo (>20 min)":
-            duration_query = " long"
-        
-        # Aplicar filtros según el tipo
+
         tipo = self.type_var.get()
-        if tipo == "Vídeos":
-            search_query += date_query + duration_query
-        elif tipo == "Shorts":
-            search_query += date_query
-        elif tipo == "Listas de reproducción":
-            search_query += " playlist" + date_query
+        sort_label = self.sort_var.get()
+        search_sp = youtube_search_sp_from_ui(
+            tipo,
+            sort_label,
+            self.date_var.get(),
+            self.duration_var.get(),
+        )
+        search_query = query
 
         def perform_search():
             try:
@@ -519,7 +993,17 @@ class YouTubeSearchDialog:
                     max_results = 10
                 max_results = min(max(max_results, 1), 100)
                 if tipo == "Shorts":
-                    shorts = _search_youtube_shorts(query, max_results, extra_query=date_query)
+                    channel_url = None
+                    if _UI_SORT.get(sort_label) == 'date':
+                        channel_url = _search_matching_channel(query)
+                    shorts, keep_order = _search_youtube_shorts(
+                        query,
+                        max_results,
+                        search_sp=search_sp,
+                        channel_url=channel_url,
+                    )
+                    if not keep_order:
+                        shorts = sort_search_entries(shorts, sort_label)
 
                     def update_shorts_ui():
                         if not shorts:
@@ -553,64 +1037,82 @@ class YouTubeSearchDialog:
                     self.window.after(0, update_shorts_ui)
                     return
 
-                ydl_opts = youtube_ydl_opts(
-                    extract_flat=True,
-                    skip_download=True,
-                    force_generic_extractor=False,
-                    noplaylist=False,
-                    playlistend=max_results + 5,
-                )
+                fetch_end = max_results + 5
+                if _UI_SORT.get(sort_label) == 'date':
+                    fetch_end = max(max_results + 15, 25)
 
-                query_q = quote_plus(search_query)
-                if tipo == "Listas de reproducción":
-                    sp = "EgIQAw%3D%3D"
-                elif tipo == "Canales":
-                    sp = "EgIQAg%3D%3D"
-                else:
-                    sp = "EgIQAQ%3D%3D"
-                search_url = (
-                    f"https://www.youtube.com/results?search_query={query_q}"
-                    f"&hl=es&gl=ES&sp={sp}"
-                )
+                from_channel_tab = False
+                info = None
+                if _UI_SORT.get(sort_label) == 'date' and tipo == 'Vídeos':
+                    channel_url = _search_matching_channel(query)
+                    if channel_url:
+                        try:
+                            entries, _name = fetch_youtube_channel_tab_entries(
+                                channel_url, 'videos', max_results,
+                            )
+                            if entries:
+                                info = {'entries': entries}
+                                from_channel_tab = True
+                        except Exception as err:
+                            print(f'[YouTube] No se pudo leer el canal ({err})')
 
-                def extract_search(opts):
-                    with yt_dlp.YoutubeDL(opts) as ydl:
-                        return ydl.extract_info(search_url, download=False)
-
-                try:
-                    info = extract_search(ydl_opts)
-                except Exception as err:
-                    if '413' not in str(err):
-                        raise
-                    slim_youtube_cookies_file()
-                    retry_opts = youtube_ydl_opts(
+                if info is None:
+                    ydl_opts = _search_ydl_opts(
                         extract_flat=True,
                         skip_download=True,
                         force_generic_extractor=False,
                         noplaylist=False,
-                        playlistend=max_results + 5,
+                        playlistend=fetch_end,
                     )
+
+                    query_q = quote_plus(search_query)
+                    sp = search_sp or 'EgIQAQ=='
+                    search_url = (
+                        f"https://www.youtube.com/results?search_query={query_q}"
+                        f"&sp={quote(sp, safe='')}"
+                    )
+
+                    def extract_search(opts):
+                        with yt_dlp.YoutubeDL(opts) as ydl:
+                            return ydl.extract_info(search_url, download=False)
+
                     try:
-                        info = extract_search(retry_opts)
-                    except Exception as err2:
-                        if '413' not in str(err2):
+                        info = extract_search(ydl_opts)
+                    except Exception as err:
+                        if '413' not in str(err):
                             raise
-                        print('[YouTube] Búsqueda 413: reintentando sin cookies.txt hinchado')
-                        info = extract_search(youtube_ydl_opts(
+                        slim_youtube_cookies_file()
+                        retry_opts = _search_ydl_opts(
                             extract_flat=True,
                             skip_download=True,
                             force_generic_extractor=False,
                             noplaylist=False,
-                            playlistend=max_results + 5,
-                            use_cookiefile=False,
-                        ))
+                            playlistend=fetch_end,
+                        )
+                        try:
+                            info = extract_search(retry_opts)
+                        except Exception as err2:
+                            if '413' not in str(err2):
+                                raise
+                            print('[YouTube] Búsqueda 413: reintentando sin cookies.txt hinchado')
+                            info = extract_search(_search_ydl_opts(
+                                extract_flat=True,
+                                skip_download=True,
+                                force_generic_extractor=False,
+                                noplaylist=False,
+                                playlistend=fetch_end,
+                                use_cookiefile=False,
+                            ))
 
                 results_count = 0
                 found_playlist = False
+                ordered_entries = list(info.get('entries') or [])
+                if not from_channel_tab:
+                    ordered_entries = sort_search_entries(ordered_entries, sort_label)
 
                 def update_ui():
                     nonlocal results_count, found_playlist
-                    for entry in info.get('entries') or []:
+                    for entry in ordered_entries:
                         if not entry or results_count >= max_results:
                             break
 

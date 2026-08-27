@@ -68,6 +68,7 @@ Queda `dist/Kidneysm3u-Setup-*.exe` (asistente de instalación). Detalle en [doc
 | `main.py` | Ventana principal: filtro M3U, menús, lanzamiento del reproductor |
 | `video_player.py` | Reproductor (lista lateral, menús, carga M3U/YouTube) |
 | `player_iptv.py`, `iptv_buffer.py` | Apertura VLC, caché y reconexión IPTV |
+| `subtitle_style.py` | Estilo de subtítulos de texto (VLC freetype) |
 | `player_controls.py`, `player_pip.py`, `player_overlay.py` | Barra, PiP, avisos en pantalla |
 | `youtube_player.py`, `youtube_search.py` | Reproducción y búsqueda de YouTube (yt-dlp) |
 | `m3u_parse.py`, `epg.py` | Parseo M3U y guía XMLTV |

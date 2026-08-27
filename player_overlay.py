@@ -79,6 +79,9 @@ class ChannelNoticeMixin:
                 pass
 
     def _hide_channel_status(self):
+        hide_replay = getattr(self, '_hide_youtube_replay_prompt', None)
+        if hide_replay:
+            hide_replay()
         self._iptv_failed = False
         self._iptv_ok_ticks = 0
         top = getattr(self, '_iptv_notice_top', None)

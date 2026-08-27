@@ -35,6 +35,7 @@ from ui_theme import (
 from ui_clipboard import ask_string
 import app_config
 from iptv_buffer import vlc_aout_instance_args, vlc_aout_option
+from subtitle_style import apply_spu_delay, fingerprint, vlc_instance_args, vlc_media_options
 from m3u_parse import (
     parse_m3u_channels, parse_m3u_epg_urls, decode_m3u_bytes,
     IPTV_USER_AGENT,
@@ -128,7 +129,7 @@ class Tooltip:
 def _make_vlc_instance():
     """Instancia VLC sin aceleración VA-API (ruidosa en NVIDIA) y con logs bajos."""
     os.environ['LIBVA_MESSAGING_LEVEL'] = '0'
-    args = [
+    core = [
         "--quiet",
         "--verbose=0",
         "--avcodec-hw=none",
@@ -139,8 +140,31 @@ def _make_vlc_instance():
         "--sout-mux-caching=3000",
         f"--http-user-agent={IPTV_USER_AGENT}",
     ]
-    args.extend(vlc_aout_instance_args())
-    return vlc.Instance(*args)
+    core.extend(vlc_aout_instance_args())
+    attempts = (
+        core + vlc_instance_args(),
+        list(core),
+        ["--quiet", "--avcodec-hw=none"],
+    )
+    last_error = None
+    for args in attempts:
+        try:
+            instance = vlc.Instance(*args)
+        except Exception as exc:
+            last_error = exc
+            continue
+        if instance is not None:
+            return instance
+    detail = f' ({last_error})' if last_error else ''
+    raise RuntimeError(
+        'VLC no pudo crear el reproductor. Comprueba que libvlc está instalado.'
+        + detail
+    )
+
+
+def should_offer_youtube_replay(playing_youtube, standalone, sequential, queue_pending):
+    """True solo si acaba un vídeo de YouTube suelto, no una cola, playlist o secuencia."""
+    return bool(playing_youtube and standalone and not sequential and not queue_pending)
 
 
 class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, PlayerPipMixin):
@@ -148,6 +172,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.window = None
         self.instance = _make_vlc_instance()
         self.player = self.instance.media_player_new()
+        self._vlc_style_key = fingerprint()
         self.channels = []
         self.current_channel = None
         self.channels_listbox = None
@@ -203,6 +228,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._geometry_save_job = None
         self._volume_save_job = None
         self._media_started = False
+        self._yt_standalone = True
+        self._yt_end_handled = False
+        self._media_end_gen = 0
+        self._yt_replay_frame = None
         self._iptv_relay_procs = []
         self._iptv_relay_server = None
         self._iptv_relay_tmpdir = None
@@ -990,39 +1019,25 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             if not path or not os.path.isfile(path):
                 print('[YouTube] No hay archivo de subtítulos para cargar')
                 return
-            handler = self.youtube_handler
-            if getattr(self, '_yt_via_pipe', False) or not self.player:
-                direct = getattr(handler, '_direct_url', '') or ''
-                if not direct:
-                    print('[YouTube] Los subtítulos no se pueden aplicar al relevo MPEG-TS')
-                    return
-                keep_ms = self._playback_elapsed_ms()
-                self.play_video_url(
-                    direct,
-                    force_pulse=True,
-                    show_progress=True,
-                    http_headers=getattr(handler, '_direct_headers', None),
-                    duration_s=(self._known_duration_ms / 1000.0) if self._known_duration_ms else None,
-                    subtitle_path=path,
-                    start_s=keep_ms / 1000.0,
-                    fail_after_s=20,
-                )
-                self._hold_progress_ms = keep_ms
-                self._hold_progress_until = time.time() + 2.5
-                return
             keep_ms = self._playback_elapsed_ms()
-            try:
-                uri = pathlib.Path(path).resolve().as_uri()
-                loaded = self.player.add_slave(vlc.MediaSlaveType.subtitle, uri, True)
-                print(f"[VLC] Subtítulo esclavo ({loaded})")
-            except Exception as exc:
-                print(f"[VLC] No se pudo añadir el subtítulo: {exc}")
+            handler = self.youtube_handler
+            direct = getattr(handler, '_direct_url', '') or ''
+            if not direct:
+                print('[YouTube] No hay URL de stream para recargar con subtítulos')
                 return
+            self._ensure_vlc_style_instance()
+            self.play_video_url(
+                direct,
+                force_pulse=True,
+                show_progress=True,
+                http_headers=getattr(handler, '_direct_headers', None),
+                duration_s=(self._known_duration_ms / 1000.0) if self._known_duration_ms else None,
+                subtitle_path=path,
+                start_s=keep_ms / 1000.0,
+                fail_after_s=20,
+            )
             self._hold_progress_ms = keep_ms
             self._hold_progress_until = time.time() + 2.5
-            if self._widget_exists(self.window):
-                self.window.after(400, self._select_external_spu)
-                self.window.after(550, lambda ms=keep_ms: self._restore_after_subtitle(ms))
             return
         if self._widget_exists(self.window):
             self.window.after(0, apply)
@@ -1322,6 +1337,25 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             self.player.set_nsobject(wid)
         else:
             self.player.set_xwindow(wid)
+
+    def _ensure_vlc_style_instance(self):
+        """Recrea la instancia de VLC si cambió el estilo de subtítulos (freetype es de instancia)."""
+        key = fingerprint()
+        if (
+            self.instance is not None
+            and self.player is not None
+            and getattr(self, '_vlc_style_key', None) == key
+        ):
+            return False
+        self._cleanup_vlc_player()
+        self.instance = _make_vlc_instance()
+        self.player = self.instance.media_player_new()
+        try:
+            self.player.audio_set_volume(getattr(self, 'volume', 50))
+        except Exception:
+            pass
+        self._vlc_style_key = key
+        return True
 
     def _cleanup_vlc_player(self):
         """Limpia de forma segura el reproductor VLC y sus event managers."""
@@ -2410,8 +2444,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.save_iptv_resume()
         self.current_channel = None
         app_config.remember_iptv_history(name, url, group=item.get('group') or '')
+        self._ensure_vlc_style_instance()
         if self.instance is None:
             self.instance = _make_vlc_instance()
+            self._vlc_style_key = fingerprint()
         self.clear_youtube_subtitles()
         self._reset_vlc_tracks()
         self._hide_channel_status()
@@ -2573,8 +2609,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             group = self._groups[index] if index < len(getattr(self, '_groups', [])) else ''
             app_config.remember_iptv_history(name, url, group=group)
             self._refresh_history_ui()
+            self._ensure_vlc_style_instance()
             if self.instance is None:
                 self.instance = _make_vlc_instance()
+                self._vlc_style_key = fingerprint()
             self.clear_youtube_subtitles()
             self._reset_vlc_tracks()
             self._hide_channel_status()
@@ -2596,6 +2634,11 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             self._iptv_resume_s = 0
             if "youtube.com" in url or "youtu.be" in url:
                 self._playing_youtube = True
+                kind = getattr(self, '_playlist_kind', '') or ''
+                self._yt_standalone = not (
+                    self.is_sequential_playback
+                    or kind in ('youtube_playlist', 'youtube_channel')
+                )
                 self.youtube_handler.play_youtube_url(
                     url, 
                     force_pulse=True, 
@@ -2615,12 +2658,16 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
     def play_video_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, http_headers=None, on_fail=None, fail_after_s=8, local_file=False, duration_s=None, subtitle_path=None, start_s=0):
         try:
             self._hide_channel_status()
+            self._media_started = False
+            self._yt_end_handled = True
+            self._ensure_vlc_style_instance()
             for widget in self.video_frame.winfo_children():
                 widget.destroy()
             if self.player is None:
                 self.player = self.instance.media_player_new()
             if self.player.is_playing():
                 self.player.stop()
+            self._media_end_gen = getattr(self, '_media_end_gen', 0) + 1
             self.show_controls_and_menu()
             try:
                 self._known_duration_ms = int(float(duration_s) * 1000) if duration_s else 0
@@ -2644,9 +2691,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 if offset:
                     self._set_progress_ui(offset)
             
-            # Configurar event manager si es reproducción secuencial
-            if is_sequential and not hasattr(self, '_current_event_manager'):
-                self.setup_event_manager()
+            self.setup_event_manager()
             
             if not (local_file and '127.0.0.1' in str(url)):
                 self._yt_via_pipe = False
@@ -2699,6 +2744,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             if self._yt_resume_s:
                 options.append(f':start-time={self._yt_resume_s:.1f}')
                 print(f"[VLC] start-time={self._yt_resume_s:.1f}s")
+            options.extend(vlc_media_options())
             for option in options:
                 media.add_option(option)
             self.player.set_media(media)
@@ -2954,8 +3000,17 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                     if getattr(self, '_playing_youtube', False) or self._iptv_has_real_media():
                         started = getattr(self, '_media_started', False)
                         self._media_started = True
+                        if started is False:
+                            self._yt_end_handled = False
                         if not started and not getattr(self, '_playing_youtube', False):
                             self._apply_pending_iptv_resume()
+                elif (
+                    state == vlc.State.Ended
+                    and getattr(self, '_playing_youtube', False)
+                    and getattr(self, '_media_started', False)
+                    and not getattr(self, '_yt_end_handled', False)
+                ):
+                    self._on_media_ended(getattr(self, '_media_end_gen', 0))
                 if active and not self.is_seeking and self.progress_frame.winfo_ismapped():
                     elapsed = self._playback_elapsed_ms()
                     if holding:
@@ -2988,6 +3043,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             # Cambiamos True por una cadena vacía "" para desactivar o "yadif" para activar
             self.player.video_set_deinterlace("") 
             self.player.audio_set_volume(self.volume)
+            apply_spu_delay(self.player)
 
     def filter_channels(self, *args):
         if not self._widget_exists(getattr(self, 'channels_listbox', None)):
@@ -3166,7 +3222,12 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._refresh_queue_ui()
         if not item:
             return
-        self.play_youtube_url(item.get('url') or '', title=item.get('name'), add_to_list=False)
+        self.play_youtube_url(
+            item.get('url') or '',
+            title=item.get('name'),
+            add_to_list=False,
+            standalone=False,
+        )
 
     def play_youtube_queue_next(self):
         self.play_youtube_queue_index(0)
@@ -3213,6 +3274,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 except tk.TclError:
                     pass
                 items = [(item['title'], item['url']) for item in videos]
+                self._playlist_source = url
+                self._playlist_kind = 'youtube_channel'
                 self.cargar_videos_playlist(items)
                 self._clear_busy()
                 if items:
@@ -3222,7 +3285,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
 
         threading.Thread(target=work, daemon=True).start()
 
-    def play_youtube_url(self, url, title=None, add_to_list=True):
+    def play_youtube_url(self, url, title=None, add_to_list=True, standalone=True):
         """Delega la reproducción de YouTube al manejador y añade el vídeo a la lista si falta."""
         if is_youtube_channel_url(url):
             self.play_youtube_channel(url, title=title)
@@ -3237,6 +3300,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             elif not existing:
                 self.add_channel_to_list(title or 'YouTube', url)
         self._playing_youtube = True
+        self._yt_standalone = bool(standalone) and not self.is_sequential_playback
         self.youtube_handler.play_youtube_url(
             url,
             force_pulse=True,
@@ -3372,6 +3436,11 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 self.player.audio_set_volume(volume)
         except Exception:
             pass
+        try:
+            if self.player:
+                apply_spu_delay(self.player)
+        except Exception:
+            pass
         height = app_config.get_youtube_quality()
         previous = None
         choice = getattr(self, '_quality_choice', None)
@@ -3386,9 +3455,51 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 pass
         if previous is not None and previous != height and getattr(self, '_playing_youtube', False):
             self._apply_youtube_quality(height, force=True)
+        elif (
+            getattr(self, '_playing_youtube', False)
+            and fingerprint() != getattr(self, '_vlc_style_key', None)
+        ):
+            self._reload_youtube_with_subtitle_style()
         elif hasattr(self, '_rebuild_track_menus'):
             self._rebuild_track_menus()
         self._apply_logo_pref()
+
+    def _reload_youtube_with_subtitle_style(self):
+        """Vuelve a abrir el stream de YouTube con la instancia VLC del estilo actual."""
+        handler = getattr(self, 'youtube_handler', None)
+        direct = getattr(handler, '_direct_url', '') or '' if handler else ''
+        if not handler or not direct:
+            self._ensure_vlc_style_instance()
+            return
+        keep_ms = self._playback_elapsed_ms()
+        sub_path = None
+        active = getattr(self, '_active_yt_sub', None)
+        for item in getattr(self, '_yt_subtitles', []) or []:
+            if active and (item.get('kind'), item.get('lang')) == active:
+                sub_path = item.get('path')
+                break
+        if sub_path and os.path.isfile(sub_path):
+            from youtube_subs import prepare_subtitle_for_vlc
+            ready = prepare_subtitle_for_vlc(sub_path)
+            if ready:
+                sub_path = ready
+                for item in getattr(self, '_yt_subtitles', []) or []:
+                    if active and (item.get('kind'), item.get('lang')) == active:
+                        item['path'] = ready
+                        break
+        kwargs = dict(getattr(handler, '_play_kwargs', {}) or {})
+        self._ensure_vlc_style_instance()
+        self.play_video_url(
+            direct,
+            force_pulse=kwargs.get('force_pulse', True),
+            show_progress=kwargs.get('show_progress', True),
+            is_sequential=kwargs.get('is_sequential', False),
+            http_headers=getattr(handler, '_direct_headers', None),
+            duration_s=(self._known_duration_ms / 1000.0) if self._known_duration_ms else None,
+            subtitle_path=sub_path if sub_path and os.path.isfile(sub_path) else None,
+            start_s=keep_ms / 1000.0,
+            fail_after_s=20,
+        )
 
     def refresh_theme(self):
         if not self._widget_exists(self.window):
@@ -3623,22 +3734,138 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             import traceback
             print(traceback.format_exc())
 
-    def _safe_on_media_end(self, event):
-        """Cuando termina un vídeo, sigue la cola de YouTube o el modo secuencial de la lista."""
+    def _hide_youtube_replay_prompt(self):
+        frame = getattr(self, '_yt_replay_frame', None)
+        self._yt_replay_frame = None
+        if self._widget_exists(frame):
+            try:
+                frame.destroy()
+            except tk.TclError:
+                pass
+
+    def _show_youtube_replay_prompt(self):
+        """Ofrece repetir un vídeo de YouTube suelto. VLC tapa el Tk embebido: se suelta el vídeo."""
+        if self._widget_exists(getattr(self, '_yt_replay_frame', None)):
+            return
+        if not self._widget_exists(self.window):
+            return
+        handler = getattr(self, 'youtube_handler', None)
+        title = ''
+        if handler:
+            title = (getattr(handler, '_loading_title_text', None) or '').strip()
+        if not title and self.current_channel is not None:
+            try:
+                title = self.channels[self.current_channel][0]
+            except (IndexError, TypeError):
+                title = ''
+        title = title or 'YouTube'
+        self.show_controls_and_menu()
+        release = getattr(self, '_release_vlc_video_window', None)
+        if release:
+            release()
+        colors = get_colors()
+        target = getattr(self, '_video_target_frame', None)
+        parent = target() if callable(target) else None
+        if not self._widget_exists(parent):
+            parent = getattr(self, 'video_frame', None)
+        if not self._widget_exists(parent):
+            parent = getattr(self, 'player_frame', None)
+        if not self._widget_exists(parent):
+            return
+        panel = tk.Frame(parent, bg='#000000', highlightthickness=0)
         try:
-            print("\n=== MediaPlayerEndReached ===")
-            print(f"Estado actual: {self.player.get_state() if self.player else 'No hay reproductor'}")
-            print(f"Reproducción secuencial: {self.is_sequential_playback}")
-            print(f"Índice actual: {self.current_playlist_index}")
-            self.clear_youtube_resume()
-            
+            panel.place(relx=0, rely=0, relwidth=1, relheight=1)
+            panel.lift()
+        except tk.TclError:
+            panel.pack(fill=tk.BOTH, expand=True)
+        card = tk.Frame(
+            panel,
+            bg=colors['surface'],
+            highlightbackground=colors['border'],
+            highlightthickness=1,
+            padx=28,
+            pady=22,
+        )
+        card.place(relx=0.5, rely=0.5, anchor='center')
+        tk.Label(
+            card,
+            text=title,
+            font=get_font(16, 'bold'),
+            bg=colors['surface'],
+            fg=colors['text'],
+            wraplength=460,
+            justify='center',
+        ).pack()
+        tk.Label(
+            card,
+            text='¿Volver a ver este vídeo?',
+            font=get_font(12),
+            bg=colors['surface'],
+            fg=colors['text_muted'],
+            wraplength=460,
+            justify='center',
+        ).pack(pady=(12, 16))
+        buttons = ttk.Frame(card, style='Card.TFrame')
+        buttons.pack()
+        ttk.Button(
+            buttons,
+            text='Volver a ver',
+            style='Accent.TButton',
+            command=self._replay_current_youtube,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(
+            buttons,
+            text='No, gracias',
+            style='Ghost.TButton',
+            command=self._hide_youtube_replay_prompt,
+        ).pack(side=tk.LEFT)
+        self._yt_replay_frame = panel
+
+    def _replay_current_youtube(self):
+        self._hide_youtube_replay_prompt()
+        handler = getattr(self, 'youtube_handler', None)
+        url = getattr(handler, '_current_url', '') or '' if handler else ''
+        if not handler or not url:
+            return
+        self._yt_standalone = True
+        handler.play_youtube_url(
+            url,
+            force_pulse=True,
+            show_progress=True,
+            title=getattr(handler, '_loading_title_text', None),
+            resume_s=0,
+        )
+
+    def _safe_on_media_end(self, event):
+        """VLC llama esto fuera del hilo de Tk."""
+        gen = getattr(self, '_media_end_gen', 0)
+        window = getattr(self, 'window', None)
+        if window is None:
+            return
+        try:
+            window.after(0, lambda g=gen: self._on_media_ended(g))
+        except tk.TclError:
+            pass
+
+    def _on_media_ended(self, gen=None):
+        """Cuando termina un vídeo, sigue la cola o la secuencia; si es YouTube suelto, ofrece repetir."""
+        try:
+            if gen is not None and gen != getattr(self, '_media_end_gen', 0):
+                return
+            if getattr(self, '_yt_end_handled', False):
+                return
             if not self.player:
-                print("No hay reproductor activo")
                 return
-                
             if not getattr(self, '_media_started', False):
-                print("Fin ignorado: el stream no llegó a reproducirse")
                 return
+            try:
+                state = self.player.get_state()
+            except Exception:
+                return
+            if state != vlc.State.Ended:
+                return
+            self._yt_end_handled = True
+            self.clear_youtube_resume()
 
             if getattr(self, '_playing_youtube', False) and app_config.youtube_queue():
                 def play_queue_next():
@@ -3658,64 +3885,44 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 self.window.after(500, play_queue_next)
                 return
 
-            if not self.is_sequential_playback:
-                print("Reproducción secuencial desactivada")
-                return
-                
-            if self.current_playlist_index is None:
-                print("Índice actual es None")
-                return
-                
-            # Obtener el índice actual y el siguiente
-            current_index = self.current_playlist_index
-            next_index = current_index + 1
-            
-            print(f"\nProcesando transición de vídeo {current_index} -> {next_index}")
-            
-            # Verificar si hay más videos por reproducir
-            if next_index < len(self.channels):
-                print(f"Preparando reproducción del vídeo {next_index}")
-                
-                def play_next():
-                    try:
-                        print("\n=== Iniciando reproducción del siguiente vídeo ===")
-                        # Detener reproducción actual
-                        if self.player and self.player.is_playing():
-                            self.player.stop()
-                            print("Reproducción anterior detenida")
-                            
-                        # Limpiar event manager
-                        if hasattr(self, '_current_event_manager') and self._current_event_manager:
-                            try:
-                                self._current_event_manager.event_detach(vlc.EventType.MediaPlayerEndReached)
-                                self._current_event_manager = None
-                                print("Event manager limpiado")
-                            except Exception as e:
-                                print(f"Error al limpiar event manager: {e}")
-                        
-                        # Actualizar índice
-                        self.current_playlist_index = next_index
-                        print(f"Índice actualizado a {next_index}")
-                        
-                        # Reproducir siguiente vídeo
-                        self.select_and_play_channel(next_index)
-                        print("Reproducción iniciada")
-                    except Exception as e:
-                        print(f"Error al reproducir siguiente vídeo: {e}")
-                
-                # Usar delay más largo para asegurar que el vídeo anterior se ha detenido
-                self.window.after(500, play_next)
-                print("Reproducción programada con delay de 500ms")
-            else:
-                print("\nFin de la playlist alcanzado")
+            if self.is_sequential_playback:
+                if self.current_playlist_index is None:
+                    return
+                current_index = self.current_playlist_index
+                next_index = current_index + 1
+                if next_index < len(self.channels):
+                    def play_next():
+                        try:
+                            if self.player and self.player.is_playing():
+                                self.player.stop()
+                            if hasattr(self, '_current_event_manager') and self._current_event_manager:
+                                try:
+                                    self._current_event_manager.event_detach(vlc.EventType.MediaPlayerEndReached)
+                                    self._current_event_manager = None
+                                except Exception:
+                                    pass
+                            self.current_playlist_index = next_index
+                            self.select_and_play_channel(next_index)
+                        except Exception as exc:
+                            print(f"Error al reproducir siguiente vídeo: {exc}")
+
+                    self.window.after(500, play_next)
+                    return
                 self.is_sequential_playback = False
                 self.current_playlist_index = None
                 self._current_event_manager = None
-                
-        except Exception as e:
-            print(f"Error en _safe_on_media_end: {e}")
-            import traceback
-            print(traceback.format_exc())
+                return
+
+            if should_offer_youtube_replay(
+                getattr(self, '_playing_youtube', False),
+                getattr(self, '_yt_standalone', False),
+                False,
+                bool(app_config.youtube_queue()),
+            ):
+                self._show_youtube_replay_prompt()
+        except Exception as exc:
+            print(f"Error en _on_media_ended: {exc}")
+            traceback.print_exc()
 
     def setup_event_manager(self):
         """Configura el event manager de VLC para manejar el fin de reproducción."""

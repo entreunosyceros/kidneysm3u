@@ -50,13 +50,13 @@ Si arrancas el Python del sistema (sin `.venv`), Ubuntu puede bloquear `pip` (PE
 | Tipo | Qué lista |
 | --- | --- |
 | Vídeos | Resultados normales |
-| **Shorts** | Solo URLs `/shorts/` (hashtag + filtro de YouTube) |
+| **Shorts** | Pestaña Shorts del canal (si el nombre o `@handle` coincide) o búsqueda `/shorts/` |
 | Listas de reproducción | Playlists |
 | Canales | Canales (doble clic: vídeos recientes en esta ventana) |
 
-También puedes filtrar por fecha, duración (no aplica a Shorts) y número de resultados.
+También puedes filtrar por fecha, duración (no aplica a Shorts) y número de resultados. **Ordenar por Fecha** muestra primero lo más reciente: si buscas un canal (`@nombre` o el nombre exacto), abre su pestaña de vídeos o Shorts; si no, ordena los resultados de búsqueda. Debajo del campo aparecen las **5 últimas búsquedas** (con tipo y filtros): un clic en cualquiera las vuelve a lanzar. Si no cabe todo, la ventana tiene **barra de desplazamiento** vertical (la rueda del ratón también).
 
-- Doble clic o **Reproducir** añade el vídeo a la lista lateral y lo pone en marcha (cierra la búsqueda).
+- Doble clic o **Reproducir** añade el vídeo a la lista lateral y lo pone en marcha (cierra la búsqueda). Al terminar un vídeo suelto, el reproductor pregunta si quieres **volver a verlo**. Si hay cola, una playlist o **Reproducir desde aquí**, pasa al siguiente y no pregunta.
 - **Añadir a la cola** (o clic derecho) lo deja en la **cola de YouTube**, una lista aparte (**Youtube → Cola de YouTube**): siguiente, quitar, subir/bajar. No se mezcla con la lista IPTV. Puedes marcar varios con Ctrl o Mayús. `Ctrl+Enter` hace lo mismo.
 - **Añadir a favoritos**: pulsa **☆** al inicio de la fila (pasa a **★**; otro clic lo quita), el botón de abajo, clic derecho o `Ctrl+S`. Quedan en ★ Favoritos del reproductor.
 - Una **lista**: **Cargar lista** sustituye la barra lateral; **Añadir lista a la cola** mete esos vídeos en la cola.
@@ -86,7 +86,7 @@ Si el directo falla, se usa un archivo de la caché si ya es jugable (MP4, MKV, 
 
 Si cierras el reproductor o cambias de vídeo, se guarda el segundo. Al volver a abrirlo (también en una lista o desde **Historial**) continúa desde ahí, salvo que estuvieras al principio o casi al final. No se reproduce solo al restaurar la sesión. Los últimos vídeos de YouTube aparecen en la misma ventana de **Historial** que el IPTV.
 
-Si el vídeo tiene subtítulos, el menú **Subtítulos** pone el español primero: transcripción automática (**auto**) si el vídeo está en español, los del autor, y **traducción automática** si el audio es de otro idioma. Esa última pide el VTT con `tlang` (el json3 de YouTube a menudo se queda en inglés). El archivo se convierte a un VTT simple para VLC. En **Calidad / audio** puedes pedir 360p, 720p, 1080p o **mejor disponible**; los doblajes de YouTube no se pueden elegir (el stream solo trae una pista de audio). Detalle en [reproductor](reproductor.md#controles).
+Si el vídeo tiene subtítulos, el menú **Subtítulos** pone el español primero: transcripción automática (**auto**) si el vídeo está en español, los del autor, y **traducción automática** si el audio es de otro idioma. Esa última pide el VTT con `tlang` (el json3 de YouTube a menudo se queda en inglés). El archivo se convierte a SRT de una línea, anclado abajo, para que VLC aplique el estilo de **Preferencias → Subtítulos** sin ir subiendo por la pantalla. En **Calidad / audio** puedes pedir 360p, 720p, 1080p o **mejor disponible**; los doblajes de YouTube no se pueden elegir (el stream solo trae una pista de audio). Detalle en [reproductor](reproductor.md#controles).
 
 Si un vídeo no está disponible (restricción de YouTube o sin stream compatible), no hay alternativa dentro del programa. Ver [notas](notas.md#problemas-conocidos).
 

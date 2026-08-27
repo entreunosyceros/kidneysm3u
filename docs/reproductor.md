@@ -19,7 +19,7 @@ El reproductor es una ventana aparte: lista a la izquierda, vídeo a la derecha,
 - Doble clic — reproduce un canal. Un clic en una categoría abre ese grupo.
 - Clic derecho — reproducir desde aquí, favoritos, descargar, eliminar un ítem o vaciar la lista.
 
-Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeos van a **Youtube → Cola de YouTube** (siguiente, quitar, reordenar), no a esta lista. Al terminar el vídeo en curso se reproduce el primero de esa cola.
+Desde **Youtube → Buscar en YouTube** puedes **añadir a la cola**: los vídeos van a **Youtube → Cola de YouTube** (siguiente, quitar, reordenar), no a esta lista. Al terminar el vídeo en curso se reproduce el primero de esa cola. Un vídeo de YouTube suelto (búsqueda, URL o historial) al acabar ofrece **volver a verlo**; una playlist, un canal o **Reproducir desde aquí** no.
 
 **Reproducir → Limpiar lista lateral** hace lo mismo que el botón. No detiene el vídeo en curso. **Reproducir → Historial** lista los últimos canales IPTV, las películas a medio ver y los últimos vídeos de YouTube; **Ver historial…** abre la ventana. **Reproducir → Guía EPG → Parrilla…** abre la parrilla; **Desde URL…** / **Desde archivo…** indican el XMLTV. **Reproducir → Preferencias** abre la misma ventana que **Archivo → Preferencias** en la principal.
 
@@ -36,6 +36,8 @@ Play/pausa (también **un clic en el vídeo** o `Espacio`), stop, **grabar** (c�
 **Calidad / audio** (botón y menú): en YouTube eliges **360p**, **720p**, **1080p** o **mejor disponible** (también en **Preferencias**; si cambias con el vídeo en marcha, se recarga desde el segundo actual). En IPTV, si el stream trae varias pistas de audio, aparecen debajo para cambiar de idioma. YouTube solo trae una pista de audio (no hay doblajes).
 
 Los **subtítulos** listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC. En YouTube el menú pone el español primero: **auto** (transcribe el audio), los del autor, o **traducción automática** (YouTube traduce; no es un doblaje). Se descarga el idioma elegido, no un archivo en caché de otro idioma.
+
+El aspecto de los subtítulos de **texto** (tamaño, color, fondo, contorno, margen y retraso) se ajusta en **Preferencias → Subtítulos**. En YouTube se recarga el vídeo al guardar para aplicar tamaño y color; en IPTV rige el siguiente canal. No cambia los subtítulos de imagen que traen algunos canales IPTV.
 
 En **pantalla completa** (`F1`; `Esc` para salir) el PiP se cierra. Menú y controles se ocultan a los 3 segundos sin usarlos; mueve el ratón para verlos otra vez. Los botones de la barra siguen sirviendo para cambiar pista: **calidad / audio** y **subtítulos** abren el desplegable **hacia arriba** si no cabe debajo (la barra está al borde inferior). Si se saldría por un lado, se encaja dentro de la ventana. Mientras el menú está abierto, la barra **no se oculta**, para que puedas elegir. Eso también aplica si la ventana no está a pantalla completa pero el botón queda abajo del todo.
 
