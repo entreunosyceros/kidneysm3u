@@ -63,7 +63,7 @@ Si un canal IPTV no arranca (error de VLC, pantalla negra o el servidor no entre
 | `G` | Parrilla EPG (si el foco no está en un cuadro de texto) |
 | `Alt+F4` | Cerrar la ventana del reproductor |
 
-La ventana principal tiene **Ayuda → Atajos de teclado** (esta tabla) y **Ayuda → Documentación** (el manual en `docs/`).
+La ventana principal tiene **Ayuda → Atajos de teclado** (esta tabla), **Ayuda → Documentación** (el manual en `docs/`) y **Ayuda → Buscar actualizaciones** (consulta GitHub Releases ahora; detalle en [instalación](instalacion.md#actualizar-el-programa)).
 
 ## Bandeja del sistema
 

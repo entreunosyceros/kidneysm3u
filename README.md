@@ -24,7 +24,7 @@ Si no existe `.venv`, se crea solo e instala lo de `requirements.txt`. La primer
 | Tema | Contenido |
 | --- | --- |
 | [Índice](docs/README.md) | Mapa de toda la documentación |
-| [Instalación](docs/instalacion.md) | Requisitos, Ubuntu, Windows y entorno virtual |
+| [Instalación](docs/instalacion.md) | Requisitos, Ubuntu, Windows, entorno virtual y actualizar el programa |
 | [Uso](docs/uso.md) | Cómo empezar: cargar una lista, reproducir y preferencias |
 | [Listas M3U](docs/listas-m3u.md) | Carga, filtro y ordenación de listas |
 | [YouTube](docs/youtube.md) | Búsqueda, Shorts, playlists, cookies, yt-dlp y descargas |
@@ -46,7 +46,8 @@ Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda →
 - Grabar el canal o vídeo en reproducción a un fichero local (hace falta [ffmpeg](https://ffmpeg.org/download.html)).
 - Descargar vídeos o solo audio (también hace falta ffmpeg).
 - Ordenar listas M3U desde la interfaz.
-- Ajustar tema, volumen, descargas, cookies, calidad de YouTube, buffer IPTV y estilo de subtítulos en **Preferencias**.
+- Ajustar tema, volumen, descargas, cookies, calidad de YouTube, buffer IPTV, estilo de subtítulos y avisos de versión nueva en **Preferencias**.
+- Comprobar si hay una versión nueva (**Ayuda → Buscar actualizaciones**) e instalar el `.exe` o el `.deb` desde GitHub Releases.
 
 Más detalle en las páginas de [uso](docs/uso.md), [listas M3U](docs/listas-m3u.md) y [YouTube](docs/youtube.md).
 

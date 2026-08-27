@@ -10,12 +10,12 @@ Dentro de la aplicación: **Ayuda → Documentación**. El texto y las capturas 
 
 ## Temas
 
-1. **[Instalación](instalacion.md)** — Python, VLC, ffmpeg, paquete `.deb`, instalador de Windows y qué ocurre si borras `.venv`.
-2. **[Uso](uso.md)** — Primeros pasos: arrancar, cargar una lista, abrir el reproductor y preferencias.
+1. **[Instalación](instalacion.md)** — Python, VLC, ffmpeg, paquete `.deb`, instalador de Windows, actualizar desde GitHub Releases y qué ocurre si borras `.venv`.
+2. **[Uso](uso.md)** — Primeros pasos: arrancar, cargar una lista, abrir el reproductor, preferencias y **Ayuda → Buscar actualizaciones**.
 3. **[Listas M3U](listas-m3u.md)** — Filtro de la ventana principal, reproducción IPTV (buffer incluido) y utilidad para ordenar canales.
 4. **[YouTube](youtube.md)** — Búsqueda (vídeos, Shorts, listas, canales), cola, cookies, actualizar yt-dlp, playlists y descargas.
 5. **[Reproductor](reproductor.md)** — Controles, grabación, PiP, atajos, favoritos, lista lateral, guía EPG, pantalla completa y bandeja del sistema.
-6. **[Notas](notas.md)** — Cómo reproduce VLC/yt-dlp, buffer IPTV, archivos de configuración, tests, monitor de CPU y fallos conocidos.
+6. **[Notas](notas.md)** — Cómo reproduce VLC/yt-dlp, buffer IPTV, archivos de configuración, tests, monitor de CPU, actualizaciones y fallos conocidos.
 
 ## Convención de enlaces
 

@@ -61,6 +61,13 @@ bash build-windows.sh
 
 Queda `dist/Kidneysm3u-Setup-*.exe` (asistente de instalación). Detalle en [docs/instalacion.md](docs/instalacion.md#instalador-de-windows).
 
+Para que **Ayuda → Buscar actualizaciones** (y el aviso al arrancar) puedan instalar el paquete, el release de GitHub debe adjuntar exactamente:
+
+- `Kidneysm3u-Setup-<versión>.exe`
+- `kidneysm3u_<versión>_all.deb`
+
+El tag puede ser `Versión1.2.3` (o `v1.2.3` / `1.2.3`); el programa extrae el número. Los nombres de los adjuntos usan ese mismo `x.y.z`. La versión sale de `packaging/VERSION` y `app_version.py` (hay que dejarlas iguales). Guía: [docs/instalacion.md](docs/instalacion.md#actualizar-el-programa).
+
 ## Estructura del código
 
 | Ruta | Contenido |
@@ -74,6 +81,7 @@ Queda `dist/Kidneysm3u-Setup-*.exe` (asistente de instalación). Detalle en [doc
 | `m3u_parse.py`, `epg.py` | Parseo M3U y guía XMLTV |
 | `descargas.py` | Ventana **Archivo → Descargar** |
 | `app_config.py` | Preferencias y sesión (`config.json`) |
+| `app_version.py`, `app_update.py` | Versión del programa y aviso/instalación desde GitHub Releases |
 | `docs/` | Manual de usuario |
 | `kidneysm3u.spec`, `kidneysm3u.iss`, `build-windows.sh` | Instalador de Windows (Inno Setup) |
 | `packaging/` | Empaquetado Debian |

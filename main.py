@@ -19,6 +19,7 @@ from ui_theme import (
 from ui_clipboard import ask_string
 import app_config
 from app_paths import data_dir
+from app_update import start_startup_update_check, start_manual_update_check
 import sys
 
 class M3UProcessor:
@@ -60,6 +61,7 @@ class M3UProcessor:
         
         # Inicializar el icono de la bandeja del sistema
         self.icono_bandeja = IconoBandeja(self.root)
+        self.root.after(1800, self._schedule_app_update_check)
     
     def create_menu(self):
         menubar = tk.Menu(self.root)
@@ -112,12 +114,25 @@ class M3UProcessor:
         ayuda_menu = tk.Menu(menubar, tearoff=0)
         ayuda_menu.add_command(label="Atajos de teclado", command=lambda: show_keyboard_shortcuts(self.root))
         ayuda_menu.add_command(label="Documentación", command=lambda: show_documentation(self.root))
+        ayuda_menu.add_separator()
+        ayuda_menu.add_command(label="Buscar actualizaciones", command=self.check_app_updates_now)
         menubar.add_cascade(label="Ayuda", menu=ayuda_menu)
         
         self.menubar = menubar
         self.root.config(menu=menubar)
         style_menu_tree(menubar)
         self._refresh_recent_menu()
+
+    def _schedule_app_update_check(self):
+        start_startup_update_check(self.root, quit_app=self.quit_app)
+
+    def check_app_updates_now(self):
+        self.status_var.set('Buscando actualizaciones…')
+        start_manual_update_check(
+            self.root,
+            quit_app=self.quit_app,
+            status_var=self.status_var,
+        )
 
     def open_sorter(self):
         filename = filedialog.askopenfilename(filetypes=[("Archivos M3U", "*.m3u")])

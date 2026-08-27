@@ -19,7 +19,7 @@ Caché de red de VLC con el perfil **Equilibrado** (ms): MPEG-TS 5000, HLS 8000,
 
 ## Tests
 
-El parseo de M3U (`#EXTINF`, `tvg-id`, `tvg-logo`, encabezado `#EXTM3U` con `url-tvg`), la guía XMLTV (ahora/siguiente, parrilla, iconos), el buffer IPTV (`tests/test_iptv_buffer.py`) y los mixins del reproductor (menús emergentes, PiP) tienen pruebas en `tests/`. No van en el `.deb`; son para desarrollo:
+El parseo de M3U (`#EXTINF`, `tvg-id`, `tvg-logo`, encabezado `#EXTM3U` con `url-tvg`), la guía XMLTV (ahora/siguiente, parrilla, iconos), el buffer IPTV (`tests/test_iptv_buffer.py`), las actualizaciones (`tests/test_app_update.py`) y los mixins del reproductor (menús emergentes, PiP) tienen pruebas en `tests/`. No van en el `.deb`; son para desarrollo:
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
@@ -34,7 +34,7 @@ python3 -m pytest
 | --- | --- | --- |
 | `favoritos.json` | Favoritos del reproductor | Se crea al guardar el primer favorito. Si falta, el reproductor usa una lista vacía |
 | `enlaces.json` | Enlaces guardados en el gestor | Se crea vacío al arrancar |
-| `config.json` | Preferencias (tema, logos de canal, volumen, carpeta de descargas, abrir gestor de archivos al descargar, navegador de cookies, calidad YouTube, buffer IPTV, estilo de subtítulos de texto, recordar última lista, URL de guía EPG), geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube, cola de YouTube, últimas búsquedas de YouTube, historial IPTV / YouTube y últimas URLs de **Archivo → Descargar** | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
+| `config.json` | Preferencias (tema, logos de canal, volumen, carpeta de descargas, abrir gestor de archivos al descargar, navegador de cookies, calidad YouTube, buffer IPTV, estilo de subtítulos de texto, recordar última lista, aviso de versiones nuevas `check_app_updates`, caché de Releases `app_update_cache` / `app_update_checked_at`, URL de guía EPG), geometría de ventanas, última lista lateral y canal (sin autoplay), segundo de YouTube, cola de YouTube, últimas búsquedas de YouTube, historial IPTV / YouTube y últimas URLs de **Archivo → Descargar** | Se crea con valores por defecto al arrancar. Se edita en **Archivo → Preferencias** |
 | `cookies.txt` | Cookies de YouTube | Se escribe al reproducir YouTube o al pulsar **Reexportar cookies**, solo si hay login vigente en el navegador. El indicador **Sesión YouTube: OK / caducada** avisa si hace falta reexportar. Detalle en [YouTube](youtube.md#cookies) |
 | `.venv/` | Entorno Python | `run_app.py` lo recrea ([instalación](instalacion.md)) |
 | `epg_cache/` | Miniaturas de logos EPG / `tvg-logo` | Se crea al pintar logos; no va al git |
@@ -70,6 +70,12 @@ Aparecerá el porcentaje abajo a la derecha, actualizado cada segundo.
 - Un canal IPTV puede tardar en arrancar o no arrancar: depende del servidor de la lista, no solo del programa. Si no hay vídeo (también con pantalla negra), el reproductor muestra que ese canal por el momento no funciona. Si el mismo enlace falla en VLC, el archivo no está disponible desde esta red. Si un FHD se corta cada pocos segundos, **Equilibrado** ya usa ~5 s de caché en MPEG-TS; el programa puede subirla una vez. Si sigue igual, prueba **Preferencias → Buffer IPTV → Estable**.
 - En GNOME, la bandeja necesita AppIndicator. Ver [reproductor](reproductor.md#ubuntu--gnome). El lanzador y la ventana usan el mismo `WM_CLASS` (`Kidneysm3u`) para que no aparezca un segundo icono en el dock; detalle en [instalación](instalacion.md#instalación-en-ubuntu-paquete-deb).
 - La búsqueda de Shorts usa la pestaña de hashtag de YouTube; un término sin hashtag equivalente puede devolver pocos resultados. **Ordenar por Fecha** con el nombre o `@handle` de un canal abre su pestaña de Shorts (o de vídeos); en una búsqueda general se ordena por fecha de subida.
+
+## Actualizaciones del programa
+
+`app_version.py` guarda el número (p. ej. 1.2.3). `app_update.py` consulta `https://api.github.com/repos/entreunosyceros/kidneysm3u/releases/latest` (User-Agent `kidneysm3u/…`) y extrae `x.y.z` del tag o del título (`Versión1.2.3`, `v1.2.3`, etc.). Al arrancar, si `check_app_updates` es verdadero, como mucho una vez cada 24 h (`app_update_checked_at` + `app_update_cache` en `config.json`). **Ayuda → Buscar actualizaciones** ignora esa caché y consulta ya. No se registran las URLs de descarga.
+
+Según cómo corre el programa: instalador de Windows (`sys.frozen`) → asset `Kidneysm3u-Setup-*.exe`; copia del `.deb` en `~/.local/share/kidneysm3u` → `kidneysm3u_*.deb` con `pkexec dpkg -i`; código fuente → solo abre el HTML de Releases. El paquete se instala encima; no hay desinstalación previa. Guía de uso: [instalación](instalacion.md#actualizar-el-programa).
 
 ## Siguiente
 

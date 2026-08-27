@@ -5,22 +5,28 @@ import webbrowser
 from PIL import Image, ImageTk
 from app_paths import resource_dir
 from ui_theme import style_window, set_window_icon, center_window, get_colors, get_font
+from app_version import __version__ as APP_VERSION
 
 def show_about(root):
     about_window = tk.Toplevel(root)
     about_window.title('Acerca de')
-    about_window.geometry('520x560')
+    about_window.geometry('520x580')
     about_window.resizable(False, False)
     about_window.transient(root)
     about_window.grab_set()
     style_window(about_window)
     set_window_icon(about_window)
-    center_window(about_window, 520, 560)
+    center_window(about_window, 520, 580)
 
     main_frame = ttk.Frame(about_window, padding=28)
     main_frame.pack(fill=tk.BOTH, expand=True)
 
     ttk.Label(main_frame, text='Kidneys M3U/M3U8', style='PageTitle.TLabel').pack(pady=(0, 4))
+    ttk.Label(
+        main_frame,
+        text=f'Versión {APP_VERSION}',
+        style='Muted.TLabel',
+    ).pack(pady=(0, 4))
     ttk.Label(
         main_frame,
         text='Listas IPTV, YouTube y descargas en el escritorio',
@@ -44,7 +50,7 @@ def show_about(root):
     ttk.Label(main_frame, text=description, wraplength=420, justify='center').pack(pady=(0, 18))
 
     colors = get_colors()
-    github_url = "https://github.com/sapoclay/kidneysm3u"
+    github_url = "https://github.com/entreunosyceros/kidneysm3u"
     github_link = tk.Label(
         main_frame,
         text="Visitar repositorio en GitHub",

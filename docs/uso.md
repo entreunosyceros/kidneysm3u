@@ -14,6 +14,8 @@ python3 run_app.py
 
 En Ubuntu con el `.deb`, el comando es `kidneysm3u`.
 
+Si GitHub tiene una versión más nueva, al abrir puede salir un aviso. Detalle (aviso al arrancar, **Ayuda → Buscar actualizaciones**, Preferencias y código fuente): [instalación](instalacion.md#actualizar-el-programa).
+
 ## Ventana principal
 
 Desde aquí filtras o abres listas y lanzas el reproductor. El flujo habitual:
@@ -38,6 +40,7 @@ El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras co
 | Buffer IPTV | **Rápido**, **Equilibrado** (por defecto) o **Estable**. El siguiente canal ya usa el valor. Detalle en [listas M3U](listas-m3u.md#buffer-iptv). |
 | Subtítulos | Tamaño, color, opacidad, contorno, caja de fondo (color y transparencia), margen y retraso. Solo afecta a subtítulos de texto (SRT, YouTube). En YouTube se recarga el vídeo al guardar; en IPTV, al siguiente canal. |
 | Recordar última lista | Restaura la lista lateral al abrir; no reproduce solo. |
+| Avisar de versiones nuevas | Al abrir, si GitHub tiene un paquete más nuevo. Casilla **Actualizaciones**. Se puede apagar. Detalle en [instalación](instalacion.md#actualizar-el-programa). |
 | Carpeta de descargas | Destino inicial de vídeos, audio y grabaciones. |
 | Navegador de cookies | **Automático** o **Firefox**. Automático prueba Firefox y, si puede, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer: usa Firefox. Detalle en [YouTube](youtube.md#cookies). |
 | yt-dlp | Muestra la versión e **Actualizar yt-dlp**. Después hay que cerrar y abrir el programa. |
@@ -81,6 +84,7 @@ En el menú **Ayuda** de la ventana principal:
 
 - **Atajos de teclado** — teclas y botones del reproductor.
 - **Documentación** — este manual se lee dentro de la propia ventana (temas a la izquierda, capturas incluidas). Las imágenes se cargan de GitHub; hace falta red.
+- **Buscar actualizaciones** — consulta GitHub Releases **ahora** (aunque el aviso al arrancar falle, esté desactivado o ya se hubiera mirado hoy). La barra de estado indica si busca, si hay versión nueva, si ya estás al día o si falló la red. Si hay paquete para tu sistema, el diálogo **Actualizar** / **Más tarde** / **No avisarme** es el mismo que al abrir. Quien usa el código fuente solo abre la página de lanzamientos. Guía completa: [actualizar el programa](instalacion.md#actualizar-el-programa).
 
 ## Cerrar el programa
 

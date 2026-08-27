@@ -180,6 +180,7 @@ def show_preferences(parent, on_apply=None):
     cookie_var = tk.StringVar(value=app_config.get_cookie_browser())
     remember_var = tk.BooleanVar(value=app_config.get_remember_last_list())
     logos_var = tk.BooleanVar(value=app_config.get_show_channel_logos())
+    updates_var = tk.BooleanVar(value=app_config.get_check_app_updates())
     sub_cfg = app_config.get_subtitle_style()
     sub_size_var = tk.StringVar(value=str(sub_cfg['subtitle_size']))
     sub_color_var = tk.StringVar(value=sub_cfg['subtitle_color'])
@@ -198,7 +199,7 @@ def show_preferences(parent, on_apply=None):
     ttk.Label(shell, text='Preferencias', style='PageTitle.TLabel').pack(anchor=tk.W)
     ttk.Label(
         shell,
-        text='Tema, logos, reproducción, subtítulos, descargas, sesión de YouTube y yt-dlp',
+        text='Tema, logos, reproducción, subtítulos, descargas, actualizaciones, sesión de YouTube y yt-dlp',
         style='Muted.TLabel',
     ).pack(anchor=tk.W, pady=(0, 10))
 
@@ -481,6 +482,21 @@ def show_preferences(parent, on_apply=None):
         wraplength=500,
     ).pack(anchor=tk.W, pady=(6, 0))
 
+    updates = ttk.LabelFrame(main, text=' ACTUALIZACIONES ', padding=12)
+    updates.pack(fill=tk.X, pady=(0, 10))
+    ttk.Checkbutton(
+        updates,
+        text='Avisar si hay una versión nueva al abrir el programa',
+        variable=updates_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W)
+    ttk.Label(
+        updates,
+        text='Consulta GitHub Releases (como mucho una vez al día). Si hay paquete para tu sistema, puedes instalarlo desde el aviso. Quien usa el código fuente solo recibe el enlace. También está en Ayuda → Buscar actualizaciones.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(6, 0))
+
     downloads = ttk.LabelFrame(main, text=' DESCARGAS ', padding=12)
     downloads.pack(fill=tk.X, pady=(0, 10))
     dest_row = ttk.Frame(downloads, style='Card.TFrame')
@@ -625,6 +641,7 @@ def show_preferences(parent, on_apply=None):
             'cookie_browser': cookie_key,
             'remember_last_list': bool(remember_var.get()),
             'show_channel_logos': bool(logos_var.get()),
+            'check_app_updates': bool(updates_var.get()),
             'youtube_quality': app_config.normalize_youtube_quality(quality),
             'iptv_buffer': app_config.normalize_iptv_buffer_profile(buffer_var.get()),
         }

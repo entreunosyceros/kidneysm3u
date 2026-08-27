@@ -69,6 +69,9 @@ _DEFAULTS = {
     'subtitle_bg_opacity': 0,
     'subtitle_margin': 0,
     'subtitle_delay_ds': 0,
+    'check_app_updates': True,
+    'app_update_checked_at': 0,
+    'app_update_cache': {},
 }
 
 _cache = None
@@ -209,6 +212,45 @@ def get_epg_url():
 
 def set_epg_url(url):
     save({'epg_url': str(url or '').strip()})
+
+
+def get_check_app_updates():
+    return bool(load().get('check_app_updates', True))
+
+
+def set_check_app_updates(value):
+    save({'check_app_updates': bool(value)})
+
+
+def get_app_update_checked_at():
+    try:
+        return max(0, int(load().get('app_update_checked_at') or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def get_app_update_cache():
+    cached = load().get('app_update_cache')
+    if not isinstance(cached, dict):
+        return None
+    version = str(cached.get('version') or '').strip()
+    if not version:
+        return None
+    return cached
+
+
+def set_app_update_cache(payload):
+    import time
+    data = payload if isinstance(payload, dict) else {}
+    save({
+        'app_update_checked_at': int(time.time()),
+        'app_update_cache': {
+            'version': str(data.get('version') or '').strip(),
+            'tag': str(data.get('tag') or '').strip(),
+            'url': str(data.get('url') or '').strip(),
+            'assets': data.get('assets') if isinstance(data.get('assets'), list) else [],
+        },
+    })
 
 
 def normalize_youtube_quality(value):

@@ -37,7 +37,7 @@ YouTube cambia el extractor a menudo. Si deja de reproducir, buscar o descargar 
 - **Archivo → Preferencias** (o **Reproducir → Preferencias**) → **Actualizar yt-dlp**
 - En el reproductor: **Youtube → Actualizar yt-dlp**
 
-Usa el mismo Python del programa (`python -m pip install --upgrade yt-dlp[default]`). Después **cierra y vuelve a abrir** el programa: el módulo ya cargado no cambia hasta entonces. No sustituye a **Reexportar cookies**.
+Usa el mismo Python del programa (`python -m pip install --upgrade yt-dlp[default]`). Después **cierra y vuelve a abrir** el programa: el módulo ya cargado no cambia hasta entonces. No sustituye a **Reexportar cookies**. Esto **no** actualiza Kidneys M3U: para una versión nueva del programa usa **Ayuda → Buscar actualizaciones** ([instalación](instalacion.md#actualizar-el-programa)).
 
 Si arrancas el Python del sistema (sin `.venv`), Ubuntu puede bloquear `pip` (PEP 668). En ese caso usa `python3 run_app.py`.
 

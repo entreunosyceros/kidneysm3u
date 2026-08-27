@@ -48,5 +48,5 @@ Incluye, en la medida de lo posible:
 
 - No subas `cookies.txt`, `config.json` ni listas M3U con usuario y contraseña a issues, PRs o capturas.
 - Mantén Python y las dependencias actualizadas; yt-dlp se actualiza en **Preferencias → Actualizar yt-dlp**.
-- Clona y descarga el código solo desde el repositorio oficial: [github.com/sapoclay/kidneysm3u](https://github.com/sapoclay/kidneysm3u).
+- Clona y descarga el código solo desde el repositorio oficial: [github.com/entreunosyceros/kidneysm3u](https://github.com/entreunosyceros/kidneysm3u). Las actualizaciones in-app bajan el `.exe` o `.deb` de esa misma página de Releases ([cómo actualizar](docs/instalacion.md#actualizar-el-programa)).
 - En equipos compartidos, protege `~/.local/share/kidneysm3u/` (instalación `.deb`) o la carpeta del proyecto (código fuente). Desinstalar el `.deb` **no** borra esa carpeta; ver [docs/instalacion.md](docs/instalacion.md#desinstalar).
