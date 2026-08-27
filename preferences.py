@@ -14,10 +14,6 @@ from ui_theme import apply_theme, get_colors, style_window, set_window_icon, cen
 COOKIE_LABELS = (
     ('auto', 'Automático (el que tenga sesión)'),
     ('firefox', 'Firefox'),
-    ('chrome', 'Chrome'),
-    ('chromium', 'Chromium'),
-    ('brave', 'Brave'),
-    ('edge', 'Edge'),
 )
 
 _YT_DLP_UPDATING = False
@@ -385,7 +381,7 @@ def show_preferences(parent, on_apply=None):
     cookie_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
     ttk.Label(
         cookies,
-        text='Automático prueba Firefox primero. En Windows usa Firefox (Chrome y Edge suelen cifrar las cookies y no se pueden leer). Cierra el navegador si el archivo está bloqueado.',
+        text='Lo fiable es Firefox con sesión en YouTube: ciérralo y pulsa Reexportar cookies. Automático prueba Firefox y, si el sistema lo permite, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer.',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))

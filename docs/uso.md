@@ -38,7 +38,7 @@ El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras co
 | Buffer IPTV | **Rápido**, **Equilibrado** (por defecto) o **Estable**. El siguiente canal ya usa el valor. Detalle en [listas M3U](listas-m3u.md#buffer-iptv). |
 | Recordar última lista | Restaura la lista lateral al abrir; no reproduce solo. |
 | Carpeta de descargas | Destino inicial de vídeos, audio y grabaciones. |
-| Navegador de cookies | De dónde leer la sesión de YouTube. **Automático** prueba Firefox primero. En **Windows**, Chrome y Edge casi nunca funcionan (cifran las cookies): deja esta opción en **Automático** o **Firefox**. Detalle en [YouTube](youtube.md#windows-firefox-no-chrome-ni-edge). |
+| Navegador de cookies | **Automático** o **Firefox**. Automático prueba Firefox y, si puede, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer: usa Firefox. Detalle en [YouTube](youtube.md#cookies). |
 | yt-dlp | Muestra la versión e **Actualizar yt-dlp**. Después hay que cerrar y abrir el programa. |
 
 Detalle del filtro y de la herramienta de ordenar: [listas M3U](listas-m3u.md).
@@ -72,14 +72,14 @@ Menú **Youtube**:
 - Cargar una playlist como lista lateral
 - Actualizar yt-dlp (también en Preferencias)
 
-En **Windows**, Chrome y Edge casi nunca sirven para las cookies de YouTube. Deja el navegador de cookies en **Automático** o **Firefox** y reexporta desde Firefox. Guía completa: [YouTube](youtube.md#cookies).
+En **Windows** las cookies de YouTube hay que sacarlas de **Firefox** (Chrome, Brave y Edge las cifran). En Preferencias deja **Automático** o **Firefox**, inicia sesión en Firefox, ciérralo y pulsa **Reexportar cookies**. Guía: [YouTube](youtube.md#cookies).
 
 ## Ayuda
 
 En el menú **Ayuda** de la ventana principal:
 
 - **Atajos de teclado** — teclas y botones del reproductor.
-- **Documentación** — este manual se lee dentro de la propia ventana (temas a la izquierda y enlaces entre páginas).
+- **Documentación** — este manual se lee dentro de la propia ventana (temas a la izquierda, capturas incluidas). Las imágenes se cargan de GitHub; hace falta red.
 
 ## Cerrar el programa
 

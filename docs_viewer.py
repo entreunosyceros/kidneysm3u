@@ -1,11 +1,18 @@
 """Visor de la documentación Markdown dentro de la aplicación."""
 
+import hashlib
 import os
 import re
+import ssl
+import tempfile
+import threading
 import webbrowser
 import tkinter as tk
+from collections import deque
+from io import BytesIO
 from pathlib import Path
 from tkinter import ttk
+from urllib.request import Request, urlopen
 
 from ui_theme import (
     style_window, set_window_icon, center_window, get_colors, get_font, style_listbox,
@@ -27,10 +34,200 @@ DOC_PAGES = (
 _INLINE_RE = re.compile(
     r'(!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*)'
 )
+_IMG_HTML_RE = re.compile(r'<img\b[^>]*>', re.IGNORECASE)
+_P_TAG_RE = re.compile(r'</?p\b[^>]*>', re.IGNORECASE)
+_SRC_RE = re.compile(r'''\bsrc\s*=\s*["']([^"']+)["']''', re.IGNORECASE)
+_ALT_RE = re.compile(r'''\balt\s*=\s*["']([^"']*)["']''', re.IGNORECASE)
+_DOC_UA = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) '
+    'Gecko/20100101 Firefox/125.0'
+)
+_DOC_IMG_MAX_BYTES = 5 * 1024 * 1024
+_DOC_IMG_MAX_W = 640
+_DOC_IMG_MAX_H = 420
 
 
 def _project_root():
     return Path(resource_dir())
+
+
+def html_img_to_markdown(tag):
+    src_match = _SRC_RE.search(tag or '')
+    if not src_match:
+        return ''
+    alt_match = _ALT_RE.search(tag)
+    alt = (alt_match.group(1) if alt_match else '').strip() or 'imagen'
+    return f'![{alt}]({src_match.group(1).strip()})'
+
+
+def normalize_doc_markup(source):
+    """Convierte <img> HTML (capturas de GitHub) a Markdown y quita <p align=center>."""
+    text = source or ''
+    text = _P_TAG_RE.sub('', text)
+    return _IMG_HTML_RE.sub(lambda match: html_img_to_markdown(match.group(0)), text)
+
+
+def _doc_image_cache_dir():
+    path = os.path.join(tempfile.gettempdir(), 'kidneysm3u_docs_img')
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        pass
+    return path
+
+
+def _doc_cache_path(url):
+    digest = hashlib.sha1((url or '').encode('utf-8', errors='replace')).hexdigest()
+    return os.path.join(_doc_image_cache_dir(), digest)
+
+
+def fetch_doc_image_bytes(url):
+    url = (url or '').strip()
+    if not url.startswith(('http://', 'https://')):
+        return None
+    cached = _doc_cache_path(url)
+    try:
+        if os.path.isfile(cached) and 0 < os.path.getsize(cached) <= _DOC_IMG_MAX_BYTES:
+            with open(cached, 'rb') as handle:
+                return handle.read()
+    except OSError:
+        pass
+    request = Request(url, headers={'User-Agent': _DOC_UA, 'Accept': 'image/*,*/*'})
+    raw = None
+    try:
+        with urlopen(request, timeout=15) as response:
+            raw = response.read(_DOC_IMG_MAX_BYTES + 1)
+    except Exception:
+        try:
+            ctx = ssl._create_unverified_context()
+            with urlopen(request, timeout=15, context=ctx) as response:
+                raw = response.read(_DOC_IMG_MAX_BYTES + 1)
+        except Exception:
+            return None
+    if not raw or len(raw) > _DOC_IMG_MAX_BYTES:
+        return None
+    try:
+        with open(cached, 'wb') as handle:
+            handle.write(raw)
+    except OSError:
+        pass
+    return raw
+
+
+def local_doc_image_bytes(url):
+    url = (url or '').strip()
+    if not url or url.startswith(('http://', 'https://', 'mailto:')):
+        return None
+    path_part = url.split('#', 1)[0].split('?', 1)[0]
+    root = _project_root().resolve()
+    path = Path(path_part)
+    candidate = path if path.is_absolute() else (root / path_part)
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(root)
+    except (OSError, ValueError):
+        return None
+    if not resolved.is_file():
+        return None
+    try:
+        if resolved.stat().st_size > _DOC_IMG_MAX_BYTES:
+            return None
+        return resolved.read_bytes()
+    except OSError:
+        return None
+
+
+def photo_from_image_bytes(raw, max_width=_DOC_IMG_MAX_W, max_height=_DOC_IMG_MAX_H, master=None):
+    if not raw:
+        return None
+    try:
+        from PIL import Image, ImageTk
+    except Exception:
+        return None
+    try:
+        image = Image.open(BytesIO(raw))
+        image.load()
+        if image.mode not in ('RGB', 'RGBA'):
+            image = image.convert('RGBA' if 'A' in image.getbands() else 'RGB')
+    except Exception:
+        return None
+    width, height = image.size
+    if width < 1 or height < 1:
+        return None
+    scale = min(max_width / width, max_height / height, 1.0)
+    if scale < 1:
+        image = image.resize(
+            (max(1, int(width * scale)), max(1, int(height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+    try:
+        if master is not None:
+            return ImageTk.PhotoImage(image, master=master)
+        return ImageTk.PhotoImage(image)
+    except Exception:
+        return None
+
+
+def load_doc_photo(url, master=None):
+    raw = fetch_doc_image_bytes(url) if (url or '').startswith(('http://', 'https://')) else local_doc_image_bytes(url)
+    return photo_from_image_bytes(raw, master=master)
+
+
+def _apply_doc_image(widget, gen, mark, label, raw):
+    if getattr(widget, '_doc_gen', None) != gen:
+        return
+    photo = photo_from_image_bytes(raw, master=widget)
+    try:
+        widget.configure(state=tk.NORMAL)
+        line_end = widget.index(f'{mark} lineend')
+        widget.delete(mark, line_end)
+        if photo is not None:
+            widget.image_create(mark, image=photo)
+            widget._doc_images.append(photo)
+        else:
+            widget.insert(mark, f'[{label}]', ('muted',))
+        widget.configure(state=tk.DISABLED)
+    except tk.TclError:
+        return
+
+
+def _pump_doc_images(widget, gen):
+    if getattr(widget, '_doc_gen', None) != gen:
+        return
+    ready = getattr(widget, '_doc_ready', None)
+    while ready:
+        try:
+            item = ready.popleft()
+        except IndexError:
+            break
+        _apply_doc_image(widget, *item)
+    if getattr(widget, '_doc_pending', 0) > 0:
+        try:
+            widget.after(80, lambda: _pump_doc_images(widget, gen))
+        except tk.TclError:
+            pass
+
+
+def _schedule_doc_image(widget, url, alt, gen):
+    mark = f'docimg{getattr(widget, "_doc_img_n", 0)}'
+    widget._doc_img_n = getattr(widget, '_doc_img_n', 0) + 1
+    widget.mark_set(mark, tk.END)
+    widget.mark_gravity(mark, tk.LEFT)
+    label = (alt or 'imagen').strip() or 'imagen'
+    widget.insert(tk.END, f'[{label}]', ('muted',))
+    widget._doc_pending = getattr(widget, '_doc_pending', 0) + 1
+
+    def work():
+        try:
+            if (url or '').startswith(('http://', 'https://')):
+                raw = fetch_doc_image_bytes(url)
+            else:
+                raw = local_doc_image_bytes(url)
+            getattr(widget, '_doc_ready', deque()).append((gen, mark, label, raw))
+        finally:
+            widget._doc_pending = max(0, getattr(widget, '_doc_pending', 1) - 1)
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 def _normalize_doc_path(relative):
@@ -92,14 +289,18 @@ def _configure_tags(widget, colors):
     widget.tag_configure('link', font=get_font(10), foreground=colors['accent'], underline=True)
 
 
-def _insert_inline(widget, text, on_link, base_tags=('body',)):
+def _insert_inline(widget, text, on_link, base_tags=('body',), schedule_image=None):
     pos = 0
     for match in _INLINE_RE.finditer(text):
         if match.start() > pos:
             widget.insert(tk.END, text[pos:match.start()], base_tags)
         if match.group(1) and match.group(1).startswith('!['):
             alt = match.group(2) or 'imagen'
-            widget.insert(tk.END, f'[{alt}]', ('muted',) + tuple(t for t in base_tags if t != 'body'))
+            href = (match.group(3) or '').strip()
+            if schedule_image and href:
+                schedule_image(href, alt)
+            else:
+                widget.insert(tk.END, f'[{alt}]', ('muted',) + tuple(t for t in base_tags if t != 'body'))
         elif match.group(4) is not None:
             label, href = match.group(4), match.group(5)
             tag = f'link_{id(href)}_{widget.index(tk.END)}'
@@ -119,10 +320,20 @@ def _insert_inline(widget, text, on_link, base_tags=('body',)):
 def render_markdown(widget, source, on_link):
     widget.configure(state=tk.NORMAL)
     widget.delete('1.0', tk.END)
+    widget._doc_gen = getattr(widget, '_doc_gen', 0) + 1
+    gen = widget._doc_gen
+    widget._doc_images = []
+    widget._doc_img_n = 0
+    widget._doc_ready = deque()
+    widget._doc_pending = 0
+    source = normalize_doc_markup(source)
     lines = source.replace('\r\n', '\n').replace('\r', '\n').split('\n')
     i = 0
     in_code = False
     code_lines = []
+
+    def schedule_image(url, alt):
+        _schedule_doc_image(widget, url, alt, gen)
 
     def flush_code():
         block = '\n'.join(code_lines).rstrip() + '\n'
@@ -160,24 +371,24 @@ def render_markdown(widget, source, on_link):
             widget.insert(tk.END, '\n')
             continue
         if stripped.startswith('# '):
-            _insert_inline(widget, stripped[2:], on_link, ('h1',))
+            _insert_inline(widget, stripped[2:], on_link, ('h1',), schedule_image)
             widget.insert(tk.END, '\n')
         elif stripped.startswith('## '):
-            _insert_inline(widget, stripped[3:], on_link, ('h2',))
+            _insert_inline(widget, stripped[3:], on_link, ('h2',), schedule_image)
             widget.insert(tk.END, '\n')
         elif stripped.startswith('### '):
-            _insert_inline(widget, stripped[4:], on_link, ('h3',))
+            _insert_inline(widget, stripped[4:], on_link, ('h3',), schedule_image)
             widget.insert(tk.END, '\n')
         elif stripped.startswith('- '):
             widget.insert(tk.END, '• ', ('bullet',))
-            _insert_inline(widget, stripped[2:], on_link, ('bullet',))
+            _insert_inline(widget, stripped[2:], on_link, ('bullet',), schedule_image)
             widget.insert(tk.END, '\n')
         elif stripped.startswith('>'):
             quote = re.sub(r'^>\s*(\[![A-Z]+\]\s*)?', '', stripped)
-            _insert_inline(widget, quote, on_link, ('quote',))
+            _insert_inline(widget, quote, on_link, ('quote',), schedule_image)
             widget.insert(tk.END, '\n')
         elif stripped:
-            _insert_inline(widget, stripped, on_link, ('body',))
+            _insert_inline(widget, stripped, on_link, ('body',), schedule_image)
             widget.insert(tk.END, '\n')
         else:
             widget.insert(tk.END, '\n')
@@ -185,6 +396,8 @@ def render_markdown(widget, source, on_link):
 
     widget.configure(state=tk.DISABLED)
     widget.see('1.0')
+    if widget._doc_img_n:
+        widget.after(50, lambda: _pump_doc_images(widget, gen))
 
 
 def show_documentation(root):

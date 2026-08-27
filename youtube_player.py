@@ -2087,7 +2087,7 @@ class YouTubeHandler:
             messagebox.showwarning(
                 "Cookies de YouTube",
                 "Se escribieron cookies, pero no hay login vigente.\n"
-                "Abre YouTube en Firefox (o Chrome), inicia sesión y vuelve a reexportar.",
+                "Abre YouTube en Firefox, inicia sesión y vuelve a reexportar.",
             )
         return path
 

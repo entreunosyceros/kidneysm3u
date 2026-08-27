@@ -8,7 +8,7 @@
 
 Esta carpeta es el manual del programa. El [README principal](../README.md) es la puerta de entrada; desde aquí puedes abrir cada tema y, en todas las páginas, volver al inicio o saltar a otro apartado.
 
-Dentro de la aplicación: **Ayuda → Documentación**. El texto se muestra en esa ventana; los enlaces entre páginas no abren otro programa. Los enlaces `https://` sí van al navegador.
+Dentro de la aplicación: **Ayuda → Documentación**. El texto y las capturas se muestran en esa ventana (las imágenes se cargan de GitHub; hace falta red). Los enlaces entre páginas no abren otro programa. Los enlaces `https://` sí van al navegador.
 
 ## Temas
 

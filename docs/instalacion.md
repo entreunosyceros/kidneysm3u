@@ -104,7 +104,7 @@ python main.py
 
 Si el audio o el vídeo fallan, comprueba que VLC está en el PATH y que `python-vlc` encaja con tu versión de VLC.
 
-Para YouTube, Chrome y Edge en Windows casi nunca van a funcionar: cifran las cookies y el programa no puede leerlas. En **Preferencias** deja el navegador de cookies en **Automático** o en **Firefox**, inicia sesión en youtube.com con Firefox, ciérralo y pulsa **Reexportar cookies**. Detalle en [YouTube](youtube.md#windows-firefox-no-chrome-ni-edge).
+Para YouTube en Windows hace falta **Firefox**: Chrome, Brave y Edge cifran las cookies y el programa no puede leerlas. En **Preferencias** elige **Automático** o **Firefox**, inicia sesión en youtube.com con Firefox, ciérralo y pulsa **Reexportar cookies**. Detalle en [YouTube](youtube.md#cookies).
 
 ### Instalador de Windows
 

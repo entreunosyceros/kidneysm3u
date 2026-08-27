@@ -22,7 +22,7 @@ IPTV_RESUME_MIN_S = 15
 YOUTUBE_QUALITIES = (0, 360, 720, 1080)
 IPTV_BUFFER_PROFILES = ('fast', 'balanced', 'stable')
 
-COOKIE_BROWSERS = ('auto', 'firefox', 'chrome', 'chromium', 'brave', 'edge')
+COOKIE_BROWSERS = ('auto', 'firefox')
 
 _DEFAULTS = {
     'theme': 'dark',
