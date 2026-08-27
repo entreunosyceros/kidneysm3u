@@ -23,6 +23,7 @@ from iptv_buffer import (
     iptv_soft_rebuffer_should_bump,
     iptv_startup_decision,
     iptv_vlc_buffer_options,
+    vlc_aout_option,
     vlc_state_name,
 )
 from m3u_parse import (
@@ -126,8 +127,10 @@ class IptvPlaybackMixin:
             ':codec=avcodec',
             f':http-user-agent={IPTV_USER_AGENT}',
             ':http-reconnect=true',
-            ':aout=alsa',
         ])
+        aout = vlc_aout_option()
+        if aout:
+            options.append(aout)
         if force_ts:
             options.extend([':demux=ts', ':no-ts-trust-pcr'])
         elif kind == 'mpegts':
@@ -272,10 +275,12 @@ class IptvPlaybackMixin:
         options.extend([
             'avcodec-hw=none',
             'audio-resampler=soxr',
-            'aout=alsa',
             'demux=ts',
             'no-ts-trust-pcr',
         ])
+        aout = vlc_aout_option(prefix='')
+        if aout:
+            options.append(aout)
         return options
 
     def _start_vlc_local_ts(self, name, url):

@@ -7,4 +7,5 @@ requests>=2.31.0
 python-vlc>=3.0.18122
 yt-dlp[default]
 browser-cookie3
+shadowcopy; sys_platform == "win32"
 pystray

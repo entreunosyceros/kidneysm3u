@@ -11,6 +11,8 @@ from ui_theme import (
     style_window, set_window_icon, center_window, get_colors, get_font, style_listbox,
 )
 
+from app_paths import resource_dir
+
 DOC_PAGES = (
     ('Inicio', 'README.md', 'Puerta de entrada al manual'),
     ('Índice', 'docs/README.md', 'Mapa de toda la documentación'),
@@ -28,7 +30,7 @@ _INLINE_RE = re.compile(
 
 
 def _project_root():
-    return Path(__file__).resolve().parent
+    return Path(resource_dir())
 
 
 def _normalize_doc_path(relative):

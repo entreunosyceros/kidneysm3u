@@ -4,7 +4,7 @@
 
 ## Cómo reproduce
 
-- **VLC embebido** (`python-vlc`): decodificación por software (`avcodec-hw=none`) para evitar ruido de VA-API en NVIDIA. Audio: ALSA en IPTV, Pulse en YouTube cuando hace falta.
+- **VLC embebido** (`python-vlc`): decodificación por software (`avcodec-hw=none`) para evitar ruido de VA-API en NVIDIA. Audio en Linux: ALSA en IPTV, Pulse en YouTube cuando hace falta. En Windows y macOS no se fuerza módulo: VLC usa DirectSound/Wasapi o Core Audio.
 - **YouTube**: [yt-dlp](https://github.com/yt-dlp/yt-dlp) elige un stream que VLC pueda abrir (audio+vídeo juntos si existe; se evitan DASH/HLS difíciles). La calidad se pide en **Calidad / audio** (360p, 720p, 1080p o mejor disponible). Si falla, hay un relevo local o un archivo de caché jugable (tope ~500 MB, sin remux si ya es MP4/MKV/WebM).
 - **IPTV**: se usa la URL del M3U. No se inventan rutas Xtream. Un 302 del panel lo sigue VLC; si el nodo de vídeo cierra la conexión, no hay imagen. El buffer de VLC depende del tipo (MPEG-TS / HLS / VOD) y del perfil de **Preferencias** (`iptv_buffer.py`). Si aún llegan bytes, no se da el canal por muerto; si el directo ya había arrancado y el buffer se queda seco, se reconecta una vez el mismo enlace. Si un FHD sigue microcortando con datos llegando, se sube la caché una vez en esa sintonía. Ver [listas M3U](listas-m3u.md#buffer-iptv).
 - **Listas grandes**: el filtrado de la ventana principal y la carga/parseo del M3U van en segundo plano. La barra lateral agrupa por `group-title`: pestañas si hay pocos grupos, desplegable si hay muchos; un clic entra en la categoría. Sin grupos y con miles de entradas, solo se dibujan las filas visibles. Pintar o filtrar una lista enorme en la lateral aún puede congelar un momento.
@@ -63,8 +63,9 @@ Aparecerá el porcentaje abajo a la derecha, actualizado cada segundo.
 </p>
 
 > [!IMPORTANT]
-> El desarrollo y las pruebas se hacen sobre todo en Linux. En Windows puede haber fallos no vistos.
+> El desarrollo y las pruebas se hacen sobre todo en Linux. En Windows puede haber fallos no vistos. El reproductor usa `trace_add` (Tcl 8.7 / Python 3.13) y no fuerza ALSA, que no existe en Windows. El `.exe` se puede generar **desde Linux** con `bash build-windows.sh` (PyInstaller).
 
+- En **Windows**, Chrome y Edge casi nunca sirven para leer las cookies de YouTube (van cifradas). En **Preferencias** deja el navegador de cookies en **Automático** o **Firefox**, inicia sesión en Firefox, ciérralo y pulsa **Reexportar cookies**. Detalle en [YouTube](youtube.md#windows-firefox-no-chrome-ni-edge).
 - Algunos vídeos de YouTube no tienen stream compatible o están restringidos. Si de pronto no extrae ninguno, actualiza yt-dlp en **Preferencias** (o **Youtube → Actualizar yt-dlp**) y reinicia.
 - En Linux hacen falta VLC y, si aplica, `python3-vlc` del sistema.
 - Si YouTube no tiene audio, prueba la salida Pulse/ALSA del sistema.

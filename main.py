@@ -17,6 +17,8 @@ from ui_theme import (
     set_window_icon, center_window,
 )
 import app_config
+from app_paths import data_dir
+import sys
 
 class M3UProcessor:
     def __init__(self, root):
@@ -717,6 +719,7 @@ class M3UProcessor:
 def main():
     """Función principal para iniciar la aplicación"""
     try:
+        os.chdir(data_dir())
         root = TkinterDnD.Tk(className='Kidneysm3u') 
         app = M3UProcessor(root)
         root.mainloop()
@@ -726,5 +729,4 @@ def main():
         return 1
 
 if __name__ == '__main__':
-    import sys
     sys.exit(main())

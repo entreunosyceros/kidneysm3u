@@ -5,10 +5,11 @@ import os
 import time
 import tkinter as tk
 
+from app_paths import data_dir
 from iptv_buffer import normalize_iptv_buffer_profile
 from m3u_parse import is_iptv_vod
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+CONFIG_PATH = os.path.join(data_dir(), 'config.json')
 MAX_RECENT = 12
 MAX_DOWNLOAD_URLS = 12
 MAX_YT_RESUME = 80

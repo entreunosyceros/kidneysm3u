@@ -1,5 +1,7 @@
 """Caché de VLC para IPTV: tamaño según el tipo de stream y si aún llegan datos."""
 
+import sys
+
 PROFILES = ('fast', 'balanced', 'stable')
 PROFILE_LABELS = {
     'fast': 'rápido',
@@ -53,6 +55,19 @@ def normalize_iptv_buffer_profile(value):
     if text in PROFILES:
         return text
     return _PROFILE_ALIASES.get(text, 'balanced')
+
+
+def vlc_aout_option(force_pulse=False, prefix=':'):
+    """Salida de audio de VLC en Linux. En Windows/macOS VLC usa la del sistema."""
+    if not sys.platform.startswith('linux'):
+        return None
+    name = 'pulse' if force_pulse else 'alsa'
+    return f'{prefix}aout={name}'
+
+
+def vlc_aout_instance_args():
+    option = vlc_aout_option(force_pulse=False, prefix='')
+    return [f'--{option}'] if option else []
 
 
 def iptv_cache_ms(kind, *, vod=False, local=False, profile='balanced', force_ts=False, extra_ms=0):

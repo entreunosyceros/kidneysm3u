@@ -5,6 +5,8 @@ import webbrowser
 import urllib.request
 import urllib.error
 import os
+import glob
+import configparser
 import shutil
 import sys
 import subprocess
@@ -17,6 +19,7 @@ from io import BytesIO
 import tkinter as tk
 from tkinter import messagebox, simpledialog, filedialog, ttk
 import app_config
+from app_paths import data_dir
 from youtube_subs import (
     collect_youtube_subs,
     ensure_caption_tlang,
@@ -214,7 +217,7 @@ def youtube_ydl_opts(**extra):
     elif not silent:
         print("[yt-dlp] No se encontró Deno ni Node. YouTube puede bloquear la extracción.")
 
-    cookies_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+    cookies_path = cookies_file_path()
     browser = extra.pop('cookie_browser', None)
     use_cookiefile = extra.pop('use_cookiefile', True)
     if browser:
@@ -237,7 +240,7 @@ def cookie_browser_loaders():
         import browser_cookie3
     except ImportError:
         return []
-    names = ['firefox', 'chrome', 'chromium', 'brave', 'edge', 'opera']
+    names = ['firefox', 'librewolf', 'chrome', 'chromium', 'brave', 'edge', 'opera']
     preferred = app_config.get_cookie_browser()
     if preferred and preferred != 'auto' and preferred in names:
         names = [preferred] + [name for name in names if name != preferred]
@@ -249,33 +252,216 @@ def cookie_browser_loaders():
     return loaders
 
 
+def firefox_cookie_sqlite_paths(environ=None, brand='firefox'):
+    """Rutas de cookies.sqlite de Firefox/LibreWolf. En Windows no depende del glob roto de browser-cookie3."""
+    env = environ if environ is not None else os.environ
+    brand = (brand or 'firefox').lower()
+    roots = []
+    if sys.platform == 'win32':
+        for key in ('APPDATA', 'LOCALAPPDATA'):
+            base = (env.get(key) or '').strip()
+            if not base:
+                continue
+            if brand == 'librewolf':
+                roots.append(os.path.join(base, 'librewolf'))
+            else:
+                roots.append(os.path.join(base, 'Mozilla', 'Firefox'))
+    else:
+        home = os.path.expanduser('~')
+        if brand == 'librewolf':
+            roots.extend((
+                os.path.join(home, '.librewolf'),
+                os.path.join(home, 'snap', 'librewolf', 'common', '.librewolf'),
+            ))
+        else:
+            roots.extend((
+                os.path.join(home, '.mozilla', 'firefox'),
+                os.path.join(home, 'snap', 'firefox', 'common', '.mozilla', 'firefox'),
+            ))
+    found = []
+    seen = set()
+
+    def _add(path):
+        path = os.path.normpath(path)
+        if path in seen or not os.path.isfile(path):
+            return
+        seen.add(path)
+        found.append(path)
+
+    for root in roots:
+        ini = os.path.join(root, 'profiles.ini')
+        if os.path.isfile(ini):
+            parser = configparser.ConfigParser()
+            parser.read(ini, encoding='utf-8')
+            for section in parser.sections():
+                rel = parser[section].get('Path')
+                if not rel:
+                    continue
+                folder = rel if parser[section].get('IsRelative', '1') == '0' else os.path.join(
+                    os.path.dirname(ini), rel,
+                )
+                _add(os.path.join(folder, 'cookies.sqlite'))
+        for pattern in (
+            os.path.join(root, 'Profiles', '*', 'cookies.sqlite'),
+            os.path.join(root, '*', 'cookies.sqlite'),
+        ):
+            for path in sorted(glob.glob(pattern)):
+                _add(path)
+    return found
+
+
+def _copy_sqlite_for_read(src):
+    """Copia cookies.sqlite (y WAL) para leerlo aunque el navegador lo tenga abierto."""
+    fd, dest = tempfile.mkstemp(suffix='.sqlite')
+    os.close(fd)
+
+    def _copy_sidecars():
+        for suffix in ('-wal', '-shm'):
+            extra = src + suffix
+            if os.path.isfile(extra):
+                try:
+                    shutil.copy2(extra, dest + suffix)
+                except OSError:
+                    pass
+
+    try:
+        shutil.copy2(src, dest)
+        _copy_sidecars()
+        return dest
+    except OSError:
+        pass
+    if sys.platform == 'win32':
+        try:
+            import shadowcopy
+            shadowcopy.shadow_copy(src, dest)
+            _copy_sidecars()
+            return dest
+        except Exception:
+            pass
+    try:
+        os.remove(dest)
+    except OSError:
+        pass
+    return src
+
+
+def _cookie_load_hint(exc):
+    text = str(exc or '').lower()
+    if any(token in text for token in ('decrypt', 'dpapi', 'v20', 'app-bound', 'os_crypt')):
+        return 'Chrome/Edge cifran las cookies en Windows; usa Firefox con sesión en YouTube.'
+    if any(token in text for token in ('unable to read database', 'locked', 'permission', 'being used')):
+        return 'El navegador tiene las cookies bloqueadas. Ciérralo y vuelve a reexportar.'
+    if any(token in text for token in ('could not find', 'failed to find', 'profile directory', 'cookie file')):
+        return 'No se encontró el perfil de ese navegador.'
+    return 'No se pudieron leer las cookies de ese navegador.'
+
+
+def _jar_from_browser_cookie3(name, loader, cookie_file=None):
+    if cookie_file:
+        return loader(cookie_file=cookie_file, domain_name='youtube.com')
+    return loader(domain_name='youtube.com')
+
+
+def _jar_from_ytdlp_browser(name):
+    from yt_dlp.cookies import extract_cookies_from_browser
+
+    class _Quiet:
+        def debug(self, msg):
+            return None
+
+        def info(self, msg):
+            return None
+
+        def warning(self, msg):
+            return None
+
+        def error(self, msg):
+            return None
+
+        def info_once(self, msg):
+            return None
+
+    return extract_cookies_from_browser(name, logger=_Quiet())
+
+
+def load_youtube_login_jar():
+    """Prueba navegadores hasta encontrar login de YouTube vigente. Devuelve (jar, origen, avisos)."""
+    notes = []
+    loaders = cookie_browser_loaders()
+    configured = app_config.get_cookie_browser()
+    if configured and configured != 'auto':
+        loaders = [(name, fn) for name, fn in loaders if name == configured] + [
+            (name, fn) for name, fn in loaders if name != configured
+        ]
+
+    attempts = []
+    for name, loader in loaders:
+        # En Windows el glob de browser-cookie3 no encuentra profiles.ini (concatena '**'
+        # sin separador). Firefox y LibreWolf se leen por ruta explícita a cookies.sqlite.
+        skip_auto = sys.platform == 'win32' and name in ('firefox', 'librewolf')
+        if not skip_auto:
+            attempts.append((name, loader, None))
+        if name in ('firefox', 'librewolf'):
+            for path in firefox_cookie_sqlite_paths(brand=name):
+                attempts.append((name, loader, path))
+
+    seen_files = set()
+    for name, loader, cookie_file in attempts:
+        if cookie_file:
+            if cookie_file in seen_files:
+                continue
+            seen_files.add(cookie_file)
+            readable = _copy_sqlite_for_read(cookie_file)
+        else:
+            readable = None
+        try:
+            jar = _jar_from_browser_cookie3(name, loader, cookie_file=readable)
+        except TypeError:
+            try:
+                jar = loader(domain_name='youtube.com')
+            except Exception as exc:
+                notes.append(f'{name}: {_cookie_load_hint(exc)}')
+                continue
+        except Exception as exc:
+            notes.append(f'{name}: {_cookie_load_hint(exc)}')
+            continue
+        finally:
+            if readable and readable != cookie_file:
+                for path in (readable, readable + '-wal', readable + '-shm'):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+        if jar and _jar_has_live_youtube_login(jar):
+            return jar, name, notes
+
+    ytdlp_names = []
+    if configured and configured != 'auto':
+        ytdlp_names.append(configured)
+    ytdlp_names.extend(name for name, _fn in loaders if name not in ytdlp_names)
+    for name in ytdlp_names:
+        if name not in ('firefox', 'chrome', 'chromium', 'brave', 'edge', 'opera', 'safari'):
+            continue
+        try:
+            jar = _jar_from_ytdlp_browser(name)
+        except Exception as exc:
+            notes.append(f'{name} (yt-dlp): {_cookie_load_hint(exc)}')
+            continue
+        if jar and _jar_has_live_youtube_login(jar):
+            return jar, name, notes
+    return None, None, notes
+
+
 def preferred_youtube_browser():
     """Elige un navegador que tenga cookies de YouTube, si es posible."""
+    _jar, source, _notes = load_youtube_login_jar()
+    if source:
+        return source
     configured = app_config.get_cookie_browser()
-    loaders = cookie_browser_loaders()
-    if not loaders:
-        return configured if configured and configured != 'auto' else 'firefox'
-    if configured and configured != 'auto':
-        for name, loader in loaders:
-            if name != configured:
-                continue
-            try:
-                cookies = loader(domain_name='youtube.com')
-                if cookies and any(True for _ in cookies):
-                    return configured
-            except Exception:
-                break
-    for name, loader in loaders:
-        try:
-            cookies = loader(domain_name='youtube.com')
-            if cookies and any(True for _ in cookies):
-                return name
-        except Exception:
-            continue
     return configured if configured and configured != 'auto' else 'firefox'
 
 
-COOKIES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookies.txt')
+COOKIES_PATH = os.path.join(data_dir(), 'cookies.txt')
 _YT_AUTH_COOKIES = {
     'LOGIN_INFO', 'SID', 'SAPISID',
     '__Secure-1PSID', '__Secure-3PSID',
@@ -1378,7 +1564,7 @@ class YouTubeHandler:
             start_s = 0
         if start_s >= 0.5:
             cmd.extend(['--download-sections', f'*{start_s:.1f}-inf'])
-        cookies_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+        cookies_path = cookies_file_path()
         if os.path.exists(cookies_path):
             cmd.extend(['--cookies', cookies_path])
         else:
@@ -1714,7 +1900,7 @@ class YouTubeHandler:
         return merged
 
     def _cookie_header_from_file(self):
-        path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+        path = cookies_file_path()
         if not os.path.exists(path):
             return None
         parts = []
@@ -1905,35 +2091,29 @@ class YouTubeHandler:
                 messagebox.showwarning("Cookies de YouTube", message)
 
         try:
-            import browser_cookie3
             from http.cookiejar import MozillaCookieJar
         except ImportError:
-            _error("Falta el módulo browser-cookie3. Instálalo con: pip install browser-cookie3")
+            _error("No se pudo cargar el soporte de cookies de Python.")
             return None
 
         if output_path is None:
             output_path = cookies_file_path()
 
-        loaders = cookie_browser_loaders()
-        cookies = None
-        source = None
-        for name, loader in loaders:
-            if not loader:
-                continue
-            try:
-                jar = loader(domain_name='youtube.com')
-            except Exception:
-                continue
-            if jar and _jar_has_live_youtube_login(jar):
-                cookies = jar
-                source = name
-                break
+        cookies, source, notes = load_youtube_login_jar()
         if not cookies:
-            _warn(
-                "No hay sesión de YouTube vigente en el navegador.\n"
-                "Abre YouTube en Firefox (o Chrome), inicia sesión y vuelve a reexportar.\n"
-                "No se ha escrito un cookies.txt vacío o sin login."
-            )
+            lines = [
+                "No hay sesión de YouTube vigente que se pueda leer.",
+                "En Windows, Chrome y Edge suelen cifrar las cookies; lo fiable es Firefox.",
+                "Inicia sesión en youtube.com, cierra el navegador y pulsa Reexportar.",
+            ]
+            unique = []
+            for note in notes:
+                if note not in unique:
+                    unique.append(note)
+            if unique:
+                lines.append('')
+                lines.extend(unique[:6])
+            _warn('\n'.join(lines))
             return None
         try:
             cj = MozillaCookieJar(output_path)
@@ -1961,8 +2141,8 @@ class YouTubeHandler:
             global _cookies_slim_mtime
             _cookies_slim_mtime = None
             slim_youtube_cookies_file(output_path)
-            print(f"[YouTube] Cookies exportadas desde {source} → {output_path}")
+            print(f"[YouTube] Cookies exportadas desde {source}")
             return output_path
-        except Exception as e:
-            _error(f"No se pudieron exportar las cookies del navegador: {e}")
+        except Exception:
+            _error("No se pudieron guardar las cookies del navegador.")
             return None

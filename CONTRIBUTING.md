@@ -53,6 +53,16 @@ bash packaging/build-deb.sh
 
 El resultado queda en `debian-package/`. Detalle en [docs/instalacion.md](docs/instalacion.md).
 
+### Ejecutable `.exe` (opcional)
+
+Desde Linux o Windows:
+
+```bash
+bash build-windows.sh
+```
+
+El archivo queda en `dist/kidneysm3u.exe`. Detalle en [docs/instalacion.md](docs/instalacion.md#generar-el-exe-linux-o-windows).
+
 ## Estructura del código
 
 | Ruta | Contenido |
@@ -66,6 +76,7 @@ El resultado queda en `debian-package/`. Detalle en [docs/instalacion.md](docs/i
 | `descargas.py` | Ventana **Archivo → Descargar** |
 | `app_config.py` | Preferencias y sesión (`config.json`) |
 | `docs/` | Manual de usuario |
+| `kidneysm3u.spec`, `build-windows.sh` | Empaquetado `.exe` (PyInstaller; se puede lanzar desde Linux) |
 | `packaging/` | Empaquetado Debian |
 | `tests/` | Pruebas (no van en el `.deb`) |
 | `run_app.py` | Lanzador recomendado |

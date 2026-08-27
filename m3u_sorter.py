@@ -38,7 +38,7 @@ class M3USorter:
         
         ttk.Label(search_frame, text='Buscar', style='Muted.TLabel').pack(side=tk.LEFT, padx=(0, 8))
         self.search_var = tk.StringVar()
-        self.search_var.trace('w', self.filter_channels)
+        self.search_var.trace_add('write', self.filter_channels)
         search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
         search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         

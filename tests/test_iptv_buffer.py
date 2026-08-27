@@ -10,6 +10,8 @@ from iptv_buffer import (
     iptv_startup_decision,
     iptv_vlc_buffer_options,
     normalize_iptv_buffer_profile,
+    vlc_aout_instance_args,
+    vlc_aout_option,
     vlc_state_name,
 )
 from player_iptv import IptvPlaybackMixin
@@ -20,6 +22,22 @@ def _isolate_config(tmp_path, monkeypatch):
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(tmp_path / 'config.json'))
     app_config._cache = None
     return previous
+
+
+def test_vlc_aout_linux_vs_windows(monkeypatch):
+    import iptv_buffer
+
+    monkeypatch.setattr(iptv_buffer.sys, 'platform', 'linux')
+    assert vlc_aout_option() == ':aout=alsa'
+    assert vlc_aout_option(force_pulse=True) == ':aout=pulse'
+    assert vlc_aout_option(prefix='') == 'aout=alsa'
+    assert vlc_aout_instance_args() == ['--aout=alsa']
+    monkeypatch.setattr(iptv_buffer.sys, 'platform', 'win32')
+    assert vlc_aout_option() is None
+    assert vlc_aout_option(force_pulse=True) is None
+    assert vlc_aout_instance_args() == []
+    monkeypatch.setattr(iptv_buffer.sys, 'platform', 'darwin')
+    assert vlc_aout_option() is None
 
 
 def test_normalize_iptv_buffer_profile():

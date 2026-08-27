@@ -1,6 +1,7 @@
 import pystray
 from PIL import Image
 import tkinter as tk
+from app_paths import resource_dir
 from pathlib import Path
 
 class IconoBandeja:
@@ -10,8 +11,8 @@ class IconoBandeja:
         self._last_click_time = 0
         
         # Intentar cargar el icono pequeño optimizado
-        small_icon_path = Path(__file__).parent / "img" / "logo_small.png"
-        icon_path = Path(__file__).parent / "img" / "logo.png"
+        small_icon_path = Path(resource_dir()) / "img" / "logo_small.png"
+        icon_path = Path(resource_dir()) / "img" / "logo.png"
         
         try:
             self.image = Image.open(str(small_icon_path))

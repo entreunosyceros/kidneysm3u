@@ -5,6 +5,14 @@ __pycache__/
 debian-package/
 packaging/
 *.deb
+dist/
+build/
+
+# Datos locales del usuario (no van al repositorio)
+config.json
+cookies.txt
+enlaces.json
+favoritos.json
 
 # Datos locales del usuario (no van al repositorio)
 config.json

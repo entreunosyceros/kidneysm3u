@@ -385,7 +385,7 @@ def show_preferences(parent, on_apply=None):
     cookie_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
     ttk.Label(
         cookies,
-        text='Automático prueba Firefox primero. Elige un navegador si la sesión está ahí.',
+        text='Automático prueba Firefox primero. En Windows usa Firefox (Chrome y Edge suelen cifrar las cookies y no se pueden leer). Cierra el navegador si el archivo está bloqueado.',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))

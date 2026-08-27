@@ -289,3 +289,48 @@ def test_yt_dlp_upgrade_command_and_pip_messages(monkeypatch):
     assert success is False
     assert 'run_app.py' in text
 
+
+def test_firefox_cookie_sqlite_paths_from_profiles_ini(tmp_path, monkeypatch):
+    from youtube_player import firefox_cookie_sqlite_paths, _cookie_load_hint
+
+    root = tmp_path / 'Roaming' / 'Mozilla' / 'Firefox'
+    profile = root / 'Profiles' / 'abcd1234.default-release'
+    profile.mkdir(parents=True)
+    (profile / 'cookies.sqlite').write_bytes(b'sqlite')
+    (root / 'profiles.ini').write_text(
+        '[InstallABC]\nDefault=Profiles/abcd1234.default-release\n'
+        '[Profile0]\nName=default\nIsRelative=1\n'
+        'Path=Profiles/abcd1234.default-release\nDefault=1\n',
+        encoding='utf-8',
+    )
+    monkeypatch.setattr('youtube_player.sys.platform', 'win32')
+    paths = firefox_cookie_sqlite_paths(environ={
+        'APPDATA': str(tmp_path / 'Roaming'),
+        'LOCALAPPDATA': str(tmp_path / 'Local'),
+    })
+    assert paths
+    assert paths[0].endswith('cookies.sqlite')
+    hint = _cookie_load_hint(RuntimeError('Failed to decrypt the cipher text with DPAPI'))
+    assert 'Firefox' in hint
+    locked = _cookie_load_hint(OSError('Unable to read database file'))
+    assert 'bloqueadas' in locked
+
+
+def test_librewolf_cookie_sqlite_paths_windows(tmp_path, monkeypatch):
+    from youtube_player import firefox_cookie_sqlite_paths
+
+    profile = tmp_path / 'Roaming' / 'librewolf' / 'Profiles' / 'xyz.default'
+    profile.mkdir(parents=True)
+    (profile / 'cookies.sqlite').write_bytes(b'sqlite')
+    monkeypatch.setattr('youtube_player.sys.platform', 'win32')
+    paths = firefox_cookie_sqlite_paths(
+        environ={
+            'APPDATA': str(tmp_path / 'Roaming'),
+            'LOCALAPPDATA': str(tmp_path / 'Local'),
+        },
+        brand='librewolf',
+    )
+    assert paths
+    assert 'librewolf' in paths[0].replace('\\', '/')
+
+

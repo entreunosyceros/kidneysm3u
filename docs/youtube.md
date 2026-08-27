@@ -14,9 +14,21 @@ Para buscar, ver y descargar hace falta estar **logueado en YouTube**. El progra
 
 `cookies.txt` **no viene en el repositorio** (es tu sesión; no lo subas a GitHub). Tampoco hace falta crearlo a mano:
 
-1. Inicia sesión en YouTube en el navegador (el flujo más fiable es **Firefox**, con [browser-cookie3](https://pypi.org/project/browser-cookie3/)). En **Preferencias** puedes fijar el navegador de cookies o dejarlo en automático.
+1. Inicia sesión en YouTube en el navegador (el flujo más fiable es **Firefox**, con [browser-cookie3](https://pypi.org/project/browser-cookie3/)).
 2. Reproduce un vídeo desde el programa, o pulsa **Reexportar cookies**. Si hay login vigente, se escribe `cookies.txt`.
 3. A partir de ahí se reutiliza ese archivo. Si no existe, se sigue leyendo el navegador. El programa recorta tokens `ST-` caducados (muy habituales en Firefox): si se envían todos, YouTube responde **413 Request Entity Too Large** y la búsqueda falla.
+
+### Windows: Firefox, no Chrome ni Edge
+
+Chrome y Edge en Windows casi nunca van a funcionar para esto: cifran las cookies (App-Bound Encryption) y el programa no puede leerlas.
+
+En **Archivo → Preferencias** (o **Reproducir → Preferencias**) deja el **navegador de cookies** en **Automático** o en **Firefox**. No lo pongas en Chrome ni en Edge.
+
+Pasos:
+
+1. Abre **Firefox**, entra en youtube.com e inicia sesión.
+2. Cierra Firefox (si queda abierto, el archivo de cookies puede estar bloqueado).
+3. En el programa: **Youtube → Reexportar cookies**.
 
 En el reproductor (abajo a la izquierda) y en la búsqueda verás **Sesión YouTube: OK** o **caducada**. Lo mismo aparece en el menú **Youtube**. Si YouTube pide captcha o «confirma que no eres un robot», el indicador pasa a caducada y puedes reexportar; no se traga el fallo en silencio.
 

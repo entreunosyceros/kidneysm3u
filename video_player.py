@@ -33,6 +33,7 @@ from ui_theme import (
     set_window_icon, make_control_icons,
 )
 import app_config
+from iptv_buffer import vlc_aout_instance_args, vlc_aout_option
 from m3u_parse import (
     parse_m3u_channels, parse_m3u_epg_urls, decode_m3u_bytes,
     IPTV_USER_AGENT,
@@ -126,18 +127,19 @@ class Tooltip:
 def _make_vlc_instance():
     """Instancia VLC sin aceleración VA-API (ruidosa en NVIDIA) y con logs bajos."""
     os.environ['LIBVA_MESSAGING_LEVEL'] = '0'
-    return vlc.Instance(
+    args = [
         "--quiet",
         "--verbose=0",
         "--avcodec-hw=none",
-        "--aout=alsa",
         "--audio-resampler=soxr",
         "--network-caching=3000",
         "--live-caching=3000",
         "--file-caching=3000",
         "--sout-mux-caching=3000",
         f"--http-user-agent={IPTV_USER_AGENT}",
-    )
+    ]
+    args.extend(vlc_aout_instance_args())
+    return vlc.Instance(*args)
 
 
 class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, PlayerPipMixin):
@@ -283,7 +285,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         search_row = ttk.Frame(self.channels_frame)
         search_row.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 8))
         self.search_var = tk.StringVar()
-        self.search_var.trace('w', self.filter_channels)
+        self.search_var.trace_add('write', self.filter_channels)
         self.search_entry = ttk.Entry(search_row, textvariable=self.search_var)
         self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         ttk.Button(search_row, text='★ Añadir', command=self.add_to_favorites).pack(
@@ -2681,12 +2683,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 cookie = headers.get('Cookie') or headers.get('cookie')
                 if cookie:
                     options.append(f':http-cookie={cookie}')
-            if force_pulse:
-                options.append(':aout=pulse')
-                print("[AUDIO] Forzando salida de audio: pulse (YouTube)")
-            else:
-                options.append(':aout=alsa')
-                print("[AUDIO] Forzando salida de audio: alsa (M3U)")
+            aout = vlc_aout_option(force_pulse=force_pulse)
+            if aout:
+                options.append(aout)
+                print(f"[AUDIO] Salida de audio: {aout}")
             if subtitle_path and os.path.isfile(subtitle_path):
                 options.append(f':sub-file={subtitle_path}')
                 print(f"[VLC] sub-file={subtitle_path}")

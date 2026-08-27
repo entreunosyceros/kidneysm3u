@@ -5,6 +5,8 @@ from pathlib import Path
 from tkinter import ttk
 from tkinter import font as tkfont
 
+from app_paths import resource_dir
+
 _DARK = False
 _FONT_FAMILY = 'helvetica'
 _FONT_OBJS = {}
@@ -517,7 +519,7 @@ def set_window_icon(window):
         window.tk.call('wm', 'class', window._w, APP_WM_CLASS, APP_WM_CLASS)
     except (tk.TclError, AttributeError):
         pass
-    logo = Path(__file__).parent / 'img' / 'logo.png'
+    logo = Path(resource_dir()) / 'img' / 'logo.png'
     if not logo.exists():
         return
     try:

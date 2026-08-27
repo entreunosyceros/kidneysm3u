@@ -2,6 +2,7 @@ import os
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
+from app_paths import resource_dir
 from ui_theme import style_window, set_window_icon, center_window, get_font
 
 def show_keyboard_shortcuts(root):
@@ -21,9 +22,7 @@ def show_keyboard_shortcuts(root):
     try:
         # Intentar diferentes ubicaciones posibles del logo
         possible_paths = [
-            os.path.join(os.path.dirname(__file__), 'img', 'logo.png'),  # Ruta relativa
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), 'img', 'logo.png'),  # Ruta absoluta
-            os.path.join(os.path.dirname(__file__), '..', 'img', 'logo.png'),  # Un nivel arriba
+            os.path.join(resource_dir(), 'img', 'logo.png'),
         ]
         
         logo_path = None
