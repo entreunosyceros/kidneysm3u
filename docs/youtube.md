@@ -2,9 +2,7 @@
 
 [Inicio](../README.md) · [Índice](README.md) · [Instalación](instalacion.md) · [Uso](uso.md) · [Listas M3U](listas-m3u.md) · [YouTube](youtube.md) · [Reproductor](reproductor.md) · [Notas](notas.md)
 
-<p align="center">
-<img width="1916" height="1049" alt="cargando-video-youtube" src="https://github.com/user-attachments/assets/a9405356-8fa6-456e-8e65-f14326124ead" />
-</p>
+![cargando-video-youtube](https://github.com/user-attachments/assets/a9405356-8fa6-456e-8e65-f14326124ead)
 
 Desde el menú **Youtube** del [reproductor](reproductor.md) puedes pegar una URL, buscar, cargar una playlist o descargar.
 
@@ -45,9 +43,7 @@ Si arrancas el Python del sistema (sin `.venv`), Ubuntu puede bloquear `pip` (PE
 
 ## Búsqueda
 
-<p align="center">
-<img width="960" height="707" alt="buscar-listas-youtube" src="https://github.com/user-attachments/assets/b5563240-7b57-4f70-8591-21a77dd01852" />
-</p>
+![buscar-listas-youtube](https://github.com/user-attachments/assets/b5563240-7b57-4f70-8591-21a77dd01852)
 
 **Youtube → Buscar en YouTube**. Filtros:
 
@@ -69,17 +65,13 @@ También puedes filtrar por fecha, duración (no aplica a Shorts) y número de r
 Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short de la búsqueda.
 
 ## Playlists
-<p align="center">
-<img width="1919" height="1048" alt="reproduciendo-lista" src="https://github.com/user-attachments/assets/dee90af9-0002-4c7b-990f-04c2f5781817" />
-</p>
+![reproduciendo-lista](https://github.com/user-attachments/assets/dee90af9-0002-4c7b-990f-04c2f5781817)
 
 **Youtube → Cargar Playlist de YouTube** (o desde el resultado de una lista). Los vídeos pasan a la lista de la izquierda y se pueden seguir con **Reproducir desde aquí**.
 
 ## Descargas
 
-<p align="center">
-<img width="779" height="594" alt="descarga-youtube" src="https://github.com/user-attachments/assets/e60eefc5-4765-420f-a282-b44c1c096e8a" />
-</p>
+![descarga-youtube](https://github.com/user-attachments/assets/e60eefc5-4765-420f-a282-b44c1c096e8a)
 
 - Vídeo + audio, o **solo audio** (hace falta `ffmpeg` en el PATH).
 - Desde la búsqueda, el menú contextual o **Youtube → Descargar vídeo de YouTube**.

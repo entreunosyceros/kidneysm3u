@@ -1,6 +1,27 @@
 from pathlib import Path
 
-from docs_viewer import html_img_to_markdown, local_doc_image_bytes, normalize_doc_markup
+from docs_viewer import (
+    html_img_to_markdown,
+    image_markdown_from_line,
+    is_html_wrapper_line,
+    local_doc_image_bytes,
+    normalize_doc_markup,
+)
+
+
+def test_html_wrapper_lines_are_skipped():
+    assert is_html_wrapper_line('<p align="center">')
+    assert is_html_wrapper_line('</p>')
+    assert not is_html_wrapper_line('![interfaz-kidneys](https://example.com/a.png)')
+
+
+def test_image_markdown_from_html_line():
+    line = (
+        '<img width="899" height="684" alt="interfaz-kidneys" '
+        'src="https://github.com/user-attachments/assets/88366f48-e059-46d8-9169-a94aec31a738" />'
+    )
+    converted = image_markdown_from_line(line)
+    assert converted.startswith('![interfaz-kidneys](https://github.com/user-attachments/assets/')
 
 
 def test_html_img_to_markdown():
@@ -42,3 +63,27 @@ def test_local_doc_image_bytes_rejects_outside_root(tmp_path):
     outsider.write_bytes(b'not-from-project')
     assert local_doc_image_bytes(str(outsider)) is None
     assert local_doc_image_bytes('../' + Path(tmp_path).name + '/secret.png') is None
+
+
+def test_render_markdown_does_not_show_html_img():
+    import tkinter as tk
+    from docs_viewer import render_markdown
+
+    source = (
+        '# Título\n\n'
+        '<p align="center">\n'
+        '<img width="899" height="684" alt="interfaz-kidneys" '
+        'src="https://github.com/user-attachments/assets/88366f48-e059-46d8-9169-a94aec31a738" />\n'
+        '</p>\n'
+    )
+    root = tk.Tk()
+    root.withdraw()
+    widget = tk.Text(root)
+    try:
+        render_markdown(widget, source, lambda _href: None)
+        shown = widget.get('1.0', 'end')
+    finally:
+        root.destroy()
+    assert '<p align' not in shown.lower()
+    assert '<img' not in shown.lower()
+    assert 'interfaz-kidneys' in shown

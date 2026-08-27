@@ -46,9 +46,7 @@ Al abrir un vídeo de YouTube, el área de vídeo muestra el título, la miniatu
 Si un canal IPTV no arranca (error de VLC, pantalla negra o el servidor no entrega vídeo), en unos segundos aparece el nombre y **Este canal por el momento no funciona**. No es un fallo del programa: el enlace de esa lista no está disponible ahora. Si el canal **sí llega a verse** y luego el buffer se queda seco, se reconecta una vez el mismo enlace. Si un FHD sigue cortando con datos llegando, se sube la caché una vez (sin cambiar Preferencias). El tamaño de esa caché se elige en **Preferencias → Buffer IPTV** ([detalle](listas-m3u.md#buffer-iptv)).
 
 ## Atajos de teclado
-<p align="center">
-<img width="768" height="916" alt="atajo-teclado" src="https://github.com/user-attachments/assets/5e9f075c-2e89-4e44-ae4b-76b6f96619b9" />
-</p>
+![atajo-teclado](https://github.com/user-attachments/assets/5e9f075c-2e89-4e44-ae4b-76b6f96619b9)
 
 | Tecla | Acción |
 | --- | --- |

@@ -1,7 +1,5 @@
 # Kidneysm3u
-<p align="center">
-<img width="902" height="693" alt="about-kidneysm3u" src="https://github.com/user-attachments/assets/1ded588f-0fed-4432-afcd-7e00f782fcae" />
-</p>
+![about-kidneysm3u](https://github.com/user-attachments/assets/1ded588f-0fed-4432-afcd-7e00f782fcae)
 
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat&logo=python&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)

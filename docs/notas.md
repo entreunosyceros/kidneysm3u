@@ -58,9 +58,7 @@ self.setup_performance_monitoring()
 Aparecerá el porcentaje abajo a la derecha, actualizado cada segundo.
 
 ## Problemas conocidos
-<p align="center">
-<img width="1126" height="764" alt="documentacion" src="https://github.com/user-attachments/assets/4a6ae87c-8b96-4c63-930a-ec1b22d8382b" />
-</p>
+![documentacion](https://github.com/user-attachments/assets/4a6ae87c-8b96-4c63-930a-ec1b22d8382b)
 
 > [!IMPORTANT]
 > El desarrollo y las pruebas se hacen sobre todo en Linux. En Windows puede haber fallos no vistos. El reproductor usa `trace_add` (Tcl 8.7 / Python 3.13) y no fuerza ALSA, que no existe en Windows. El instalador de Windows se genera con `bash build-windows.sh` (Docker: PyInstaller/Wine + Inno Setup).

@@ -60,6 +60,18 @@ def html_img_to_markdown(tag):
     return f'![{alt}]({src_match.group(1).strip()})'
 
 
+def is_html_wrapper_line(stripped):
+    return bool(re.match(r'^</?(p|div|span|center)\b[^>]*>$', stripped or '', re.I))
+
+
+def image_markdown_from_line(stripped):
+    match = _IMG_HTML_RE.search(stripped or '')
+    if not match:
+        return None
+    converted = html_img_to_markdown(match.group(0))
+    return converted or None
+
+
 def normalize_doc_markup(source):
     """Convierte <img> HTML (capturas de GitHub) a Markdown y quita <p align=center>."""
     text = source or ''
@@ -353,6 +365,15 @@ def render_markdown(widget, source, on_link):
             continue
         if in_code:
             code_lines.append(line)
+            i += 1
+            continue
+        if is_html_wrapper_line(stripped):
+            i += 1
+            continue
+        img_md = image_markdown_from_line(stripped)
+        if img_md:
+            _insert_inline(widget, img_md, on_link, ('body',), schedule_image)
+            widget.insert(tk.END, '\n')
             i += 1
             continue
         if stripped in ('---', '***'):

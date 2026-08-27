@@ -56,7 +56,7 @@ python3 -m pytest
 2. En una terminal:
 
 ```bash
-sudo dpkg -i kidneysm3u_1.2.1_all.deb
+sudo dpkg -i kidneysm3u_1.2.2_all.deb
 sudo apt-get install -f   # si hace falta
 ```
 
@@ -108,7 +108,7 @@ Para YouTube en Windows hace falta **Firefox**: Chrome, Brave y Edge cifran las 
 
 ### Instalador de Windows
 
-El usuario instala **Kidneysm3u-Setup-1.2.1.exe** (asistente de Inno Setup): Program Files, menú Inicio y desinstalador. Hace falta [VLC](https://www.videolan.org/vlc/) en el PATH.
+El usuario instala **Kidneysm3u-Setup-1.2.2.exe** (asistente de Inno Setup): Program Files, menú Inicio y desinstalador. Hace falta [VLC](https://www.videolan.org/vlc/) en el PATH.
 
 Para generar el instalador desde Linux (Docker) o desde Windows:
 
@@ -116,7 +116,7 @@ Para generar el instalador desde Linux (Docker) o desde Windows:
 bash build-windows.sh
 ```
 
-El archivo queda en `dist/Kidneysm3u-Setup-1.2.1.exe`. Las preferencias y cookies van a `%LOCALAPPDATA%\kidneysm3u`. Al desinstalar, el asistente pregunta si quieres borrar también esa carpeta. Editor/compañía: **entreunosyceros**.
+El archivo queda en `dist/Kidneysm3u-Setup-1.2.2.exe`. Las preferencias y cookies van a `%LOCALAPPDATA%\kidneysm3u`. Al desinstalar, el asistente pregunta si quieres borrar también esa carpeta. Editor/compañía: **entreunosyceros**.
 
 ## Siguiente
 

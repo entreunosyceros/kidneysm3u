@@ -1,8 +1,6 @@
 # Documentación de Kidneysm3u
 
-<p align="center">
-<img width="899" height="684" alt="interfaz-kidneys" src="https://github.com/user-attachments/assets/88366f48-e059-46d8-9169-a94aec31a738" />
-</p>
+![interfaz-kidneys](https://github.com/user-attachments/assets/88366f48-e059-46d8-9169-a94aec31a738)
 
 [Inicio](../README.md) · [Índice](README.md) · [Instalación](instalacion.md) · [Uso](uso.md) · [Listas M3U](listas-m3u.md) · [YouTube](youtube.md) · [Reproductor](reproductor.md) · [Notas](notas.md)
 
