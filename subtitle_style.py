@@ -13,6 +13,39 @@ SUBTITLE_OUTLINES = (
     (2, 'Grueso'),
 )
 
+# Valores reales de VLC 3 (--freetype-rel-fontsize / --freetype-outline-thickness).
+_VLC_REL_FONT_SIZES = {
+    0: 0,
+    18: 18,
+    24: 16,
+    32: 12,
+    44: 6,
+}
+_VLC_OUTLINE_THICKNESS = {
+    0: 0,
+    1: 2,
+    2: 6,
+}
+# Paleta fija de VLC freetype-color (RGB 0xRRGGBB).
+_VLC_COLOR_PALETTE = (
+    0,
+    8421504,
+    12632256,
+    16777215,
+    8388608,
+    16711680,
+    16711935,
+    16776960,
+    8421376,
+    32768,
+    32896,
+    65280,
+    8388736,
+    128,
+    255,
+    65535,
+)
+
 _DEFAULTS = {
     'subtitle_size': 0,
     'subtitle_color': '#FFFFFF',
@@ -40,6 +73,38 @@ def normalize_hex_color(value, fallback='#FFFFFF'):
 def hex_to_vlc_color(value, fallback='#FFFFFF'):
     hex_color = normalize_hex_color(value, fallback)[1:]
     return int(hex_color, 16)
+
+
+def nearest_vlc_palette_color(value, fallback='#FFFFFF'):
+    """VLC freetype solo admite una paleta fija; aproxima el color elegido."""
+    target = hex_to_vlc_color(value, fallback)
+    tr = (target >> 16) & 0xFF
+    tg = (target >> 8) & 0xFF
+    tb = target & 0xFF
+    best = _VLC_COLOR_PALETTE[3]
+    best_dist = None
+    for color in _VLC_COLOR_PALETTE:
+        r = (color >> 16) & 0xFF
+        g = (color >> 8) & 0xFF
+        b = color & 0xFF
+        dist = (r - tr) ** 2 + (g - tg) ** 2 + (b - tb) ** 2
+        if best_dist is None or dist < best_dist:
+            best = color
+            best_dist = dist
+    return best
+
+
+def vlc_rel_fontsize(size):
+    allowed = tuple(item[0] for item in SUBTITLE_SIZES)
+    value = _clamp_int(size, 0, 64, 0)
+    if value not in allowed:
+        value = min(allowed, key=lambda item: abs(item - value))
+    return _VLC_REL_FONT_SIZES.get(value, 0)
+
+
+def vlc_outline_thickness(outline):
+    value = _clamp_int(outline, 0, 2, 1)
+    return _VLC_OUTLINE_THICKNESS.get(value, 2)
 
 
 def _clamp_int(value, minimum, maximum, default):
@@ -100,15 +165,19 @@ def fingerprint(style=None):
 def vlc_option_pairs(style=None):
     cfg = normalize_subtitle_style(style if style is not None else get_subtitle_style())
     pairs = [
-        ('freetype-fontsize', str(cfg['subtitle_size'])),
-        ('freetype-color', str(hex_to_vlc_color(cfg['subtitle_color']))),
+        ('freetype-rel-fontsize', str(vlc_rel_fontsize(cfg['subtitle_size']))),
+        ('freetype-color', str(nearest_vlc_palette_color(cfg['subtitle_color']))),
         ('freetype-opacity', str(cfg['subtitle_opacity'])),
-        ('freetype-background-color', str(hex_to_vlc_color(cfg['subtitle_bg_color'], '#000000'))),
+        (
+            'freetype-background-color',
+            str(nearest_vlc_palette_color(cfg['subtitle_bg_color'], '#000000')),
+        ),
         ('freetype-background-opacity', str(cfg['subtitle_bg_opacity'])),
-        ('freetype-outline-thickness', str(cfg['subtitle_outline'])),
-        ('freetype-outline-color', str(hex_to_vlc_color(cfg['subtitle_outline_color'], '#000000'))),
-        ('sub-margin', str(cfg['subtitle_margin'])),
-        ('sub-delay', str(cfg['subtitle_delay_ds'])),
+        ('freetype-outline-thickness', str(vlc_outline_thickness(cfg['subtitle_outline']))),
+        (
+            'freetype-outline-color',
+            str(nearest_vlc_palette_color(cfg['subtitle_outline_color'], '#000000')),
+        ),
     ]
     return pairs
 

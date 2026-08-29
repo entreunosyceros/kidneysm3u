@@ -123,12 +123,13 @@ class IptvPlaybackMixin:
             extra_ms=self._iptv_cache_extra(),
         )
         options.extend([
-            ':avcodec-hw=none',
             ':audio-resampler=soxr',
             ':codec=avcodec',
             f':http-user-agent={IPTV_USER_AGENT}',
             ':http-reconnect=true',
         ])
+        if not app_config.iptv_use_hw_decode():
+            options.insert(0, ':avcodec-hw=none')
         aout = vlc_aout_option()
         if aout:
             options.append(aout)
@@ -275,11 +276,12 @@ class IptvPlaybackMixin:
             prefix='',
         )
         options.extend([
-            'avcodec-hw=none',
             'audio-resampler=soxr',
             'demux=ts',
             'no-ts-trust-pcr',
         ])
+        if not app_config.iptv_use_hw_decode():
+            options.insert(0, 'avcodec-hw=none')
         aout = vlc_aout_option(prefix='')
         if aout:
             options.append(aout)

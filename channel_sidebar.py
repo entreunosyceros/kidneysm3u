@@ -4,6 +4,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
+from display_text import plain_display_text
 from ui_theme import get_colors, get_font
 
 VIRTUAL_MIN = 2500
@@ -27,7 +28,7 @@ def _group_buckets(groups):
 
 
 def _short_label(name, limit=22):
-    text = (name or '').strip() or UNGROUPED
+    text = plain_display_text(name, UNGROUPED)
     if len(text) <= limit:
         return text
     return text[: limit - 1] + '…'
@@ -36,7 +37,7 @@ def _short_label(name, limit=22):
 class ChannelSidebar:
     def __init__(self, parent):
         self.outer = ttk.Frame(parent)
-        self.outer.pack(fill=tk.BOTH, expand=True)
+        self.outer.pack(fill=tk.BOTH, expand=True, padx=8)
 
         self.picker_frame = ttk.Frame(self.outer)
         self._tab_bar = ttk.Frame(self.picker_frame)
@@ -81,6 +82,7 @@ class ChannelSidebar:
         self._tab_buttons = []
         self._updating_picker = False
         self._ignore_play_until = 0
+        self._zap_numbers = {}
         self.on_view_change = None
         self.now_text = None
         self.row_image = None
@@ -208,10 +210,10 @@ class ChannelSidebar:
     def _row_text(self, index):
         if index is None or not (0 <= index < len(self.channels)):
             return ''
-        name = self.channels[index][0]
+        name = plain_display_text(self.channels[index][0])
         getter = self.now_text
         extra = getter(index) if callable(getter) else ''
-        extra = (extra or '').strip()
+        extra = plain_display_text(extra)
         mark = ''
         if callable(self.is_favorite):
             try:
@@ -220,9 +222,24 @@ class ChannelSidebar:
             except Exception:
                 mark = ''
         title = f'{mark}{name}'
+        number = self._visible_number(index)
+        if number is not None:
+            title = f'{number}  {title}'
         if extra:
             return f'{title}  ·  {extra}'
         return title
+
+    def _visible_number(self, index):
+        return (self._zap_numbers or {}).get(index)
+
+    def _refresh_zap_numbers(self):
+        mapping = {}
+        if self.mode != 'catalog':
+            indices = self.current_indices()
+            if not indices:
+                indices = list(range(len(self.channels)))
+            mapping = {index: offset + 1 for offset, index in enumerate(indices)}
+        self._zap_numbers = mapping
 
     def _image_for(self, index):
         getter = self.row_image
@@ -305,9 +322,11 @@ class ChannelSidebar:
     def _show_tabs(self):
         self._hide_tabs()
         self._tab_bar.pack(side=tk.TOP, fill=tk.X, pady=(0, 6))
+        self._tab_bar.columnconfigure(0, weight=1, uniform='group_tab')
+        self._tab_bar.columnconfigure(1, weight=1, uniform='group_tab')
         total = len(self.channels)
         keys = [ALL_GROUPS] + list(self._order)
-        for key in keys:
+        for index, key in enumerate(keys):
             if key == ALL_GROUPS:
                 text = f'Todos ({total})'
             else:
@@ -315,9 +334,12 @@ class ChannelSidebar:
             btn = ttk.Button(
                 self._tab_bar,
                 text=text,
+                style='Compact.TButton',
                 command=lambda k=key: self.set_active_group(k),
             )
-            btn.pack(side=tk.LEFT, padx=(0, 4), pady=(0, 4))
+            row, column = divmod(index, 2)
+            padx = (0, 4) if column == 0 else (0, 0)
+            btn.grid(row=row, column=column, sticky='ew', padx=padx, pady=(0, 4))
             self._tab_buttons.append(btn)
             self._tab_keys.append(key)
 
@@ -375,6 +397,7 @@ class ChannelSidebar:
         if self._has_groups() and not self._active_group:
             self.mode = 'catalog'
             self._view_indices = None
+            self._refresh_zap_numbers()
             self._use_native_scroll()
             self._build_catalog()
             return
@@ -385,10 +408,12 @@ class ChannelSidebar:
         count = self._view_count()
         if count >= VIRTUAL_MIN:
             self.mode = 'virtual'
+            self._refresh_zap_numbers()
             self._use_virtual_scroll()
             self._refresh_virtual()
             return
         self.mode = 'flat'
+        self._refresh_zap_numbers()
         self._use_native_scroll()
         self._fill_flat(0, self._rebuild_gen)
 
@@ -784,11 +809,12 @@ class ChannelSidebar:
     def set_item_name(self, index, name):
         if not (0 <= index < len(self.channels)):
             return
-        self.channels[index] = (name, self.channels[index][1])
+        clean = plain_display_text(name, name)
+        self.channels[index] = (clean, self.channels[index][1])
         iid = f'c:{index}'
         try:
             if self.tree.exists(iid):
-                self.tree.item(iid, text=name)
+                self.tree.item(iid, **self._item_kwargs(index))
                 return
         except tk.TclError:
             return
@@ -796,7 +822,7 @@ class ChannelSidebar:
             row = self._virtual_row_of(index)
             if row is not None and 0 <= row < self._pool:
                 try:
-                    self.tree.item(f'v:{row}', text=name)
+                    self.tree.item(f'v:{row}', **self._item_kwargs(index))
                 except tk.TclError:
                     pass
 

@@ -5,6 +5,8 @@ import urllib.error
 import urllib.request
 from urllib.parse import urljoin
 
+from display_text import plain_display_text
+
 _URL_RE = re.compile(r'^(https?|rtmp|rtsp)://', re.I)
 _IMAGE_EXT = re.compile(r'\.(png|jpe?g|gif|webp|bmp|ico|svg)$', re.I)
 _CONTAINER_EXT = re.compile(r'\.(mkv|mp4|avi|mp3|aac|mpd)(\?.*)?$', re.I)
@@ -41,8 +43,10 @@ _TVG_LOGO_RE = re.compile(
 
 def _channel_name(extinf):
     if ',' in extinf:
-        return extinf.split(',', 1)[1].strip() or extinf.strip()
-    return extinf.strip()
+        raw = extinf.split(',', 1)[1].strip() or extinf.strip()
+    else:
+        raw = extinf.strip()
+    return plain_display_text(raw, raw)
 
 
 def _quoted_groups(match):
@@ -52,7 +56,7 @@ def _quoted_groups(match):
 
 
 def _channel_group(extinf):
-    return _quoted_groups(_GROUP_RE.search(extinf or ''))
+    return plain_display_text(_quoted_groups(_GROUP_RE.search(extinf or '')), '')
 
 
 def _channel_tvg_id(extinf):

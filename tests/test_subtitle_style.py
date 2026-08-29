@@ -1,12 +1,15 @@
 from subtitle_style import (
     delay_label,
     hex_to_vlc_color,
+    nearest_vlc_palette_color,
     normalize_hex_color,
     normalize_subtitle_style,
     opacity_percent,
     percent_to_opacity,
     vlc_instance_args,
     vlc_media_options,
+    vlc_outline_thickness,
+    vlc_rel_fontsize,
 )
 
 
@@ -34,25 +37,42 @@ def test_normalize_snaps_size_and_clamps_delay():
     assert style['subtitle_opacity'] == 40
 
 
-def test_vlc_media_options_include_freetype_and_delay():
+def test_vlc_media_options_use_vlc3_freetype_names():
     style = normalize_subtitle_style({
         'subtitle_size': 32,
         'subtitle_color': '#FFFF00',
         'subtitle_bg_opacity': 128,
-        'subtitle_delay_ds': -5,
+        'subtitle_outline': 2,
         'subtitle_margin': 20,
     })
     options = vlc_media_options(style)
-    assert ':freetype-fontsize=32' in options
+    assert ':freetype-rel-fontsize=12' in options
     assert ':freetype-color=16776960' in options
     assert ':freetype-background-opacity=128' in options
-    assert ':sub-delay=-5' in options
-    assert ':sub-margin=20' in options
+    assert ':freetype-outline-thickness=6' in options
+    assert ':sub-margin=' not in ' '.join(options)
+    assert ':sub-delay=' not in ' '.join(options)
     instance = vlc_instance_args(style)
-    assert '--freetype-fontsize=32' in instance
-    assert '--sub-margin=20' in instance
+    assert '--freetype-rel-fontsize=12' in instance
     local = vlc_media_options(style, prefix='')
-    assert 'freetype-fontsize=32' in local
+    assert 'freetype-rel-fontsize=12' in local
+
+
+def test_vlc_rel_fontsize_and_outline_mapping():
+    assert vlc_rel_fontsize(0) == 0
+    assert vlc_rel_fontsize(18) == 18
+    assert vlc_rel_fontsize(24) == 16
+    assert vlc_rel_fontsize(32) == 12
+    assert vlc_rel_fontsize(44) == 6
+    assert vlc_outline_thickness(0) == 0
+    assert vlc_outline_thickness(1) == 2
+    assert vlc_outline_thickness(2) == 6
+
+
+def test_nearest_vlc_palette_color():
+    assert nearest_vlc_palette_color('#FFFFFF') == 16777215
+    assert nearest_vlc_palette_color('#FF0000') == 16711680
+    assert nearest_vlc_palette_color('#00FF00') == 65280
 
 
 def test_fingerprint_changes_with_size():

@@ -8,12 +8,12 @@ from ui_theme import style_window, set_window_icon, center_window, get_font
 def show_keyboard_shortcuts(root):
     shortcuts_window = tk.Toplevel(root)
     shortcuts_window.title('Atajos de Teclado')
-    shortcuts_window.geometry('540x580')
+    shortcuts_window.geometry('540x640')
     shortcuts_window.transient(root)
     shortcuts_window.grab_set()
     style_window(shortcuts_window)
     set_window_icon(shortcuts_window)
-    center_window(shortcuts_window, 540, 580)
+    center_window(shortcuts_window, 540, 640)
 
     main_frame = ttk.Frame(shortcuts_window, padding=24)
     main_frame.pack(fill=tk.BOTH, expand=True)
@@ -78,7 +78,7 @@ def show_keyboard_shortcuts(root):
             ("M", "Silenciar/Activar sonido"),
             ("←", "Retroceder 2 segundos"),
             ("→", "Avanzar 2 segundos"),
-            ("ESC", "Salir de pantalla completa")
+            ("ESC", "Cancelar el zap o salir de pantalla completa")
         ]),
         ("Botones de Control", [
             ("|◀◀", "Retroceder 10 segundos"),
@@ -98,12 +98,19 @@ def show_keyboard_shortcuts(root):
             ("Ctrl + D", "Eliminar de favoritos"),
             ("★ Añadir", "Guardar el canal seleccionado (junto al buscador)"),
             ("★ Favoritos", "Mostrar lista de favoritos"),
+            ("Exportar / Importar", "Llevar los favoritos a otro equipo (JSON o M3U)"),
             ("Todos", "Mostrar todos los canales")
         ]),
         ("Guía EPG", [
             ("G", "Abrir la parrilla"),
             ("Guía", "Botón de la lista lateral"),
             ("Mostrar logos de canal", "Menú Guía EPG o Preferencias")
+        ]),
+        ("Zap (cambiar de canal)", [
+            ("0–9", "Número del canal (el de la lista visible)"),
+            ("Enter", "Ir ya a ese canal (si no, espera ~1 s)"),
+            ("Retroceso", "Borrar el último dígito"),
+            ("Esc", "Cancelar el número")
         ]),
         ("Historial", [
             ("Historial", "IPTV y YouTube: últimos y seguir viendo")

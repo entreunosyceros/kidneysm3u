@@ -3,6 +3,7 @@
 import sys
 import tkinter as tk
 
+from display_text import plain_display_text
 from ui_theme import get_colors, get_font
 
 
@@ -117,7 +118,7 @@ class ChannelNoticeMixin:
             pady=22,
         )
         card.place(relx=0.5, rely=0.5, anchor='center')
-        title = (name or '').strip() or 'Este canal'
+        title = plain_display_text(name, 'Este canal')
         tk.Label(
             card,
             text=title,

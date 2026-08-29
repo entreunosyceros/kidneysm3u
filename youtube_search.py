@@ -15,6 +15,7 @@ from youtube_player import (
 )
 from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window, get_colors
 import app_config
+from display_text import plain_display_text
 
 
 STAR_ON = '★'
@@ -217,7 +218,7 @@ def sort_search_entries(entries, sort_label):
 def youtube_result_line(kind, title, duration_str='', favorite=False):
     """Texto de una fila de búsqueda, con estrella clicable al inicio."""
     mark = STAR_ON if favorite else STAR_OFF
-    name = (title or '').strip() or 'YouTube'
+    name = plain_display_text(title, 'YouTube')
     if kind == 'channel':
         body = f'[Canal] {name}'
     elif kind == 'playlist':
@@ -505,7 +506,7 @@ def fetch_youtube_channel_videos(channel_url, limit=30):
     for entry in entries:
         video_id = str(entry.get('id'))
         videos.append({
-            'title': (entry.get('title') or '').strip() or 'YouTube',
+            'title': plain_display_text(entry.get('title') or '', 'YouTube'),
             'id': video_id,
             'url': f'https://www.youtube.com/watch?v={video_id}',
             'duration': entry.get('duration'),
@@ -536,11 +537,11 @@ class YouTubeSearchDialog:
         self._posted_menu = None
         self.window = tk.Toplevel(parent)
         self.window.title("Buscar en YouTube")
-        self.window.geometry("780x560")
-        self.window.minsize(640, 420)
+        self.window.geometry("820x760")
+        self.window.minsize(680, 580)
         style_window(self.window)
         set_window_icon(self.window)
-        center_window(self.window, 780, 560)
+        center_window(self.window, 820, 760)
         self.create_widgets()
         if self.youtube_handler:
             self.youtube_handler.add_session_listener(self.update_youtube_session_ui)
@@ -1012,7 +1013,7 @@ class YouTubeSearchDialog:
                             self.progress_bar.pack_forget()
                             return
                         for entry in shorts:
-                            title = (entry.get('title') or '').strip() or entry.get('id')
+                            title = plain_display_text(entry.get('title', 'Sin título'), 'Sin título')
                             duration = entry.get('duration')
                             duration_str = self.format_duration(duration) if duration else ""
                             self.result_types.append("video")
@@ -1116,7 +1117,7 @@ class YouTubeSearchDialog:
                         if not entry or results_count >= max_results:
                             break
 
-                        title = entry.get('title', 'Sin título')
+                        title = plain_display_text(entry.get('title', 'Sin título'), 'Sin título')
                         duration = entry.get('duration')
                         duration_str = self.format_duration(duration) if duration else ""
 
@@ -1498,14 +1499,14 @@ class YouTubeSearchDialog:
         if 0 <= index < len(self.result_details):
             details = self.result_details[index]
         if details and details.get('title'):
-            return details['title']
+            return plain_display_text(details['title'], 'YouTube')
         try:
             text = self.results_listbox.get(index)
         except tk.TclError:
             return 'YouTube'
         if text.startswith(STAR_ON) or text.startswith(STAR_OFF):
             text = text[1:].lstrip()
-        return text or 'YouTube'
+        return plain_display_text(text, 'YouTube')
 
     def add_selected_to_favorites(self, event=None):
         if not self.favorite_callback:
@@ -1903,7 +1904,7 @@ class YouTubeSearchDialog:
             for video in videos:
                 if not video or not video.get('id'):
                     continue
-                title = video.get('title', 'Sin título')
+                title = plain_display_text(video.get('title', 'Sin título'), 'Sin título')
                 video_url = f"https://www.youtube.com/watch?v={video.get('id')}"
                 channels.append((title, video_url))
             return channels

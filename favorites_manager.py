@@ -1,5 +1,14 @@
 """Favoritos del reproductor: (nombre, url), comparados por URL."""
 
+import json
+import os
+
+from m3u_parse import decode_m3u_bytes, parse_m3u_entries
+
+FAVORITES_KIND = 'kidneysm3u-favorites'
+FAVORITES_FORMAT = 1
+MAX_FAVORITES_FILE_BYTES = 20 * 1024 * 1024
+
 
 def favorite_name(item):
     if isinstance(item, (list, tuple)) and item:
@@ -56,6 +65,100 @@ def remove_favorite(favorites, name, url):
         return current, False
     kept = [item for item in current if favorite_url(item) != wanted]
     return kept, len(kept) != len(current)
+
+
+def merge_favorites(current, incoming):
+    """Añade por URL. Devuelve (lista, añadidos, ya_estaban)."""
+    out = normalize_favorites(current)
+    seen = {favorite_url(item) for item in out}
+    added = 0
+    skipped = 0
+    for item in normalize_favorites(incoming):
+        url = favorite_url(item)
+        if url in seen:
+            skipped += 1
+            continue
+        seen.add(url)
+        out.append(item)
+        added += 1
+    return out, added, skipped
+
+
+def favorites_payload(items):
+    return {
+        'kind': FAVORITES_KIND,
+        'format': FAVORITES_FORMAT,
+        'items': normalize_favorites(items),
+    }
+
+
+def parse_favorites_payload(data):
+    if isinstance(data, list):
+        return normalize_favorites(data)
+    if not isinstance(data, dict):
+        raise ValueError('El archivo no contiene una lista de favoritos.')
+    blob = data.get('items')
+    if blob is None:
+        blob = data.get('favorites')
+    if blob is None:
+        blob = data.get('channels')
+    if not isinstance(blob, list):
+        raise ValueError('El archivo no contiene una lista de favoritos.')
+    return normalize_favorites(blob)
+
+
+def favorites_to_m3u(items):
+    lines = ['#EXTM3U']
+    for name, url in normalize_favorites(items):
+        title = ' '.join(str(name or 'Canal').split())
+        lines.append(f'#EXTINF:-1,{title}')
+        lines.append(url)
+    lines.append('')
+    return '\n'.join(lines)
+
+
+def read_favorites_file(path):
+    """Lee JSON (favoritos.json o exportación) o M3U. No registra URLs."""
+    path = os.path.abspath(str(path or ''))
+    if not path or not os.path.isfile(path):
+        raise ValueError('No se encontró el archivo de favoritos.')
+    size = os.path.getsize(path)
+    if size > MAX_FAVORITES_FILE_BYTES:
+        raise ValueError('El archivo de favoritos es demasiado grande.')
+    with open(path, 'rb') as handle:
+        raw = handle.read()
+    text = decode_m3u_bytes(raw)
+    stripped = text.lstrip()
+    lower = path.lower()
+    looks_m3u = lower.endswith(('.m3u', '.m3u8')) or stripped.startswith('#EXT')
+    if looks_m3u and not stripped.startswith(('{', '[')):
+        return normalize_favorites(parse_m3u_entries(text))
+    try:
+        return parse_favorites_payload(json.loads(text))
+    except json.JSONDecodeError:
+        if '#EXTINF' in text:
+            return normalize_favorites(parse_m3u_entries(text))
+        raise ValueError('El archivo no es un JSON ni una lista M3U de favoritos.')
+
+
+def write_favorites_file(path, items):
+    """Escribe JSON envuelto o M3U según la extensión."""
+    path = os.path.abspath(str(path or ''))
+    if not path:
+        raise ValueError('Indica un archivo de destino.')
+    folder = os.path.dirname(path)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    items = normalize_favorites(items)
+    lower = path.lower()
+    if lower.endswith(('.m3u', '.m3u8')):
+        with open(path, 'w', encoding='utf-8', newline='\n') as handle:
+            handle.write(favorites_to_m3u(items))
+        return path
+    with open(path, 'w', encoding='utf-8') as handle:
+        json.dump(favorites_payload(items), handle, ensure_ascii=False, indent=4)
+        handle.write('\n')
+    return path
 
 
 class FavoritesManager:

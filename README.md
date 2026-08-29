@@ -36,13 +36,13 @@ Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda →
 ## Qué puedes hacer
 
 - Cargar y filtrar listas M3U/M3U8 locales o por URL (archivos grandes incluidos).
-- Reproducir IPTV y ficheros directos con VLC embebido.
+- Reproducir IPTV y ficheros directos con VLC embebido (zap por número de la lista).
 - Buscar y reproducir YouTube: vídeos, **Shorts**, listas y canales.
 - Ver la guía EPG en parrilla (ahora + unas horas), con logos de canal y recarga automática.
 - Historial de canales IPTV y seguir viendo películas/VOD desde el segundo guardado.
 - Ventana PiP y reproductor siempre encima.
 - Ajustar el buffer de los canales IPTV (rápido, equilibrado o estable).
-- Gestionar la lista lateral (favoritos, limpiar, reproducir desde aquí).
+- Gestionar la lista lateral (favoritos, exportar/importar, limpiar, reproducir desde aquí).
 - Grabar el canal o vídeo en reproducción a un fichero local (hace falta [ffmpeg](https://ffmpeg.org/download.html)).
 - Descargar vídeos o solo audio (también hace falta ffmpeg).
 - Ordenar listas M3U desde la interfaz.

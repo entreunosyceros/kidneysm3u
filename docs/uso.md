@@ -33,12 +33,13 @@ El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras co
 
 | Apartado | Qué hace |
 | --- | --- |
+| Modo ligero | Un interruptor para equipos justos o listas enormes: apaga logos, aligera EPG y YouTube, no restaura M3U enormes al abrir (aunque «recordar última lista» esté activo), limita la caché de descargas de YouTube y oculta la línea de EPG bajo la búsqueda. Opcional: **Usar GPU para IPTV** (solo en modo ligero; por defecto la decodificación va por software para evitar fallos VA-API en NVIDIA). **Limpiar caché de logos** borra `epg_cache/`. **Monitor de CPU** (~8 s) solo si lo activas. |
 | Tema | Oscuro o claro. El botón **Tema claro/oscuro** de la cabecera solo cambia esto. |
 | Logos de canal | Miniaturas `tvg-logo` en la lista y en la parrilla. En listas grandes conviene apagarlos. |
 | Volumen por defecto | Al abrir el reproductor. |
 | Calidad YouTube | Tope de altura: 360p, 720p, 1080p o **Mejor**. Si cambias con un vídeo en marcha, se recarga desde el segundo actual. |
 | Buffer IPTV | **Rápido**, **Equilibrado** (por defecto) o **Estable**. El siguiente canal ya usa el valor. Detalle en [listas M3U](listas-m3u.md#buffer-iptv). |
-| Subtítulos | Tamaño, color, opacidad, contorno, caja de fondo (color y transparencia), margen y retraso. Solo afecta a subtítulos de texto (SRT, YouTube). En YouTube se recarga el vídeo al guardar; en IPTV, al siguiente canal. |
+| Subtítulos | Tamaño, color, opacidad, contorno, caja de fondo (color y transparencia), margen y retraso. Solo afecta a subtítulos de texto (SRT, YouTube). VLC aproxima los colores a su paleta. Al guardar se recarga el vídeo o el canal IPTV en curso. |
 | Recordar última lista | Restaura la lista lateral al abrir; no reproduce solo. |
 | Avisar de versiones nuevas | Al abrir, si GitHub tiene un paquete más nuevo. Casilla **Actualizaciones**. Se puede apagar. Detalle en [instalación](instalacion.md#actualizar-el-programa). |
 | Carpeta de descargas | Destino inicial de vídeos, audio y grabaciones. |
@@ -62,7 +63,7 @@ En el menú **Reproducir**:
 - **Ventana PiP** / **Siempre encima** — recuadro flotante o ventana del reproductor sobre las demás.
 - **Limpiar lista lateral** — vacía el listado de la izquierda (pide confirmación).
 
-Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir). En la búsqueda, **★ Añadir** o `Ctrl+S` guarda el resultado en favoritos.
+Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir). En la búsqueda, **★ Añadir** o `Ctrl+S` guarda el resultado en favoritos. Para llevarlos a otro ordenador: **Favoritos → Exportar favoritos…** y, en el equipo nuevo, **Importar favoritos…** (detalle en [reproductor](reproductor.md)). En el reproductor, cada canal de la lista visible tiene un número: escríbelo para cambiar de canal (zap).
 
 La sesión puede recordar la última lista lateral y el último canal **seleccionado**, no lo reproduce solo al abrir. Eso se activa o desactiva en **Preferencias**. **Limpiar** solo vacía la lista en esta sesión; si «recordar última lista» está activo, al arrancar de nuevo se muestra lo último que había. Si no había lista, no muestra nada.
 

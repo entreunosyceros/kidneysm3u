@@ -20,6 +20,7 @@ import tkinter as tk
 from tkinter import messagebox, filedialog, ttk
 import app_config
 from app_paths import data_dir
+from display_text import plain_display_text
 from ui_clipboard import ask_string
 from youtube_subs import (
     collect_youtube_subs,
@@ -60,9 +61,7 @@ def is_playable_local_video(path):
 
 def youtube_format_selector(max_height=None):
     """Selector de yt-dlp: tope de altura, o el mejor stream jugable si max_height <= 0."""
-    height = app_config.normalize_youtube_quality(
-        app_config.get_youtube_quality() if max_height is None else max_height
-    )
+    height = app_config.effective_youtube_quality(max_height)
     if height <= 0:
         return (
             'best[ext=mp4][acodec!=none][vcodec!=none]/'
@@ -153,7 +152,10 @@ def cleanup_youtube_temp_dirs(keep=None):
                 shutil.rmtree(path, ignore_errors=True)
     except OSError:
         pass
-    enforce_youtube_cache_limit(keep=keep)
+    enforce_youtube_cache_limit(
+        max_bytes=app_config.effective_yt_cache_max_bytes(),
+        keep=keep,
+    )
 
 
 atexit.register(cleanup_youtube_temp_dirs)
@@ -1516,7 +1518,7 @@ class YouTubeHandler:
             return True
         self.stop_pipeline()
         self._show_status("Descargando vídeo para reproducirlo…")
-        quality = app_config.get_youtube_quality()
+        quality = app_config.effective_youtube_quality()
         quality_key = app_config.youtube_quality_cache_key(quality)
         outtmpl = os.path.join(youtube_cache_dir(), f'{video_id or "video"}_{quality_key}.%(ext)s')
 
@@ -1537,7 +1539,10 @@ class YouTubeHandler:
                     path = find_cached_youtube_video(video_id, quality)
                 if not path or not os.path.exists(path):
                     raise FileNotFoundError('No se descargó el archivo')
-                enforce_youtube_cache_limit(keep=path)
+                enforce_youtube_cache_limit(
+                    max_bytes=app_config.effective_yt_cache_max_bytes(),
+                    keep=path,
+                )
                 if not is_playable_local_video(path):
                     raise FileNotFoundError(f'El formato descargado no es jugable: {path}')
 
@@ -1613,7 +1618,7 @@ class YouTubeHandler:
                     return None
                 channels = []
                 for video in videos:
-                    title = video.get('title', 'Sin título')
+                    title = plain_display_text(video.get('title', 'Sin título'), 'Sin título')
                     video_url = f"https://www.youtube.com/watch?v={video.get('id')}"
                     channels.append((title, video_url))
                 return channels
@@ -1854,7 +1859,7 @@ class YouTubeHandler:
 
     def get_best_vlc_url(self, youtube_url):
         """Obtiene una URL de stream que VLC pueda reproducir dentro de la ventana."""
-        max_height = app_config.get_youtube_quality()
+        max_height = app_config.effective_youtube_quality()
         format_sel = youtube_format_selector(max_height)
         attempts = [
             # Sin cookies: permite clientes android/ios, cuyas URLs VLC suele abrir
@@ -1942,9 +1947,7 @@ class YouTubeHandler:
     def _pick_playable_stream(self, info, max_height=None):
         formats = list(info.get('formats') or [])
         headers = dict(info.get('http_headers') or {})
-        preferred = app_config.normalize_youtube_quality(
-            max_height if max_height is not None else app_config.get_youtube_quality()
-        )
+        preferred = app_config.effective_youtube_quality(max_height)
         if preferred <= 0:
             preferred = 10000
 

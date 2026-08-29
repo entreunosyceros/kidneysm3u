@@ -133,6 +133,7 @@ def _init_fonts(root):
         (10, 'normal'): max(10, default_size),
         (10, 'bold'): max(10, default_size),
         (12, 'normal'): max(11, default_size + 1),
+        (12, 'bold'): max(12, default_size + 1),
         (16, 'bold'): max(14, default_size + 5),
         (20, 'bold'): max(16, default_size + 7),
     }
@@ -217,6 +218,9 @@ def apply_theme(root, dark=False):
 
     _configure_button(style, 'TButton', colors['surface_alt'], colors['text'],
                       colors['border'], colors['border'], colors['disabled_bg'], colors['disabled_fg'])
+    _configure_button(style, 'Compact.TButton', colors['surface_alt'], colors['text'],
+                      colors['border'], colors['border'], colors['disabled_bg'], colors['disabled_fg'])
+    style.configure('Compact.TButton', padding=(8, 6), font=get_font(9))
     _configure_button(style, 'Accent.TButton', colors['accent'], colors['accent_text'],
                       colors['accent'], colors['accent_hover'], colors['disabled_bg'], colors['disabled_fg'])
     _configure_button(style, 'Danger.TButton', colors['danger'], colors['danger_text'],

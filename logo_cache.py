@@ -20,6 +20,25 @@ def cache_dir():
     return CACHE_DIR
 
 
+def clear_cache():
+    """Borra todas las miniaturas de epg_cache/."""
+    folder = cache_dir()
+    removed = 0
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return 0
+    for name in names:
+        path = os.path.join(folder, name)
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+                removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def _key(url):
     return hashlib.sha1((url or '').encode('utf-8', errors='replace')).hexdigest()[:20]
 

@@ -72,7 +72,16 @@ _DEFAULTS = {
     'check_app_updates': True,
     'app_update_checked_at': 0,
     'app_update_cache': {},
+    'light_mode': False,
+    'light_mode_hw_decode': True,
+    'show_cpu_monitor': False,
 }
+
+LIGHT_MODE_SESSION_MAX = 1500
+LIGHT_MODE_YT_CACHE_BYTES = 150 * 1024 * 1024
+LIGHT_MODE_YT_QUALITY_CAP = 720
+LIGHT_MODE_EPG_TICK_MS = 5 * 60 * 1000
+CPU_MONITOR_INTERVAL_MS = 8 * 1000
 
 _cache = None
 
@@ -204,6 +213,87 @@ def get_show_channel_logos():
 
 def set_show_channel_logos(value):
     save({'show_channel_logos': bool(value)})
+
+
+def get_light_mode():
+    return bool(load().get('light_mode', False))
+
+
+def set_light_mode(value):
+    save({'light_mode': bool(value)})
+
+
+def get_light_mode_hw_decode():
+    return bool(load().get('light_mode_hw_decode', True))
+
+
+def set_light_mode_hw_decode(value):
+    save({'light_mode_hw_decode': bool(value)})
+
+
+def get_show_cpu_monitor():
+    return bool(load().get('show_cpu_monitor', False))
+
+
+def set_show_cpu_monitor(value):
+    save({'show_cpu_monitor': bool(value)})
+
+
+def light_mode_session_max():
+    return LIGHT_MODE_SESSION_MAX
+
+
+def effective_show_channel_logos():
+    return get_show_channel_logos() and not get_light_mode()
+
+
+def iptv_use_hw_decode():
+    return get_light_mode() and get_light_mode_hw_decode()
+
+
+def effective_youtube_quality(value=None):
+    height = normalize_youtube_quality(
+        get_youtube_quality() if value is None else value
+    )
+    if not get_light_mode():
+        return height
+    if height <= 0 or height > LIGHT_MODE_YT_QUALITY_CAP:
+        return LIGHT_MODE_YT_QUALITY_CAP
+    return height
+
+
+def effective_yt_cache_max_bytes():
+    if get_light_mode():
+        return LIGHT_MODE_YT_CACHE_BYTES
+    return 500 * 1024 * 1024
+
+
+def epg_reload_interval_ms():
+    if get_light_mode():
+        return 0
+    return 30 * 60 * 1000
+
+
+def epg_tick_interval_ms():
+    if get_light_mode():
+        return LIGHT_MODE_EPG_TICK_MS
+    return 60 * 1000
+
+
+def should_skip_session_restore(session):
+    """En modo ligero no se restaura una lista enorme al arrancar."""
+    if not get_light_mode():
+        return False
+    if not isinstance(session, dict):
+        return False
+    kind = str(session.get('playlist_kind') or '').strip()
+    playlist = str(session.get('playlist') or '').strip()
+    sidebar = session.get('sidebar') or []
+    if kind in ('file', 'url') and playlist:
+        return True
+    if isinstance(sidebar, list) and len(sidebar) > LIGHT_MODE_SESSION_MAX:
+        return True
+    return False
 
 
 def get_epg_url():

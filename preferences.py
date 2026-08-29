@@ -163,12 +163,12 @@ def show_preferences(parent, on_apply=None):
 
     window = tk.Toplevel(parent)
     window.title('Preferencias')
-    window.geometry('560x680')
-    window.minsize(480, 420)
+    window.geometry('560x760')
+    window.minsize(480, 460)
     window.transient(parent)
     style_window(window)
     set_window_icon(window)
-    center_window(window, 560, 680)
+    center_window(window, 560, 760)
     root._prefs_window = window
 
     theme_var = tk.StringVar(value=app_config.get_theme())
@@ -180,6 +180,9 @@ def show_preferences(parent, on_apply=None):
     cookie_var = tk.StringVar(value=app_config.get_cookie_browser())
     remember_var = tk.BooleanVar(value=app_config.get_remember_last_list())
     logos_var = tk.BooleanVar(value=app_config.get_show_channel_logos())
+    light_var = tk.BooleanVar(value=app_config.get_light_mode())
+    hw_decode_var = tk.BooleanVar(value=app_config.get_light_mode_hw_decode())
+    cpu_var = tk.BooleanVar(value=app_config.get_show_cpu_monitor())
     updates_var = tk.BooleanVar(value=app_config.get_check_app_updates())
     sub_cfg = app_config.get_subtitle_style()
     sub_size_var = tk.StringVar(value=str(sub_cfg['subtitle_size']))
@@ -268,6 +271,58 @@ def show_preferences(parent, on_apply=None):
 
     main.bind('<Configure>', _sync_scroll)
     canvas.bind('<Configure>', _sync_scroll)
+
+    performance = ttk.LabelFrame(main, text=' MODO LIGERO ', padding=12)
+    performance.pack(fill=tk.X, pady=(0, 10))
+    ttk.Checkbutton(
+        performance,
+        text='Modo ligero (equipos justos o listas enormes)',
+        variable=light_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W)
+    hw_decode_check = ttk.Checkbutton(
+        performance,
+        text='Usar GPU para IPTV si VLC puede (solo en modo ligero)',
+        variable=hw_decode_var,
+        style='Card.TCheckbutton',
+    )
+    hw_decode_check.pack(anchor=tk.W, pady=(8, 0))
+    ttk.Checkbutton(
+        performance,
+        text='Mostrar monitor de CPU (muestreo cada ~8 s)',
+        variable=cpu_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W, pady=(8, 0))
+
+    cache_row = ttk.Frame(performance, style='Card.TFrame')
+    cache_row.pack(fill=tk.X, pady=(10, 0))
+
+    def clear_logo_cache():
+        import logo_cache
+        removed = logo_cache.clear_cache()
+        messagebox.showinfo(
+            'Caché de logos',
+            f'Se eliminaron {removed} miniaturas de epg_cache/.',
+            parent=window,
+        )
+
+    ttk.Button(cache_row, text='Limpiar caché de logos…', command=clear_logo_cache).pack(side=tk.LEFT)
+    ttk.Label(
+        performance,
+        text='Desactiva logos, aligera EPG y YouTube, no restaura listas M3U enormes al abrir y reduce la caché de descargas. La línea de EPG bajo la búsqueda no se muestra.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(8, 0))
+
+    def _sync_light_opts(*_args):
+        state = 'normal' if light_var.get() else 'disabled'
+        try:
+            hw_decode_check.configure(state=state)
+        except tk.TclError:
+            pass
+
+    light_var.trace_add('write', _sync_light_opts)
+    _sync_light_opts()
 
     appearance = ttk.LabelFrame(main, text=' APARIENCIA ', padding=12)
     appearance.pack(fill=tk.X, pady=(0, 10))
@@ -462,7 +517,7 @@ def show_preferences(parent, on_apply=None):
     _on_delay(delay_scale.get())
     ttk.Label(
         subs,
-        text='Solo cambia subtítulos de texto (SRT y YouTube). Los de imagen del propio canal no se pueden restilar. En YouTube se recarga el vídeo al guardar; en IPTV rige el siguiente canal.',
+        text='Solo cambia subtítulos de texto (SRT y YouTube). Los de imagen del propio canal no se pueden restilar. VLC usa una paleta fija de colores (se aproxima la más cercana). El margen inferior no lo admite VLC 3; el retraso sí al reproducir. En YouTube se recarga el vídeo al guardar; en IPTV se recarga el canal en curso al guardar.',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
@@ -641,6 +696,9 @@ def show_preferences(parent, on_apply=None):
             'cookie_browser': cookie_key,
             'remember_last_list': bool(remember_var.get()),
             'show_channel_logos': bool(logos_var.get()),
+            'light_mode': bool(light_var.get()),
+            'light_mode_hw_decode': bool(hw_decode_var.get()),
+            'show_cpu_monitor': bool(cpu_var.get()),
             'check_app_updates': bool(updates_var.get()),
             'youtube_quality': app_config.normalize_youtube_quality(quality),
             'iptv_buffer': app_config.normalize_iptv_buffer_profile(buffer_var.get()),

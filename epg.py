@@ -8,6 +8,8 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+
+from display_text import plain_display_text
 from urllib.parse import unquote
 from urllib.request import Request, urlopen
 
@@ -142,6 +144,7 @@ def format_now_next(current, nxt):
 
 
 def _short(text, limit=80):
+    text = plain_display_text(text)
     text = re.sub(r'\s+', ' ', text or '').strip()
     if len(text) <= limit:
         return text

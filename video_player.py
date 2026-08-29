@@ -3,14 +3,26 @@ import pathlib
 import time
 import shutil
 import psutil
+from display_text import plain_display_text, plain_ui_line, busy_status_text
+from channel_zap import (
+    ZAP_TIMEOUT_MS,
+    zap_buffer_append,
+    zap_buffer_backspace,
+    zap_event_digit,
+    zap_number,
+    zap_visible_index,
+)
 from favorites_manager import (
     FavoritesManager,
     add_favorite,
     favorite_name,
     favorite_url,
     favorites_contain,
+    merge_favorites,
     normalize_favorites,
+    read_favorites_file,
     remove_favorite,
+    write_favorites_file,
 )
 import vlc
 import tkinter as tk
@@ -80,8 +92,8 @@ class Tooltip:
         self.x = self.y = 0
 
     def showtip(self, text, x=None, y=None, wraplength=0):
-        """Muestra el tooltip con el texto dado, cerca del puntero del ratón"""
-        text = (text or '').strip()
+        """Muestra el tooltip con el texto dado, cerca del puntero del ratón."""
+        text = plain_display_text(text)
         if not text:
             self.hidetip()
             return
@@ -127,12 +139,12 @@ class Tooltip:
 
 
 def _make_vlc_instance():
-    """Instancia VLC sin aceleración VA-API (ruidosa en NVIDIA) y con logs bajos."""
+    """Instancia VLC; en modo normal sin VA-API (NVIDIA). Opcional GPU en modo ligero."""
     os.environ['LIBVA_MESSAGING_LEVEL'] = '0'
+    use_hw = app_config.iptv_use_hw_decode()
     core = [
         "--quiet",
         "--verbose=0",
-        "--avcodec-hw=none",
         "--audio-resampler=soxr",
         "--network-caching=3000",
         "--live-caching=3000",
@@ -140,12 +152,17 @@ def _make_vlc_instance():
         "--sout-mux-caching=3000",
         f"--http-user-agent={IPTV_USER_AGENT}",
     ]
+    if not use_hw:
+        core.insert(2, "--avcodec-hw=none")
     core.extend(vlc_aout_instance_args())
     attempts = (
         core + vlc_instance_args(),
         list(core),
-        ["--quiet", "--avcodec-hw=none"],
     )
+    if not use_hw:
+        attempts = attempts + (["--quiet", "--avcodec-hw=none"],)
+    else:
+        attempts = attempts + (["--quiet"],)
     last_error = None
     for args in attempts:
         try:
@@ -173,6 +190,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.instance = _make_vlc_instance()
         self.player = self.instance.media_player_new()
         self._vlc_style_key = fingerprint()
+        self._vlc_hw_decode_key = app_config.iptv_use_hw_decode()
         self.channels = []
         self.current_channel = None
         self.channels_listbox = None
@@ -184,7 +202,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._logos = []
         self._logos_all = []
         self._logo_photos = {}
-        self._show_logos = app_config.get_show_channel_logos()
+        self._show_logos = app_config.effective_show_channel_logos()
+        self._previous_channel_index = None
         self._logos_var = None
         self._epg = None
         self._epg_urls = []
@@ -259,6 +278,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._active_yt_sub = None
         self._track_poll_gen = 0
         self._last_video_click_at = 0
+        self._zap_digits = ''
+        self._zap_job = None
+        self._zap_top = None
+        self._zap_side_label = None
         self._yt_sub_dir = None
         self._audio_choice = None
         self._subs_choice = None
@@ -272,7 +295,6 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.create_window()
         self.load_favorites()
         self.setup_mouse_tracking()
-        self.setup_keyboard_shortcuts()
 
         # Nuevas variables para reproducción secuencial
         self.is_sequential_playback = False
@@ -294,33 +316,42 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.main_frame = ttk.Frame(self.window)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Frame de canales con ancho inicial
-        self.channels_frame = ttk.Frame(self.main_frame, width=300)  # Ancho inicial de 300 píxeles
-        self.channels_frame.pack_propagate(False)  # Evita que el frame se ajuste automáticamente
+        # Lista a la izquierda: botones en cuadrícula 2×2 para que no se desborden
+        self.channels_frame = ttk.Frame(self.main_frame, width=300)
+        self.channels_frame.pack_propagate(False)
         self.channels_frame.pack(side=tk.LEFT, fill=tk.Y)
         
         # Frame separador (sizer)
         self.sizer = ttk.Frame(self.main_frame, width=5, cursor='sb_h_double_arrow', style='Sizer.TFrame')
         self.sizer.pack(side=tk.LEFT, fill=tk.Y)
 
-        # Botones de favoritos
-        favorites_buttons_frame = ttk.Frame(self.channels_frame)
-        favorites_buttons_frame.pack(side=tk.TOP, fill=tk.X, padx=8, pady=8)
-        ttk.Button(favorites_buttons_frame, text="★ Favoritos", command=self.show_favorites).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(favorites_buttons_frame, text="Todos", command=self.restore_all_channels).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(favorites_buttons_frame, text="Limpiar", command=self.clear_channel_list).pack(side=tk.LEFT)
-        ttk.Button(favorites_buttons_frame, text="Guía", command=self.open_epg_grid).pack(side=tk.LEFT, padx=(6, 0))
+        toolbar = ttk.Frame(self.channels_frame)
+        toolbar.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(8, 4))
+        toolbar.columnconfigure(0, weight=1, uniform='sidebar_btn')
+        toolbar.columnconfigure(1, weight=1, uniform='sidebar_btn')
+        ttk.Button(
+            toolbar, text="★ Favoritos", style='Compact.TButton', command=self.show_favorites,
+        ).grid(row=0, column=0, sticky='ew', padx=(0, 4), pady=(0, 4))
+        ttk.Button(
+            toolbar, text="Todos", style='Compact.TButton', command=self.restore_all_channels,
+        ).grid(row=0, column=1, sticky='ew', pady=(0, 4))
+        ttk.Button(
+            toolbar, text="Limpiar", style='Compact.TButton', command=self.clear_channel_list,
+        ).grid(row=1, column=0, sticky='ew', padx=(0, 4), pady=(0, 4))
+        ttk.Button(
+            toolbar, text="Guía", style='Compact.TButton', command=self.open_epg_grid,
+        ).grid(row=1, column=1, sticky='ew', pady=(0, 4))
 
-        # Búsqueda
         search_row = ttk.Frame(self.channels_frame)
         search_row.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 8))
         self.search_var = tk.StringVar()
         self.search_var.trace_add('write', self.filter_channels)
         self.search_entry = ttk.Entry(search_row, textvariable=self.search_var)
         self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(search_row, text='★ Añadir', command=self.add_to_favorites).pack(
-            side=tk.LEFT, padx=(6, 0),
-        )
+        ttk.Button(
+            search_row, text='★ Añadir', style='Compact.TButton', command=self.add_to_favorites,
+        ).pack(side=tk.LEFT, padx=(6, 0))
+        self._zap_side_label = ttk.Label(self.channels_frame, text='', style='PageTitle.TLabel')
 
         self._epg_label = ttk.Label(
             self.channels_frame,
@@ -344,7 +375,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.sidebar.now_text = self._epg_now_title
         self.sidebar.row_image = self._logo_photo
         self.sidebar.is_favorite = self._channel_is_favorite
-        self.sidebar.on_view_change = self._prefetch_visible_logos
+        self.sidebar.on_view_change = self._on_sidebar_view_change
         self.channels_listbox = self.sidebar.tree
         self.channels_listbox.bind('<Double-Button-1>', self.play_selected)
         self.channels_listbox.bind('<Button-3>', self.show_channel_context_menu)
@@ -446,22 +477,42 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 self._subs_btn = btn
         self.add_volume_control()
         self._refresh_record_button()
-        #self.setup_performance_monitoring()
+        self.setup_performance_monitoring()
         self.window.protocol("WM_DELETE_WINDOW", self.close)
-        self.window.bind('<Escape>', lambda e: self.exit_fullscreen())
         self.youtube_handler.notify_session()
+        self.setup_keyboard_shortcuts()
 
     def setup_performance_monitoring(self):
-        """Inicia el monitoreo de recursos"""
-        self.cpu_label = ttk.Label(self.controls_frame, text="CPU: 0%")
-        self.cpu_label.pack(side=tk.RIGHT, padx=5)
+        """Monitor de CPU opcional (muestreo cada ~8 s)."""
+        label = getattr(self, 'cpu_label', None)
+        if not app_config.get_show_cpu_monitor():
+            if label is not None and self._widget_exists(label):
+                try:
+                    label.destroy()
+                except tk.TclError:
+                    pass
+                self.cpu_label = None
+            return
+        if label is None or not self._widget_exists(label):
+            self.cpu_label = ttk.Label(self.controls_frame, text='CPU: …')
+            self.cpu_label.pack(side=tk.RIGHT, padx=5)
         self.update_performance_stats()
 
     def update_performance_stats(self):
-        """Actualiza las estadísticas de rendimiento"""
-        cpu_percent = psutil.cpu_percent()
-        self.cpu_label.config(text=f"CPU: {cpu_percent}%")
-        self.window.after(1000, self.update_performance_stats)
+        """Actualiza las estadísticas de rendimiento."""
+        label = getattr(self, 'cpu_label', None)
+        if not app_config.get_show_cpu_monitor() or not self._widget_exists(label):
+            return
+        try:
+            cpu_percent = psutil.cpu_percent()
+            label.config(text=f'CPU: {cpu_percent:.0f} %')
+        except Exception:
+            pass
+        if self._widget_exists(self.window):
+            self.window.after(
+                app_config.CPU_MONITOR_INTERVAL_MS,
+                self.update_performance_stats,
+            )
         
     def create_menu(self):
         self.menubar = tk.Menu(self.window)
@@ -522,6 +573,9 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         favoritos_menu.add_command(label="Mostrar Favoritos", command=self.show_favorites)
         favoritos_menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
         favoritos_menu.add_command(label="Eliminar de Favoritos", command=self.remove_from_favorites)
+        favoritos_menu.add_separator()
+        favoritos_menu.add_command(label="Exportar favoritos…", command=self.export_favorites)
+        favoritos_menu.add_command(label="Importar favoritos…", command=self.import_favorites)
 
         self.audio_menu = tk.Menu(self.menubar, tearoff=0)
         self.subs_menu = tk.Menu(self.menubar, tearoff=0)
@@ -548,18 +602,337 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.window.bind('<m>', lambda e: self.toggle_mute())
         self.window.bind('<Left>', lambda e: self.seek_relative(-2))
         self.window.bind('<Right>', lambda e: self.seek_relative(2))
+        self.window.bind('<Escape>', self._on_escape_key)
         
         # Atajos para favoritos
         self.window.bind('<Control-s>', self.handle_add_favorite)
         self.window.bind('<Control-d>', self.handle_remove_favorite)
         self.window.bind('<g>', self._on_epg_grid_key)
         self.window.bind('<G>', self._on_epg_grid_key)
+        self.window.bind('<Prior>', self._on_channel_prev_key)
+        self.window.bind('<Next>', self._on_channel_next_key)
+        self.window.bind('<plus>', self._on_channel_next_key)
+        self.window.bind('<minus>', self._on_channel_prev_key)
+        self.window.bind('<KP_Add>', self._on_channel_next_key)
+        self.window.bind('<KP_Subtract>', self._on_channel_prev_key)
+        self.window.bind('<b>', self._on_last_channel_key)
+        self.window.bind('<B>', self._on_last_channel_key)
+        self.window.bind('<Return>', self._on_zap_confirm)
+        self.window.bind('<KP_Enter>', self._on_zap_confirm)
+        self.window.bind('<BackSpace>', self._on_zap_backspace)
+        for digit in '0123456789':
+            self.window.bind(digit, self._on_zap_digit)
+            self.window.bind(f'<KP_{digit}>', self._on_zap_digit)
         
         # Asegurarse de que el listbox también recibe los eventos
         self.channels_listbox.bind('<Control-s>', self.handle_add_favorite)
         self.channels_listbox.bind('<Control-d>', self.handle_remove_favorite)
+        self.channels_listbox.bind('<Return>', self._on_zap_confirm)
+        self.channels_listbox.bind('<KP_Enter>', self._on_zap_confirm)
+        self.channels_listbox.bind('<BackSpace>', self._on_zap_backspace)
         self.search_entry.bind('<Control-s>', self.handle_add_favorite)
         self.search_entry.bind('<Control-d>', self.handle_remove_favorite)
+        for digit in '0123456789':
+            self.channels_listbox.bind(digit, self._on_zap_digit)
+            self.channels_listbox.bind(f'<KP_{digit}>', self._on_zap_digit)
+        for sequence, handler in (
+            ('<Prior>', self._on_channel_prev_key),
+            ('<Next>', self._on_channel_next_key),
+            ('<plus>', self._on_channel_next_key),
+            ('<minus>', self._on_channel_prev_key),
+            ('<KP_Add>', self._on_channel_next_key),
+            ('<KP_Subtract>', self._on_channel_prev_key),
+            ('<b>', self._on_last_channel_key),
+            ('<B>', self._on_last_channel_key),
+        ):
+            self.channels_listbox.bind(sequence, handler)
+            self.search_entry.bind(sequence, handler)
+        video = getattr(self, 'video_frame', None)
+        if video is not None:
+            video.bind('<Key>', self._on_zap_digit, add='+')
+            video.bind('<Return>', self._on_zap_confirm, add='+')
+            video.bind('<KP_Enter>', self._on_zap_confirm, add='+')
+            video.bind('<BackSpace>', self._on_zap_backspace, add='+')
+            video.bind('<Escape>', self._on_escape_key, add='+')
+            for sequence, handler in (
+                ('<Prior>', self._on_channel_prev_key),
+                ('<Next>', self._on_channel_next_key),
+                ('<plus>', self._on_channel_next_key),
+                ('<minus>', self._on_channel_prev_key),
+                ('<KP_Add>', self._on_channel_next_key),
+                ('<KP_Subtract>', self._on_channel_prev_key),
+                ('<b>', self._on_last_channel_key),
+                ('<B>', self._on_last_channel_key),
+            ):
+                video.bind(sequence, handler, add='+')
+
+    def _on_channel_prev_key(self, event=None):
+        if self._event_in_text_field(event):
+            return
+        self._play_relative_channel(-1)
+        return 'break'
+
+    def _on_channel_next_key(self, event=None):
+        if self._event_in_text_field(event):
+            return
+        self._play_relative_channel(1)
+        return 'break'
+
+    def _on_last_channel_key(self, event=None):
+        if self._event_in_text_field(event):
+            return
+        self._play_last_channel()
+        return 'break'
+
+    def _play_relative_channel(self, delta):
+        visible = self._zap_visible_indices()
+        if not visible:
+            return
+        current = self.current_channel
+        if current in visible:
+            position = visible.index(current) + int(delta)
+        else:
+            position = 0 if delta >= 0 else len(visible) - 1
+        if position < 0 or position >= len(visible):
+            return
+        index = visible[position]
+        sidebar = getattr(self, 'sidebar', None)
+        if sidebar:
+            sidebar.select(index)
+            sidebar.see(index)
+        self.play_channel(index)
+
+    def _play_last_channel(self):
+        previous = getattr(self, '_previous_channel_index', None)
+        current = self.current_channel
+        if previous is None or previous == current:
+            return
+        if not (0 <= previous < len(self.channels)):
+            return
+        sidebar = getattr(self, 'sidebar', None)
+        if sidebar:
+            sidebar.select(previous)
+            sidebar.see(previous)
+        self.play_channel(previous)
+
+    def _event_in_text_field(self, event):
+        widget = getattr(event, 'widget', None) if event is not None else None
+        try:
+            if widget and widget.winfo_class() in ('Entry', 'TEntry', 'Text', 'TCombobox'):
+                return True
+        except tk.TclError:
+            pass
+        return False
+
+    def _on_escape_key(self, event=None):
+        if self._zap_digits:
+            self._clear_zap()
+            return 'break'
+        self.exit_fullscreen()
+        return 'break'
+
+    def _zap_visible_indices(self):
+        sidebar = getattr(self, 'sidebar', None)
+        if sidebar:
+            indices = sidebar.current_indices()
+            if indices:
+                return indices
+        return list(range(len(self.channels)))
+
+    def _cancel_zap_timer(self):
+        job = getattr(self, '_zap_job', None)
+        self._zap_job = None
+        if job is None or not self._widget_exists(self.window):
+            return
+        try:
+            self.window.after_cancel(job)
+        except (tk.TclError, ValueError):
+            pass
+
+    def _schedule_zap(self):
+        self._cancel_zap_timer()
+        if not self._zap_digits or not self._widget_exists(self.window):
+            return
+        try:
+            self._zap_job = self.window.after(ZAP_TIMEOUT_MS, self._commit_zap)
+        except tk.TclError:
+            self._zap_job = None
+
+    def _on_zap_digit(self, event=None):
+        if self._event_in_text_field(event):
+            return
+        if event is not None and getattr(event, 'state', 0) & 0x4:
+            return
+        digit = zap_event_digit(event) if event is not None else ''
+        if not digit:
+            return
+        count = len(self._zap_visible_indices())
+        if count <= 0:
+            return 'break'
+        self._zap_digits = zap_buffer_append(self._zap_digits, digit, count)
+        self._show_zap_osd()
+        self._schedule_zap()
+        return 'break'
+
+    def _on_zap_backspace(self, event=None):
+        if self._event_in_text_field(event):
+            return
+        if not self._zap_digits:
+            return
+        self._zap_digits = zap_buffer_backspace(self._zap_digits)
+        if self._zap_digits:
+            self._show_zap_osd()
+            self._schedule_zap()
+        else:
+            self._clear_zap()
+        return 'break'
+
+    def _on_zap_confirm(self, event=None):
+        if self._event_in_text_field(event):
+            return
+        if not self._zap_digits:
+            return
+        self._commit_zap()
+        return 'break'
+
+    def _commit_zap(self):
+        self._cancel_zap_timer()
+        visible = self._zap_visible_indices()
+        number = zap_number(self._zap_digits)
+        position = zap_visible_index(number, len(visible))
+        if position is None:
+            self._show_zap_osd(miss=True)
+            self._zap_digits = ''
+            if self._widget_exists(self.window):
+                try:
+                    self._zap_job = self.window.after(800, self._clear_zap)
+                except tk.TclError:
+                    self._clear_zap()
+            return
+        index = visible[position]
+        self._clear_zap()
+        sidebar = getattr(self, 'sidebar', None)
+        if sidebar:
+            sidebar.select(index)
+            sidebar.see(index)
+        self.play_channel(index)
+
+    def _zap_preview_name(self):
+        visible = self._zap_visible_indices()
+        position = zap_visible_index(zap_number(self._zap_digits), len(visible))
+        if position is None:
+            return ''
+        index = visible[position]
+        if 0 <= index < len(self.channels):
+            return plain_display_text(self.channels[index][0])
+        return ''
+
+    def _show_zap_osd(self, miss=False):
+        colors = get_colors()
+        number = self._zap_digits or '—'
+        name = '' if miss else plain_display_text(self._zap_preview_name())
+        if miss:
+            text = f'{number}\nno hay canal'
+        elif name:
+            text = f'{number}\n{name}'
+        else:
+            text = number
+        side = getattr(self, '_zap_side_label', None)
+        if self._widget_exists(side):
+            try:
+                side.configure(text=text.replace('\n', '  ·  '))
+                sidebar = getattr(self, 'sidebar', None)
+                before = getattr(sidebar, 'outer', None) if sidebar else None
+                if before and self._widget_exists(before):
+                    side.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 6), before=before)
+                else:
+                    side.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 6))
+            except tk.TclError:
+                pass
+        top = getattr(self, '_zap_top', None)
+        if not self._widget_exists(top):
+            if not self._widget_exists(self.window):
+                return
+            top = tk.Toplevel(self.window)
+            try:
+                top.overrideredirect(True)
+            except tk.TclError:
+                pass
+            try:
+                top.attributes('-topmost', True)
+            except tk.TclError:
+                pass
+            try:
+                top.wm_attributes('-type', 'splash')
+            except tk.TclError:
+                pass
+            top.configure(bg=colors['surface'])
+            label = tk.Label(
+                top,
+                text=text,
+                font=get_font(22, 'bold'),
+                bg=colors['surface'],
+                fg=colors['text'],
+                padx=16,
+                pady=10,
+                justify='right',
+                wraplength=280,
+            )
+            label.pack()
+            self._zap_top = top
+            self._zap_osd_label = label
+        else:
+            label = getattr(self, '_zap_osd_label', None)
+            if self._widget_exists(label):
+                try:
+                    label.configure(text=text)
+                except tk.TclError:
+                    pass
+        self._position_zap_osd()
+        try:
+            top.deiconify()
+            top.lift()
+        except tk.TclError:
+            pass
+
+    def _position_zap_osd(self, event=None):
+        top = getattr(self, '_zap_top', None)
+        if not self._widget_exists(top) or not self._widget_exists(self.window):
+            return
+        area = getattr(self, 'player_frame', None)
+        if not self._widget_exists(area):
+            area = getattr(self, 'video_frame', None)
+        if not self._widget_exists(area):
+            return
+        try:
+            area.update_idletasks()
+            top.update_idletasks()
+            width = max(120, top.winfo_reqwidth())
+            height = max(48, top.winfo_reqheight())
+            x = area.winfo_rootx() + max(12, area.winfo_width() - width - 16)
+            y = area.winfo_rooty() + 12
+            top.geometry(f'{int(width)}x{int(height)}+{int(x)}+{int(y)}')
+        except tk.TclError:
+            pass
+
+    def _clear_zap(self):
+        self._cancel_zap_timer()
+        self._zap_digits = ''
+        side = getattr(self, '_zap_side_label', None)
+        if self._widget_exists(side):
+            try:
+                side.configure(text='')
+                side.pack_forget()
+            except tk.TclError:
+                pass
+        top = getattr(self, '_zap_top', None)
+        self._zap_top = None
+        self._zap_osd_label = None
+        if top is not None:
+            try:
+                top.destroy()
+            except tk.TclError:
+                pass
 
     def _menu_is_mapped(self, menu):
         try:
@@ -1099,12 +1472,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         pass  # Ya no se usa para ocultar controles
 
     def _on_space_toggle_play(self, event=None):
-        widget = getattr(event, 'widget', None) if event is not None else None
-        try:
-            if widget and widget.winfo_class() in ('Entry', 'TEntry', 'Text'):
-                return
-        except tk.TclError:
-            pass
+        if self._event_in_text_field(event):
+            return
         self.toggle_play()
         return 'break'
 
@@ -1249,6 +1618,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
 
     def close(self):
         """Cierra la ventana y libera recursos."""
+        self._clear_zap()
         try:
             # Desactivar los manejadores de eventos
             if hasattr(self, 'video_frame') and self.video_frame:
@@ -1345,6 +1715,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             self.instance is not None
             and self.player is not None
             and getattr(self, '_vlc_style_key', None) == key
+            and getattr(self, '_vlc_hw_decode_key', None) == app_config.iptv_use_hw_decode()
         ):
             return False
         self._cleanup_vlc_player()
@@ -1355,6 +1726,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         except Exception:
             pass
         self._vlc_style_key = key
+        self._vlc_hw_decode_key = app_config.iptv_use_hw_decode()
         return True
 
     def _cleanup_vlc_player(self):
@@ -1428,6 +1800,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
     def _on_window_configure(self, event=None):
         if event and event.widget is not self.window:
             return
+        self._position_zap_osd()
         if self.is_fullscreen or not self._widget_exists(self.window):
             return
         if self._geometry_save_job:
@@ -1461,6 +1834,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         if not app_config.get_remember_last_list():
             return
         session = app_config.load().get('session') or {}
+        if app_config.should_skip_session_restore(session):
+            return
         playlist = session.get('playlist') or ''
         kind = session.get('playlist_kind') or ''
         sidebar = session.get('sidebar') or []
@@ -1531,7 +1906,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         if kind in ('file', 'url') and source:
             app_config.remember_playlist(source, kind)
             return
-        if len(items) > 1500:
+        session_max = app_config.light_mode_session_max() if app_config.get_light_mode() else 1500
+        if len(items) > session_max:
             if source:
                 app_config.remember_playlist(source, kind or 'file')
             return
@@ -1711,13 +2087,13 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
     def _set_busy(self, text=None, percent=None):
         if not self._widget_exists(self.window):
             return
-        label = (text or '').strip() or 'Cargando…'
+        caption = busy_status_text(text, percent)
         try:
             self.window.config(cursor='watch')
-            self.window.title(f'Reproductor de vídeo · {label}')
+            self.window.title(f'Reproductor de vídeo - {caption}')
         except tk.TclError:
             pass
-        self._show_busy_overlay(label, percent)
+        self._show_busy_overlay(caption, percent)
 
     def _clear_busy(self):
         if not self._widget_exists(self.window):
@@ -2065,6 +2441,20 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._epg_urls = self._merged_epg_urls()
         wanted_ids = [item for item in (self._tvg_ids_all or []) if item]
         wanted_names = [name for name, _url in (self.all_channels or self.channels or [])]
+        if app_config.get_light_mode():
+            sidebar = getattr(self, 'sidebar', None)
+            visible = sidebar.current_indices() if sidebar else []
+            if visible:
+                wanted_ids = [
+                    self._tvg_ids_all[i]
+                    for i in visible
+                    if 0 <= i < len(self._tvg_ids_all) and self._tvg_ids_all[i]
+                ]
+                wanted_names = [
+                    self.channels[i][0]
+                    for i in visible
+                    if 0 <= i < len(self.channels)
+                ]
         if not wanted_ids:
             wanted_ids = list(wanted_names)
         if not self._epg_urls or not (wanted_ids or wanted_names):
@@ -2082,7 +2472,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         gen = self._epg_gen
         window = self.window
         sources = list(self._epg_urls)
-        self._set_epg_label('Cargando guía…')
+        self._set_epg_label(plain_ui_line('Cargando guía...'))
 
         def work():
             try:
@@ -2129,6 +2519,12 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
     def _set_epg_label(self, text):
         label = getattr(self, '_epg_label', None)
         if not self._widget_exists(label):
+            return
+        if app_config.get_light_mode():
+            try:
+                label.pack_forget()
+            except tk.TclError:
+                pass
             return
         text = (text or '').strip()
         try:
@@ -2218,6 +2614,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         return logo_cache.load_photo(url, photos)
 
     def channel_logos_enabled(self):
+        if app_config.get_light_mode():
+            return False
         return bool(getattr(self, '_show_logos', True))
 
     def _on_logos_menu_toggle(self):
@@ -2228,7 +2626,9 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
 
     def _apply_logo_pref(self, enabled=None):
         if enabled is None:
-            enabled = app_config.get_show_channel_logos()
+            enabled = app_config.effective_show_channel_logos()
+        else:
+            enabled = bool(enabled) and not app_config.get_light_mode()
         self._show_logos = bool(enabled)
         var = getattr(self, '_logos_var', None)
         if var is not None:
@@ -2239,6 +2639,11 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         if self._show_logos:
             self._prefetch_visible_logos()
         self._refresh_sidebar_now()
+
+    def _on_sidebar_view_change(self):
+        self._prefetch_visible_logos()
+        if app_config.get_light_mode() and self._epg_urls:
+            self._start_epg(notify=False)
 
     def _prefetch_visible_logos(self):
         if not self.channel_logos_enabled():
@@ -2307,7 +2712,11 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 pass
         if not self._widget_exists(self.window):
             return
-        self._epg_reload_job = self.window.after(30 * 60 * 1000, lambda: self._start_epg(notify=False))
+        interval = app_config.epg_reload_interval_ms()
+        if interval <= 0:
+            self._epg_reload_job = None
+            return
+        self._epg_reload_job = self.window.after(interval, lambda: self._start_epg(notify=False))
 
     def _schedule_epg_tick(self):
         job = getattr(self, '_epg_tick_job', None)
@@ -2318,7 +2727,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 pass
         if not self._widget_exists(self.window):
             return
-        self._epg_tick_job = self.window.after(60 * 1000, self._tick_epg)
+        self._epg_tick_job = self.window.after(
+            app_config.epg_tick_interval_ms(),
+            self._tick_epg,
+        )
 
     def _tick_epg(self):
         self._epg_tick_job = None
@@ -2466,12 +2878,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._refresh_history_ui()
 
     def _on_epg_grid_key(self, event=None):
-        widget = getattr(event, 'widget', None) if event is not None else None
-        try:
-            if widget and widget.winfo_class() in ('Entry', 'TEntry', 'Text'):
-                return
-        except tk.TclError:
-            pass
+        if self._event_in_text_field(event):
+            return
         self.open_epg_grid()
         return 'break'
 
@@ -2590,6 +2998,12 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             
     def play_channel(self, index):
         if 0 <= index < len(self.channels):
+            if (
+                self.current_channel is not None
+                and self.current_channel != index
+                and 0 <= self.current_channel < len(self.channels)
+            ):
+                self._previous_channel_index = self.current_channel
             name, url = self.channels[index]
             if is_youtube_channel_url(url):
                 self.current_channel = index
@@ -2713,10 +3127,11 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 ':file-caching=3000',
                 ':sout-mux-caching=3000',
                 ':no-ts-trust-pcr',
-                ':avcodec-hw=none',
                 ':audio-resampler=soxr',
                 ':codec=avcodec',
             ]
+            if not app_config.iptv_use_hw_decode():
+                options.insert(5, ':avcodec-hw=none')
             if local_file:
                 if str(url).startswith('http'):
                     options.append(':http-reconnect=true')
@@ -3239,7 +3654,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.ensure_window()
         self._loading_yt_channel = True
         label = (title or '').strip() or 'canal'
-        self._set_busy(f'Cargando vídeos de {label}…')
+        self._set_busy(f'Cargando vídeos de {plain_ui_line(label, "canal")}...')
         window = self.window
 
         def work():
@@ -3441,7 +3856,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 apply_spu_delay(self.player)
         except Exception:
             pass
-        height = app_config.get_youtube_quality()
+        height = app_config.effective_youtube_quality()
         previous = None
         choice = getattr(self, '_quality_choice', None)
         if choice is not None:
@@ -3455,14 +3870,57 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 pass
         if previous is not None and previous != height and getattr(self, '_playing_youtube', False):
             self._apply_youtube_quality(height, force=True)
-        elif (
-            getattr(self, '_playing_youtube', False)
-            and fingerprint() != getattr(self, '_vlc_style_key', None)
-        ):
-            self._reload_youtube_with_subtitle_style()
+        self._logo_photos = {}
+        style_changed = fingerprint() != getattr(self, '_vlc_style_key', None)
+        self._ensure_vlc_style_instance()
+        if style_changed:
+            self._reload_current_subtitle_style()
         elif hasattr(self, '_rebuild_track_menus'):
             self._rebuild_track_menus()
         self._apply_logo_pref()
+        self._apply_light_mode_runtime()
+        self.setup_performance_monitoring()
+        try:
+            from youtube_player import enforce_youtube_cache_limit
+            enforce_youtube_cache_limit(max_bytes=app_config.effective_yt_cache_max_bytes())
+        except Exception:
+            pass
+
+    def _apply_light_mode_runtime(self):
+        if app_config.get_light_mode():
+            self._set_epg_label('')
+            job = getattr(self, '_epg_reload_job', None)
+            if job and self._widget_exists(self.window):
+                try:
+                    self.window.after_cancel(job)
+                except tk.TclError:
+                    pass
+            self._epg_reload_job = None
+        else:
+            if self._epg_urls and self._widget_exists(self.window):
+                self._schedule_epg_reload()
+        index = self._selected_channel_index()
+        if index is None:
+            index = self.current_channel
+        if index is not None and not app_config.get_light_mode():
+            self._refresh_epg_label(index)
+
+    def _reload_current_subtitle_style(self):
+        """Reabre el vídeo en curso para que VLC aplique el estilo freetype nuevo."""
+        if getattr(self, '_playing_youtube', False):
+            self._reload_youtube_with_subtitle_style()
+            return
+        index = self.current_channel
+        if index is None or not self.channels:
+            return
+        if not (0 <= index < len(self.channels)):
+            return
+        name, url = self.channels[index]
+        if is_youtube_channel_url(url) or is_youtube_playlist_url(url):
+            return
+        if 'youtube.com' in url or 'youtu.be' in url:
+            return
+        self.play_channel(index)
 
     def _reload_youtube_with_subtitle_style(self):
         """Vuelve a abrir el stream de YouTube con la instancia VLC del estilo actual."""
@@ -4098,6 +4556,127 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             return
         name, url = self.channels[selected_index]
         self.remove_favorite_entry(name, url, notify=True)
+
+    def _favorites_dialog_dir(self):
+        return app_config.get_download_dir() or app_config.suggested_download_dir()
+
+    def _apply_imported_favorites(self, items, replace):
+        incoming = normalize_favorites(items)
+        if replace:
+            self.favorites = incoming
+            added, skipped = len(incoming), 0
+        else:
+            self.favorites, added, skipped = merge_favorites(self.favorites, incoming)
+        self.save_favorites()
+        manager = getattr(self, 'favorites_manager', None)
+        if manager is not None:
+            manager.favorites = self.favorites
+        if getattr(self, '_showing_favorites', False):
+            if self.favorites:
+                self.show_favorites()
+            else:
+                self.restore_all_channels()
+        else:
+            self._refresh_favorite_marks()
+        return added, skipped
+
+    def export_favorites(self):
+        items = normalize_favorites(self.favorites)
+        if not items:
+            messagebox.showinfo(
+                "Favoritos",
+                "Por el momento no hay favoritos que exportar.",
+                parent=self.window,
+            )
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self.window,
+            title='Exportar favoritos',
+            initialdir=self._favorites_dialog_dir(),
+            initialfile='kidneysm3u-favoritos.json',
+            defaultextension='.json',
+            filetypes=[
+                ('Favoritos JSON', '*.json'),
+                ('Lista M3U', '*.m3u'),
+                ('Todos', '*.*'),
+            ],
+        )
+        if not path:
+            return
+        try:
+            written = write_favorites_file(path, items)
+        except Exception:
+            messagebox.showerror(
+                "Favoritos",
+                "No se pudieron exportar los favoritos.",
+                parent=self.window,
+            )
+            return
+        messagebox.showinfo(
+            "Favoritos",
+            f"Se exportaron {len(items)} favoritos.\n\n"
+            f"{written}\n\n"
+            "Ese archivo puede contener las mismas URLs que favoritos.json "
+            "(a veces con usuario y contraseña). No lo subas a internet.",
+            parent=self.window,
+        )
+
+    def import_favorites(self):
+        path = filedialog.askopenfilename(
+            parent=self.window,
+            title='Importar favoritos',
+            initialdir=self._favorites_dialog_dir(),
+            filetypes=[
+                ('Favoritos JSON o M3U', '*.json *.m3u *.m3u8'),
+                ('JSON', '*.json'),
+                ('Lista M3U', '*.m3u *.m3u8'),
+                ('Todos', '*.*'),
+            ],
+        )
+        if not path:
+            return
+        try:
+            incoming = read_favorites_file(path)
+        except ValueError as exc:
+            messagebox.showerror("Favoritos", str(exc), parent=self.window)
+            return
+        except Exception:
+            messagebox.showerror(
+                "Favoritos",
+                "No se pudieron leer los favoritos.",
+                parent=self.window,
+            )
+            return
+        if not incoming:
+            messagebox.showinfo(
+                "Favoritos",
+                "El archivo no contiene favoritos.",
+                parent=self.window,
+            )
+            return
+        replace = False
+        current = len(normalize_favorites(self.favorites))
+        if current:
+            choice = messagebox.askyesnocancel(
+                "Importar favoritos",
+                f"Ya hay {current} favoritos en este equipo.\n\n"
+                "Sí: añadir los del archivo (los que ya existan se ignoran).\n"
+                "No: sustituir todos por los del archivo.\n"
+                "Cancelar: no cambiar nada.",
+                parent=self.window,
+            )
+            if choice is None:
+                return
+            replace = not choice
+        added, skipped = self._apply_imported_favorites(incoming, replace)
+        if replace:
+            detail = f"Se sustituyeron los favoritos ({len(self.favorites)})."
+        elif added:
+            extra = f" {skipped} ya estaban." if skipped else ''
+            detail = f"Se añadieron {added} favoritos.{extra}"
+        else:
+            detail = "No se añadió ninguno: ya estaban todos."
+        messagebox.showinfo("Favoritos", detail, parent=self.window)
 
     def show_channel_context_menu(self, event):
         selection = self._selected_channel_index(event)
