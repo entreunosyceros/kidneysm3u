@@ -359,7 +359,7 @@ class TwitchSearchDialog:
 
     def _set_loading(self, active, message=''):
         if message:
-            self.status_var.set(message)
+            self.status_var.set(plain_ui_line(message))
         if active:
             self.progress.pack(fill=tk.X, pady=(0, 8))
             self.progress.start(10)

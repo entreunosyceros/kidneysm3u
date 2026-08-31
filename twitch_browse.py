@@ -109,7 +109,7 @@ class TwitchChannelBrowser:
         )
         self.live_button.pack(side=tk.RIGHT)
 
-        self.status_var = tk.StringVar(value='Cargando…')
+        self.status_var = tk.StringVar(value=plain_ui_line('Cargando…'))
         ttk.Label(
             window,
             textvariable=self.status_var,
@@ -155,6 +155,9 @@ class TwitchChannelBrowser:
         except tk.TclError:
             pass
 
+    def _set_status(self, text):
+        self.status_var.set(plain_ui_line(text))
+
     def _search(self):
         channel = normalize_twitch_channel_input(self.channel_var.get())
         if not channel:
@@ -173,7 +176,7 @@ class TwitchChannelBrowser:
         self.channel_var.set(channel)
         self._load_gen += 1
         gen = self._load_gen
-        self.status_var.set(f'Cargando VODs de {channel}…')
+        self._set_status(f'Cargando VODs de {channel}…')
         self.live_frame.pack_forget()
         self._live = None
         try:
@@ -215,7 +218,7 @@ class TwitchChannelBrowser:
                             f'No se pudieron cargar los VOD del canal.\n\n{err}',
                             parent=self.window,
                         )
-                    self.status_var.set('Error al cargar el canal.')
+                    self._set_status('Error al cargar el canal.')
                     return
                 self._live = live
                 self._videos = videos
@@ -237,22 +240,16 @@ class TwitchChannelBrowser:
                 for item in videos:
                     self.listbox.insert(tk.END, _vod_line(item))
                 if videos:
-                    self.status_var.set(
-                        plain_ui_line(
-                            f'{len(videos)} VOD recientes de {display_name}. '
-                            'Doble clic para reproducir.'
-                        ),
+                    self._set_status(
+                        f'{len(videos)} VOD recientes de {display_name}. '
+                        'Doble clic para reproducir.'
                     )
                 elif live and live.get('live'):
-                    self.status_var.set(
-                        plain_ui_line(
-                            f'{display_name} está en directo; no hay VOD recientes listados.'
-                        ),
+                    self._set_status(
+                        f'{display_name} está en directo; no hay VOD recientes listados.'
                     )
                 else:
-                    self.status_var.set(
-                        plain_ui_line(f'No hay VOD recientes visibles para {display_name}.'),
-                    )
+                    self._set_status(f'No hay VOD recientes visibles para {display_name}.')
 
             try:
                 self.window.after(0, done)

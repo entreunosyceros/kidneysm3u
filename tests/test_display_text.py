@@ -1,4 +1,4 @@
-from display_text import plain_display_text, plain_ui_line, busy_status_text
+from display_text import plain_display_text, plain_ui_line, busy_status_text, truncate_ui_text
 
 
 def test_plain_display_text_strips_emoji_and_replacement():
@@ -20,6 +20,11 @@ def test_plain_display_text_collapses_whitespace():
 
 def test_plain_ui_line_uses_ascii_ellipsis():
     assert plain_ui_line('Leyendo canales…') == 'Leyendo canales...'
+
+
+def test_truncate_ui_text_uses_ascii_ellipsis():
+    assert truncate_ui_text('abcdefghij', 7) == 'abcd...'
+    assert truncate_ui_text('abc', 7) == 'abc'
 
 
 def test_busy_status_text_shows_percent():

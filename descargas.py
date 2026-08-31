@@ -11,15 +11,14 @@ import requests
 from urllib.parse import unquote
 from ui_theme import style_window, set_window_icon, center_window, style_listbox, style_menu_tree
 import app_config
+from display_text import truncate_ui_text
 
 
 def download_history_label(item, max_len=72):
     name = str((item or {}).get('name') or '').strip()
     url = str((item or {}).get('url') or '').strip()
     shown = name or url.split('#')[0].split('?')[0] or url
-    if len(shown) > max_len:
-        shown = shown[: max_len - 1] + '…'
-    return shown
+    return truncate_ui_text(shown, max_len)
 
 
 def resolve_downloaded_path(planned):

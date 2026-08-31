@@ -157,6 +157,8 @@ class PlayerControlsMixin:
             twitch = getattr(self, 'twitch_handler', None)
             if twitch:
                 twitch.cancel_pending_play()
+                twitch.close_chat()
+            self._playing_twitch = False
             self._hide_channel_status()
         except Exception as e:
             print(f"Error al detener la reproducción: {e}")

@@ -20,7 +20,7 @@ import tkinter as tk
 from tkinter import messagebox, filedialog, ttk
 import app_config
 from app_paths import data_dir
-from display_text import plain_display_text
+from display_text import plain_display_text, plain_ui_line
 from ui_clipboard import ask_string
 from youtube_subs import (
     collect_youtube_subs,
@@ -806,6 +806,9 @@ class YouTubeHandler:
             return
         self.video_player._playing_youtube = True
         self.video_player._playing_twitch = False
+        twitch = getattr(self.video_player, 'twitch_handler', None)
+        if twitch:
+            twitch.close_chat()
         app_config.remember_youtube_watch(video_id, title=title or '', url=url)
         refresh = getattr(self.video_player, '_refresh_history_ui', None)
         if refresh:
@@ -1097,7 +1100,7 @@ class YouTubeHandler:
 
         status_label = tk.Label(
             card,
-            text=status,
+            text=plain_ui_line(status),
             font=get_font(10),
             bg=colors['surface'],
             fg=colors['text_muted'],
@@ -1133,7 +1136,7 @@ class YouTubeHandler:
         label = getattr(self, '_loading_status_label', None)
         try:
             if label and label.winfo_exists():
-                label.configure(text=text)
+                label.configure(text=plain_ui_line(text))
         except tk.TclError:
             pass
 

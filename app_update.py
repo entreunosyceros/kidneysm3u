@@ -14,6 +14,7 @@ import requests
 
 import app_config
 import app_version
+from display_text import plain_ui_line
 from ui_theme import style_window, set_window_icon, center_window
 
 CHECK_INTERVAL_S = 24 * 3600
@@ -277,7 +278,7 @@ def start_startup_update_check(root, quit_app=None):
 def start_manual_update_check(root, quit_app=None, status_var=None):
     if status_var is not None:
         try:
-            status_var.set('Buscando actualizaciones…')
+            status_var.set(plain_ui_line('Buscando actualizaciones…'))
         except tk.TclError:
             pass
     _start_check(
@@ -457,7 +458,7 @@ def show_update_dialog(root, result, quit_app=None):
                 child.configure(state=tk.DISABLED)
             except tk.TclError:
                 pass
-        status.set('Descargando el paquete…')
+        status.set(plain_ui_line('Descargando el paquete…'))
 
         def work():
             try:
@@ -501,7 +502,7 @@ def show_update_dialog(root, result, quit_app=None):
                     if callable(quit_app):
                         quit_app()
                     return
-                status.set('Instalando el paquete (pide confirmación de administrador)…')
+                status.set(plain_ui_line('Instalando el paquete (pide confirmación de administrador)…'))
                 window.update_idletasks()
 
                 def install():

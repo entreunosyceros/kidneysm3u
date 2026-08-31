@@ -50,6 +50,16 @@ def plain_ui_line(value, fallback=''):
     return text.replace('\u2026', '...')
 
 
+def truncate_ui_text(value, limit, fallback=''):
+    """Texto truncado para la interfaz, con puntos suspensivos ASCII."""
+    text = plain_display_text(value, fallback)
+    if len(text) <= limit:
+        return text
+    if limit <= 3:
+        return text[:limit]
+    return text[: limit - 3] + '...'
+
+
 def busy_status_text(message, percent=None, fallback='Cargando...'):
     """Texto del overlay de carga M3U/IPTV, con porcentaje legible si hay."""
     text = plain_ui_line(message, fallback)

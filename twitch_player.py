@@ -740,6 +740,8 @@ class TwitchHandler:
         self._live_reconnects = 0
         self._live_last_ok = 0.0
         self._current_stream = None
+        from twitch_chat import TwitchChatPanel
+        self._chat = TwitchChatPanel(self)
 
     def session_view(self):
         info = inspect_twitch_session()
@@ -761,6 +763,30 @@ class TwitchHandler:
                 refresh(info)
 
         self._ui_after(apply)
+
+    def notify_chat_ui(self):
+        def apply():
+            player = self.video_player
+            refresh = getattr(player, 'update_twitch_chat_ui', None)
+            if refresh:
+                refresh()
+
+        self._ui_after(apply)
+
+    def toggle_chat(self):
+        chat = getattr(self, '_chat', None)
+        if chat:
+            chat.toggle()
+
+    def open_chat(self):
+        chat = getattr(self, '_chat', None)
+        if chat:
+            chat.open()
+
+    def close_chat(self, notify_ui=True):
+        chat = getattr(self, '_chat', None)
+        if chat:
+            chat.close(notify_ui=notify_ui)
 
     def mark_session_from_error(self, exc):
         if not twitch_auth_blocked(exc):
@@ -1075,8 +1101,14 @@ class TwitchHandler:
         self.hide_loading()
         if is_live:
             self._start_live_watch(url)
+            self.notify_chat_ui()
+            chat = getattr(self, '_chat', None)
+            if chat and (chat.is_open() or app_config.get_twitch_chat_auto_open()):
+                self.open_chat()
         else:
             self._stop_live_watch()
+            self.close_chat()
+            self.notify_chat_ui()
 
     def add_current_to_favorites(self):
         url = self._current_url
@@ -1288,6 +1320,7 @@ class TwitchHandler:
         self._stop_live_watch()
         self._new_play_gen()
         self._current_stream = None
+        self.close_chat()
         self.hide_loading()
 
     def _new_play_gen(self):
@@ -1368,7 +1401,7 @@ class TwitchHandler:
 
         status_label = tk.Label(
             card,
-            text=status,
+            text=plain_ui_line(status),
             font=get_font(11),
             bg=colors['surface'],
             fg=colors['text_muted'],
@@ -1404,7 +1437,7 @@ class TwitchHandler:
         if not label:
             return
         try:
-            label.configure(text=text)
+            label.configure(text=plain_ui_line(text))
         except tk.TclError:
             pass
 

@@ -6,6 +6,7 @@ from datetime import datetime
 from tkinter import ttk
 
 import logo_cache
+from display_text import plain_ui_line
 from ui_theme import (
     center_window, get_colors, get_font, set_window_icon, style_window,
 )
@@ -101,7 +102,7 @@ class EpgGridWindow:
         start = getattr(self.player, '_start_epg', None)
         if start:
             start(notify=False)
-        self._hint.configure(text='Actualizando…')
+        self._hint.configure(text=plain_ui_line('Actualizando…'))
 
     def _schedule_tick(self):
         if not self.player._widget_exists(self.window):
@@ -173,7 +174,7 @@ class EpgGridWindow:
         if not getattr(self.player, '_epg_urls', None):
             self._hint.configure(text='Sin URL de guía')
         elif not guide:
-            self._hint.configure(text='Cargando…')
+            self._hint.configure(text=plain_ui_line('Cargando…'))
         else:
             self._hint.configure(text=datetime.fromtimestamp(start).strftime('%a %d %b · %H:%M'))
 

@@ -20,6 +20,7 @@ from ui_clipboard import ask_string
 import app_config
 from app_paths import data_dir
 from app_update import start_startup_update_check, start_manual_update_check
+from display_text import plain_ui_line, truncate_ui_text
 from twitch_player import is_twitch_url
 import sys
 
@@ -129,7 +130,7 @@ class M3UProcessor:
         start_startup_update_check(self.root, quit_app=self.quit_app)
 
     def check_app_updates_now(self):
-        self.status_var.set('Buscando actualizaciones…')
+        self.status_var.set(plain_ui_line('Buscando actualizaciones…'))
         start_manual_update_check(
             self.root,
             quit_app=self.quit_app,
@@ -361,7 +362,7 @@ class M3UProcessor:
         self.process_button['state'] = 'disabled'
         self.stop_button['state'] = 'normal'
         self.progress['value'] = 0
-        self.status_var.set('Procesando archivo…')
+        self.status_var.set(plain_ui_line('Procesando archivo…'))
 
         def report_progress(pct):
             def apply():
@@ -369,7 +370,7 @@ class M3UProcessor:
                     return
                 try:
                     self.progress['value'] = pct
-                    self.status_var.set(f'Procesando archivo… {pct:.0f} %')
+                    self.status_var.set(plain_ui_line(f'Procesando archivo… {pct:.0f} %'))
                 except tk.TclError:
                     pass
             try:
@@ -563,8 +564,7 @@ class M3UProcessor:
             return
         for path in recent:
             label = path if path.lower().startswith('http') else os.path.basename(path)
-            if len(label) > 60:
-                label = label[:57] + '…'
+            label = truncate_ui_text(label, 60)
             menu.add_command(label=label, command=lambda p=path: self._open_recent(p))
         style_menu_tree(menu)
 

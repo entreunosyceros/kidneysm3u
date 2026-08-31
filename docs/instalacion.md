@@ -9,6 +9,7 @@
 - [tkinter](https://docs.python.org/3/library/tkinter.html) (suele venir con Python; en Ubuntu: `python3-tk`)
 - Las librerías de `requirements.txt` (las instala `run_app.py`)
 - [ffmpeg](https://ffmpeg.org/download.html) — opcional, para grabar el stream en reproducción y para extraer solo el audio de YouTube
+- [WebKitGTK](https://webkitgtk.org/) — en Linux, chat de Twitch integrado: `python3-gi`, `gir1.2-gtk-3.0` y `gir1.2-webkit2-4.1` (ver abajo)
 - Node o Deno — recomendable; [yt-dlp](https://github.com/yt-dlp/yt-dlp) lo usa si YouTube pide un runtime JavaScript
 - [psutil](https://pypi.org/project/psutil/) — opcional, solo si activas el [monitor de CPU](notas.md#monitor-de-cpu)
 
@@ -17,6 +18,14 @@ En Linux instala VLC (y el binding del sistema si lo necesitas):
 ```bash
 sudo apt install vlc python3-vlc
 ```
+
+Para el **chat de Twitch** en ventana integrada instala los bindings de Python y WebKitGTK:
+
+```bash
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1
+```
+
+`python3-gi` es imprescindible: `gir1.2-webkit2-4.1` solo aporta datos de introspección; sin `gi` en tu Python, pywebview no puede abrir la ventana. La librería `pywebview` se instala en el `.venv` con `run_app.py`. Si el entorno virtual se creó con otro Python (Conda, 3.13…), borra `.venv` y arranca con `/usr/bin/python3 run_app.py`.
 
 ## Cómo se instalan las dependencias de Python
 

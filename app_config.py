@@ -6,6 +6,7 @@ import time
 import tkinter as tk
 
 from app_paths import data_dir
+from display_text import truncate_ui_text
 from iptv_buffer import normalize_iptv_buffer_profile
 from m3u_parse import is_iptv_vod
 
@@ -62,6 +63,7 @@ _DEFAULTS = {
     'iptv_history': [],
     'youtube_quality': 720,
     'twitch_quality': 720,
+    'twitch_chat_auto_open': False,
     'iptv_buffer': 'balanced',
     'subtitle_size': 0,
     'subtitle_color': '#FFFFFF',
@@ -423,6 +425,14 @@ def get_twitch_quality():
 
 def set_twitch_quality(height):
     save({'twitch_quality': normalize_twitch_quality(height)})
+
+
+def get_twitch_chat_auto_open():
+    return bool(load().get('twitch_chat_auto_open', False))
+
+
+def set_twitch_chat_auto_open(value):
+    save({'twitch_chat_auto_open': bool(value)})
 
 
 def get_iptv_buffer():
@@ -890,8 +900,7 @@ def youtube_history_item_by_url(url):
 
 def youtube_history_label(item, with_time=False, limit=46):
     name = str((item or {}).get('name') or 'YouTube').strip() or 'YouTube'
-    if len(name) > limit:
-        name = name[: limit - 1] + '…'
+    name = truncate_ui_text(name, limit)
     if not with_time:
         return name
     try:
@@ -1125,8 +1134,7 @@ def twitch_history_item_by_url(url):
 
 def twitch_history_label(item, limit=46, with_time=False):
     name = str((item or {}).get('name') or 'Twitch').strip()
-    if len(name) > limit:
-        name = name[: max(0, limit - 1)] + '…'
+    name = truncate_ui_text(name, limit)
     base = f'Twitch · {name}'
     seconds = int((item or {}).get('s') or 0)
     if not with_time or seconds < IPTV_RESUME_MIN_S or (item or {}).get('kind') != 'vod':
@@ -1304,8 +1312,7 @@ def iptv_history_item(url):
 
 def iptv_history_label(item, with_time=False, limit=46):
     name = str((item or {}).get('name') or 'Sin nombre').strip() or 'Sin nombre'
-    if len(name) > limit:
-        name = name[: limit - 1] + '…'
+    name = truncate_ui_text(name, limit)
     if not with_time or (item or {}).get('kind') != 'vod':
         return name
     try:

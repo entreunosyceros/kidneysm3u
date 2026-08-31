@@ -106,6 +106,10 @@ def show_keyboard_shortcuts(root):
             ("Guía", "Botón de la lista lateral"),
             ("Mostrar logos de canal", "Menú Guía EPG o Preferencias")
         ]),
+        ("Twitch", [
+            ("C", "Ver u ocultar el chat (solo en directos)"),
+            ("Ver chat…", "Menú Twitch: ventana flotante de chat en vivo")
+        ]),
         ("Zap (cambiar de canal)", [
             ("0–9", "Número del canal (el de la lista visible)"),
             ("Enter", "Ir ya a ese canal (si no, espera ~1 s)"),

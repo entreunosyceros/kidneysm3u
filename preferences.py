@@ -10,6 +10,7 @@ from tkinter import ttk, filedialog, messagebox, colorchooser
 
 import app_config
 import subtitle_style
+from display_text import plain_ui_line
 from ui_theme import apply_theme, get_colors, style_window, set_window_icon, center_window
 
 COOKIE_LABELS = (
@@ -267,6 +268,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     download_var = tk.StringVar(value=app_config.get_download_dir())
     quality_var = tk.StringVar(value=str(app_config.get_youtube_quality()))
     twitch_quality_var = tk.StringVar(value=str(app_config.get_twitch_quality()))
+    twitch_chat_auto_var = tk.BooleanVar(value=app_config.get_twitch_chat_auto_open())
     buffer_var = tk.StringVar(value=app_config.get_iptv_buffer())
     cookie_var = tk.StringVar(value=app_config.get_cookie_browser())
     remember_var = tk.BooleanVar(value=app_config.get_remember_last_list())
@@ -405,7 +407,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
             parent=window,
         )
 
-    ttk.Button(cache_row, text='Limpiar caché de logos…', command=clear_logo_cache).pack(side=tk.LEFT)
+    ttk.Button(cache_row, text=plain_ui_line('Limpiar caché de logos…'), command=clear_logo_cache).pack(side=tk.LEFT)
     ttk.Label(
         performance,
         text='Desactiva logos, aligera EPG y YouTube, no restaura listas M3U enormes al abrir y reduce la caché de descargas. La línea de EPG bajo la búsqueda no se muestra.',
@@ -492,6 +494,18 @@ def show_preferences(parent, on_apply=None, video_player=None):
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
+    ttk.Checkbutton(
+        playback,
+        text='Abrir chat al iniciar un directo de Twitch',
+        variable=twitch_chat_auto_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W, pady=(10, 0))
+    ttk.Label(
+        playback,
+        text='Muestra el chat en una ventana flotante al reproducir un directo. Solo funciona en emisiones en vivo, no en VOD. También puedes usar Twitch → Ver chat o la tecla C.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(6, 0))
 
     buffer_row = ttk.Frame(playback, style='Card.TFrame')
     buffer_row.pack(fill=tk.X, pady=(12, 0))
@@ -714,7 +728,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     yt_cookies.pack(fill=tk.X, pady=(0, 10))
     window._prefs_yt_session_label = ttk.Label(
         yt_cookies,
-        text='Sesión YouTube: …',
+        text=plain_ui_line('Sesión YouTube: …'),
         style='Muted.TLabel',
     )
     window._prefs_yt_session_label.pack(anchor=tk.W)
@@ -734,7 +748,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     tw_cookies.pack(fill=tk.X, pady=(0, 10))
     window._prefs_tw_session_label = ttk.Label(
         tw_cookies,
-        text='Sesión Twitch: …',
+        text=plain_ui_line('Sesión Twitch: …'),
         style='Muted.TLabel',
     )
     window._prefs_tw_session_label.pack(anchor=tk.W)
@@ -858,6 +872,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
             'check_app_updates': bool(updates_var.get()),
             'youtube_quality': app_config.normalize_youtube_quality(quality),
             'twitch_quality': app_config.normalize_twitch_quality(twitch_quality_var.get()),
+            'twitch_chat_auto_open': bool(twitch_chat_auto_var.get()),
             'iptv_buffer': app_config.normalize_iptv_buffer_profile(buffer_var.get()),
         }
         payload.update(sub_payload)

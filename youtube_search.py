@@ -15,7 +15,7 @@ from youtube_player import (
 )
 from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window, get_colors
 import app_config
-from display_text import plain_display_text
+from display_text import plain_display_text, plain_ui_line
 
 
 STAR_ON = '★'
@@ -578,7 +578,11 @@ class YouTubeSearchDialog:
 
         session_frame = ttk.Frame(main_frame)
         session_frame.pack(fill=tk.X, pady=(0, 12))
-        self._yt_session_label = ttk.Label(session_frame, text='Sesión YouTube: …', style='Muted.TLabel')
+        self._yt_session_label = ttk.Label(
+            session_frame,
+            text=plain_ui_line('Sesión YouTube: …'),
+            style='Muted.TLabel',
+        )
         self._yt_session_label.pack(side=tk.LEFT)
         ttk.Button(
             session_frame,
@@ -1552,7 +1556,7 @@ class YouTubeSearchDialog:
         label = getattr(self, 'queue_status', None)
         if label:
             try:
-                label.configure(text=text)
+                label.configure(text=plain_ui_line(text))
             except tk.TclError:
                 pass
 

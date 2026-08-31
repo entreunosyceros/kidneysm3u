@@ -4,7 +4,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
-from display_text import plain_display_text
+from display_text import plain_display_text, truncate_ui_text
 from ui_theme import get_colors, get_font
 
 VIRTUAL_MIN = 2500
@@ -28,10 +28,7 @@ def _group_buckets(groups):
 
 
 def _short_label(name, limit=22):
-    text = plain_display_text(name, UNGROUPED)
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1] + '…'
+    return truncate_ui_text(name, limit, UNGROUPED)
 
 
 class ChannelSidebar:
@@ -533,7 +530,7 @@ class ChannelSidebar:
                 return
             for child in self.tree.get_children(gid):
                 self.tree.delete(child)
-            self.tree.insert(gid, 'end', iid=f'{gid}:ph', text='…')
+            self.tree.insert(gid, 'end', iid=f'{gid}:ph', text='...')
         except tk.TclError:
             return
         self._loaded_groups.discard(gid)

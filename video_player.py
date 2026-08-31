@@ -491,7 +491,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 self.cpu_label = None
             return
         if label is None or not self._widget_exists(label):
-            self.cpu_label = ttk.Label(self.controls_frame, text='CPU: …')
+            self.cpu_label = ttk.Label(self.controls_frame, text=plain_ui_line('CPU: …'))
             self.cpu_label.pack(side=tk.RIGHT, padx=5)
         self.update_performance_stats()
 
@@ -518,10 +518,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         reproducir_menu.add_command(label="Cargar URL", command=self.prompt_url)
         reproducir_menu.add_command(label="Cargar Archivo Local", command=self.prompt_file)
         epg_menu = tk.Menu(reproducir_menu, tearoff=0)
-        epg_menu.add_command(label="Parrilla…", command=self.open_epg_grid)
+        epg_menu.add_command(label=plain_ui_line("Parrilla…"), command=self.open_epg_grid)
         epg_menu.add_separator()
-        epg_menu.add_command(label="Desde URL…", command=self.prompt_epg_url)
-        epg_menu.add_command(label="Desde archivo…", command=self.prompt_epg_file)
+        epg_menu.add_command(label=plain_ui_line("Desde URL…"), command=self.prompt_epg_url)
+        epg_menu.add_command(label=plain_ui_line("Desde archivo…"), command=self.prompt_epg_file)
         epg_menu.add_separator()
         epg_menu.add_command(label="Quitar guía", command=self.clear_manual_epg)
         self._logos_var = tk.BooleanVar(value=self.channel_logos_enabled())
@@ -537,8 +537,14 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         reproducir_menu.add_cascade(label="Historial", menu=self._history_menu)
         reproducir_menu.add_separator()
         reproducir_menu.add_command(label="Grabar / detener", command=self.toggle_stream_recording)
-        reproducir_menu.add_command(label="Grabar en…", command=lambda: self.start_stream_recording(ask_path=True))
-        reproducir_menu.add_command(label="Grabaciones…", command=lambda: show_recordings(self))
+        reproducir_menu.add_command(
+            label=plain_ui_line("Grabar en…"),
+            command=lambda: self.start_stream_recording(ask_path=True),
+        )
+        reproducir_menu.add_command(
+            label=plain_ui_line("Grabaciones…"),
+            command=lambda: show_recordings(self),
+        )
         reproducir_menu.add_separator()
         self._topmost_var = tk.BooleanVar(value=False)
         reproducir_menu.add_checkbutton(
@@ -561,7 +567,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         # NUEVO: Añadir opción para cargar playlist
         youtube_menu.add_command(label="Cargar Playlist de YouTube", command=self.prompt_youtube_playlist)
         youtube_menu.add_separator()
-        youtube_menu.add_command(label="Sesión YouTube: …", state='disabled')
+        youtube_menu.add_command(label=plain_ui_line("Sesión YouTube: …"), state='disabled')
         self._yt_session_menu_index = youtube_menu.index('end')
         youtube_menu.add_command(label="Reexportar cookies", command=self.reexport_youtube_cookies)
         youtube_menu.add_command(label="Actualizar yt-dlp", command=self.update_yt_dlp)
@@ -580,11 +586,17 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             label=plain_ui_line("Añadir a favoritos"),
             command=self.add_twitch_to_favorites,
         )
+        twitch_menu.add_command(
+            label=plain_ui_line("Ver chat…"),
+            command=self.toggle_twitch_chat,
+            state='disabled',
+        )
+        self._tw_chat_menu_index = twitch_menu.index('end')
         self._twitch_recent_menu = tk.Menu(twitch_menu, tearoff=0)
         self._twitch_recent_menu.configure(postcommand=self._fill_twitch_recent_menu)
         twitch_menu.add_cascade(label=plain_ui_line("Recientes"), menu=self._twitch_recent_menu)
         twitch_menu.add_separator()
-        twitch_menu.add_command(label="Sesión Twitch: …", state='disabled')
+        twitch_menu.add_command(label=plain_ui_line("Sesión Twitch: …"), state='disabled')
         self._tw_session_menu_index = twitch_menu.index('end')
         twitch_menu.add_command(label="Reexportar cookies", command=self.reexport_twitch_cookies)
         self._twitch_menu = twitch_menu
@@ -629,6 +641,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.window.bind('<Control-d>', self.handle_remove_favorite)
         self.window.bind('<g>', self._on_epg_grid_key)
         self.window.bind('<G>', self._on_epg_grid_key)
+        self.window.bind('<c>', self._on_twitch_chat_key)
+        self.window.bind('<C>', self._on_twitch_chat_key)
         self.window.bind('<Prior>', self._on_channel_prev_key)
         self.window.bind('<Next>', self._on_channel_next_key)
         self.window.bind('<plus>', self._on_channel_next_key)
@@ -1548,7 +1562,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         if ask_path:
             dest = filedialog.asksaveasfilename(
                 parent=self.window,
-                title='Grabar en…',
+                title=plain_ui_line('Grabar en…'),
                 initialfile=os.path.basename(dest),
                 initialdir=os.path.dirname(dest),
                 defaultextension='.ts',
@@ -1669,6 +1683,9 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             close_pip = getattr(self, 'close_pip', None)
             if close_pip:
                 close_pip()
+            twitch = getattr(self, 'twitch_handler', None)
+            if twitch:
+                twitch.close_chat(notify_ui=False)
             self._load_gen = getattr(self, '_load_gen', 0) + 1
             self._clear_busy()
 
@@ -2847,7 +2864,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         yt_recent = app_config.youtube_history()
         tw_watching = app_config.twitch_continue_watching()
         tw_recent = app_config.twitch_history()
-        menu.add_command(label="Ver historial…", command=self.open_iptv_history)
+        menu.add_command(label=plain_ui_line("Ver historial…"), command=self.open_iptv_history)
         if watching:
             menu.add_separator()
             menu.add_command(label="Seguir viendo", state='disabled')
@@ -3922,6 +3939,41 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         handler = getattr(self, 'twitch_handler', None)
         if handler:
             handler.add_current_to_favorites()
+
+    def toggle_twitch_chat(self):
+        handler = getattr(self, 'twitch_handler', None)
+        if handler:
+            handler.toggle_chat()
+
+    def update_twitch_chat_ui(self):
+        from twitch_chat import can_show_twitch_chat
+
+        menu = getattr(self, '_twitch_menu', None)
+        index = getattr(self, '_tw_chat_menu_index', None)
+        handler = getattr(self, 'twitch_handler', None)
+        chat = getattr(handler, '_chat', None) if handler else None
+        available = can_show_twitch_chat(handler) if handler else False
+        open_ = chat.is_open() if chat else False
+        if menu is not None and index is not None:
+            label = plain_ui_line('Ocultar chat') if open_ else plain_ui_line('Ver chat…')
+            try:
+                menu.entryconfigure(
+                    index,
+                    label=label,
+                    state='normal' if available or open_ else 'disabled',
+                )
+            except tk.TclError:
+                pass
+
+    def _on_twitch_chat_key(self, event=None):
+        if not getattr(self, '_playing_twitch', False):
+            return 'break'
+        handler = getattr(self, 'twitch_handler', None)
+        if handler and getattr(handler, '_chat', None):
+            from twitch_chat import can_show_twitch_chat
+            if can_show_twitch_chat(handler) or handler._chat.is_open():
+                handler.toggle_chat()
+        return 'break'
 
     def open_twitch_channel_browser(self):
         from twitch_browse import open_twitch_channel_browser

@@ -2,16 +2,25 @@ import os
 import sys
 import platform
 import subprocess
-import venv
 from pathlib import Path
 
 def is_venv_exists():
     venv_dir = '.venv'
     return os.path.exists(venv_dir) and os.path.isdir(venv_dir)
 
+def preferred_python():
+    if platform.system().lower() == 'windows':
+        return sys.executable
+    for path in ('/usr/bin/python3', '/usr/local/bin/python3'):
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return sys.executable
+
+
 def create_venv():
-    print("Creando el entorno virtual...")
-    venv.create('.venv', with_pip=True)
+    base = preferred_python()
+    print(f"Creando el entorno virtual con {base}...")
+    subprocess.run([base, '-m', 'venv', '.venv'], check=True)
 
 def get_python_executable():
     if platform.system().lower() == 'windows':
