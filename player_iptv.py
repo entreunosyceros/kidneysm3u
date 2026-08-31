@@ -45,6 +45,7 @@ class IptvPlaybackMixin:
             return
         self._media_started = False
         self._playing_youtube = False
+        self._playing_twitch = False
         self._iptv_ok_ticks = 0
         kind = classify_iptv_url(url)
         print(f"[IPTV] '{name}' → {describe_iptv_url(url)} tipo={kind}")

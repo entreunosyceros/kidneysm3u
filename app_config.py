@@ -14,6 +14,7 @@ MAX_RECENT = 12
 MAX_DOWNLOAD_URLS = 12
 MAX_YT_RESUME = 80
 MAX_YT_HISTORY = 40
+MAX_TWITCH_HISTORY = 20
 MAX_YT_QUEUE = 80
 MAX_YT_SEARCHES = 5
 MAX_IPTV_HISTORY = 25
@@ -55,10 +56,12 @@ _DEFAULTS = {
     },
     'youtube_resume': {},
     'youtube_history': [],
+    'twitch_history': [],
     'youtube_queue': [],
     'youtube_searches': [],
     'iptv_history': [],
     'youtube_quality': 720,
+    'twitch_quality': 720,
     'iptv_buffer': 'balanced',
     'subtitle_size': 0,
     'subtitle_color': '#FFFFFF',
@@ -262,6 +265,17 @@ def effective_youtube_quality(value=None):
     return height
 
 
+def effective_twitch_quality(value=None):
+    height = normalize_twitch_quality(
+        get_twitch_quality() if value is None else value
+    )
+    if not get_light_mode():
+        return height
+    if height <= 0 or height > LIGHT_MODE_YT_QUALITY_CAP:
+        return LIGHT_MODE_YT_QUALITY_CAP
+    return height
+
+
 def effective_yt_cache_max_bytes():
     if get_light_mode():
         return LIGHT_MODE_YT_CACHE_BYTES
@@ -388,6 +402,27 @@ def get_youtube_quality():
 
 def set_youtube_quality(height):
     save({'youtube_quality': normalize_youtube_quality(height)})
+
+
+def normalize_twitch_quality(value):
+    return normalize_youtube_quality(value)
+
+
+def twitch_quality_label(value=None):
+    height = normalize_twitch_quality(
+        get_twitch_quality() if value is None else value
+    )
+    if height <= 0:
+        return 'Mejor disponible'
+    return f'{height}p'
+
+
+def get_twitch_quality():
+    return normalize_twitch_quality(load().get('twitch_quality', 720))
+
+
+def set_twitch_quality(height):
+    save({'twitch_quality': normalize_twitch_quality(height)})
 
 
 def get_iptv_buffer():
@@ -910,6 +945,207 @@ def clear_youtube_history():
         return
     data['youtube_history'] = []
     data['youtube_resume'] = {}
+    save()
+
+
+def _is_twitch_url(url):
+    text = (url or '').lower()
+    return 'twitch.tv' in text
+
+
+def _clean_twitch_history_entry(item):
+    if not isinstance(item, dict):
+        return None
+    url = str(item.get('url') or '').strip()
+    if not url or not _is_twitch_url(url):
+        return None
+    name = str(item.get('name') or '').strip() or 'Twitch'
+    try:
+        seen_at = float(item.get('at') or 0)
+    except (TypeError, ValueError):
+        seen_at = 0
+    try:
+        updated = int(item.get('updated') or seen_at or 0)
+    except (TypeError, ValueError):
+        updated = int(seen_at or 0)
+    kind = str(item.get('kind') or '').strip().lower()
+    if not kind:
+        kind = 'vod' if '/videos/' in url.lower() else 'live'
+    try:
+        seconds = int(item.get('s') or 0)
+    except (TypeError, ValueError):
+        seconds = 0
+    try:
+        duration = int(item.get('duration') or 0)
+    except (TypeError, ValueError):
+        duration = 0
+    if kind != 'vod':
+        seconds = 0
+        duration = 0
+    return {
+        'url': url,
+        'name': name,
+        'at': seen_at,
+        'updated': updated,
+        'kind': kind,
+        's': seconds,
+        'duration': duration,
+    }
+
+
+def _is_twitch_vod_url(url):
+    text = str(url or '').lower()
+    return _is_twitch_url(text) and '/videos/' in text
+
+
+def remember_twitch_watch(url, title=''):
+    url = str(url or '').strip()
+    if not url or not _is_twitch_url(url):
+        return
+    data = load()
+    items = []
+    now = time.time()
+    name = str(title or '').strip() or 'Twitch'
+    previous = None
+    for raw in data.get('twitch_history') or []:
+        entry = _clean_twitch_history_entry(raw)
+        if not entry:
+            continue
+        if entry['url'] == url:
+            previous = entry
+            continue
+        items.append(entry)
+    kind = 'vod' if _is_twitch_vod_url(url) else 'live'
+    seconds = int((previous or {}).get('s') or 0) if kind == 'vod' else 0
+    duration = int((previous or {}).get('duration') or 0) if kind == 'vod' else 0
+    items.insert(0, {
+        'url': url,
+        'name': name,
+        'at': now,
+        'updated': int(now),
+        'kind': kind,
+        's': seconds,
+        'duration': duration,
+    })
+    data['twitch_history'] = items[:MAX_TWITCH_HISTORY]
+    save()
+
+
+def update_twitch_position(url, seconds, duration_s=None):
+    url = str(url or '').strip()
+    if not url or not _is_twitch_vod_url(url):
+        return
+    try:
+        seconds = float(seconds or 0)
+    except (TypeError, ValueError):
+        return
+    data = load()
+    items = []
+    current = None
+    for raw in data.get('twitch_history') or []:
+        entry = _clean_twitch_history_entry(raw)
+        if not entry:
+            continue
+        if entry['url'] == url:
+            current = entry
+            continue
+        items.append(entry)
+    if current is None:
+        return
+    if seconds < IPTV_RESUME_MIN_S or _yt_resume_near_end(seconds, duration_s):
+        current['s'] = 0
+        current['duration'] = 0
+    else:
+        current['s'] = int(seconds)
+        try:
+            current['duration'] = max(0, int(float(duration_s or 0)))
+        except (TypeError, ValueError):
+            current['duration'] = int(current.get('duration') or 0)
+    current['updated'] = int(time.time())
+    current['kind'] = 'vod'
+    items.insert(0, current)
+    data['twitch_history'] = items[:MAX_TWITCH_HISTORY]
+    save()
+
+
+def twitch_resume_seconds(url, duration_s=None):
+    if not _is_twitch_vod_url(url):
+        return 0.0
+    item = twitch_history_item_by_url(url)
+    if not item or item.get('kind') != 'vod':
+        return 0.0
+    seconds = float(item.get('s') or 0)
+    if seconds < IPTV_RESUME_MIN_S:
+        return 0.0
+    if _yt_resume_near_end(seconds, duration_s if duration_s is not None else item.get('duration')):
+        update_twitch_position(url, 0, 0)
+        return 0.0
+    return seconds
+
+
+def twitch_continue_watching():
+    found = []
+    for item in twitch_history():
+        if item.get('kind') != 'vod':
+            continue
+        seconds = int(item.get('s') or 0)
+        if seconds < IPTV_RESUME_MIN_S:
+            continue
+        if _yt_resume_near_end(seconds, item.get('duration') or 0):
+            continue
+        found.append(item)
+    return found
+
+
+def clear_twitch_position(url):
+    update_twitch_position(url, 0, 0)
+
+
+def twitch_history():
+    items = []
+    seen = set()
+    for raw in load().get('twitch_history') or []:
+        entry = _clean_twitch_history_entry(raw)
+        if not entry or entry['url'] in seen:
+            continue
+        seen.add(entry['url'])
+        items.append(entry)
+    return items[:MAX_TWITCH_HISTORY]
+
+
+def twitch_history_item_by_url(url):
+    wanted = str(url or '').strip()
+    if not wanted:
+        return None
+    for item in twitch_history():
+        if item.get('url') == wanted:
+            return item
+    return None
+
+
+def twitch_history_label(item, limit=46, with_time=False):
+    name = str((item or {}).get('name') or 'Twitch').strip()
+    if len(name) > limit:
+        name = name[: max(0, limit - 1)] + '…'
+    base = f'Twitch · {name}'
+    seconds = int((item or {}).get('s') or 0)
+    if not with_time or seconds < IPTV_RESUME_MIN_S or (item or {}).get('kind') != 'vod':
+        return base
+    stamp = format_iptv_clock(seconds)
+    try:
+        duration = int((item or {}).get('duration') or 0)
+    except (TypeError, ValueError):
+        duration = 0
+    if duration > 0:
+        return f'{base}  ·  {stamp} / {format_iptv_clock(duration)}'
+    return f'{base}  ·  {stamp}'
+
+
+def clear_twitch_history():
+    data = load()
+    if not data.get('twitch_history'):
+        return
+    data['twitch_history'] = []
     save()
 
 

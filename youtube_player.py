@@ -805,6 +805,7 @@ class YouTubeHandler:
             messagebox.showerror("Error", "No se pudo extraer el ID del vídeo de YouTube")
             return
         self.video_player._playing_youtube = True
+        self.video_player._playing_twitch = False
         app_config.remember_youtube_watch(video_id, title=title or '', url=url)
         refresh = getattr(self.video_player, '_refresh_history_ui', None)
         if refresh:

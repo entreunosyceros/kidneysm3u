@@ -95,11 +95,11 @@ Más detalle en [docs/notas.md](docs/notas.md).
 - Sigue el estilo del código existente (nombres, imports, nivel de comentarios).
 - Cambios **mínimos y enfocados**: no mezcles varias funcionalidades en un mismo PR.
 - Los textos visibles para el usuario van en **español**.
-- No incluyas secretos, `cookies.txt`, `config.json`, listas M3U con usuario/contraseña ni capturas con tokens.
+- No incluyas secretos, `cookies.txt`, `twitch_cookies.txt`, `config.json`, listas M3U con usuario/contraseña ni capturas con tokens.
 - No registres URLs completas de IPTV, EPG o YouTube (pueden llevar credenciales).
 - No inventes rutas Xtream: una URL de guía o de lista se usa tal cual.
 - No uses `--no-hw-dec` en VLC: en 3.0.20 puede hacer que `vlc.Instance()` falle.
-- Los datos de usuario (`config.json`, `cookies.txt`, `favoritos.json`, `enlaces.json`, `epg_cache/`) no van al git.
+- Los datos de usuario (`config.json`, `cookies.txt`, `twitch_cookies.txt`, `favoritos.json`, `enlaces.json`, `epg_cache/`) no van al git.
 
 ## Pull requests
 

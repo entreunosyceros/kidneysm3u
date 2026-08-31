@@ -21,7 +21,10 @@ sign-windows.ps1
 
 # Datos locales del usuario (no van al repositorio)
 config.json
+# Cookies de sesión (YouTube, Twitch, etc.): nunca subir al repo
 cookies.txt
+twitch_cookies.txt
+*_cookies.txt
 enlaces.json
 favoritos.json
 

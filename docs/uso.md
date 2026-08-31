@@ -29,7 +29,7 @@ El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras co
 
 ## Preferencias
 
-**Archivo → Preferencias** (también **Reproducir → Preferencias** en el reproductor). La ventana se puede desplazar; **Guardar** y **Cancelar** quedan fijos abajo.
+**Archivo → Preferencias** (también **Reproducir → Preferencias** en el reproductor). Hay dos pestañas: **General** (tema, reproducción, subtítulos…) y **Cookies** (navegador, sesión YouTube/Twitch y reexportar). **Guardar** y **Cancelar** quedan fijos abajo.
 
 | Apartado | Qué hace |
 | --- | --- |
@@ -43,8 +43,9 @@ El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras co
 | Recordar última lista | Restaura la lista lateral al abrir; no reproduce solo. |
 | Avisar de versiones nuevas | Al abrir, si GitHub tiene un paquete más nuevo. Casilla **Actualizaciones**. Se puede apagar. Detalle en [instalación](instalacion.md#actualizar-el-programa). |
 | Carpeta de descargas | Destino inicial de vídeos, audio y grabaciones. |
-| Navegador de cookies | **Automático** o **Firefox**. Automático prueba Firefox y, si puede, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer: usa Firefox. Detalle en [YouTube](youtube.md#cookies). |
-| yt-dlp | Muestra la versión e **Actualizar yt-dlp**. Después hay que cerrar y abrir el programa. |
+| Navegador de cookies | Pestaña **Cookies**: **Automático** o **Firefox**. Automático prueba Firefox y, si puede, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer: usa Firefox. |
+| Sesión YouTube / Twitch | Pestaña **Cookies**: **Sesión …: OK / caducada** y **Reexportar cookies** para cada servicio. Detalle en [YouTube](youtube.md#cookies). |
+| yt-dlp | Pestaña **General**: versión e **Actualizar yt-dlp**. Después hay que cerrar y abrir el programa. |
 
 Detalle del filtro y de la herramienta de ordenar: [listas M3U](listas-m3u.md).
 
@@ -77,7 +78,13 @@ Menú **Youtube**:
 - Cargar una playlist como lista lateral
 - Actualizar yt-dlp (también en Preferencias)
 
-En **Windows** las cookies de YouTube hay que sacarlas de **Firefox** (Chrome, Brave y Edge las cifran). En Preferencias deja **Automático** o **Firefox**, inicia sesión en Firefox, ciérralo y pulsa **Reexportar cookies**. Guía: [YouTube](youtube.md#cookies).
+En **Windows** las cookies de YouTube hay que sacarlas de **Firefox** (Chrome, Brave y Edge las cifran). En **Preferencias → pestaña Cookies** elige **Automático** o **Firefox**, inicia sesión en Firefox, ciérralo y pulsa **Reexportar cookies**. Guía: [YouTube](youtube.md#cookies).
+
+## Twitch
+
+Menú **Twitch → Cargar URL de Twitch**: pega un enlace de canal en directo (`https://www.twitch.tv/canal`), un VOD (`…/videos/…`) o un clip. También puedes pegar una URL de Twitch en **Reproducir → Cargar URL** y se abrirá como Twitch sin ir al menú. El programa usa **yt-dlp** para obtener el stream y lo reproduce con VLC embebido. Al cargar un **canal**, comprueba si está **en directo** o **offline**; si no emite, puedes abrir la página en el navegador o reproducir el último VOD. La calidad máxima se elige en **Preferencias → Calidad Twitch** (360 / 720 / 1080 / mejor). Los directos no muestran barra de progreso; los VOD sí. Los **VOD** guardan la posición al cambiar de canal o cerrar (como YouTube/IPTV) y se reanudan al volver a abrirlos. En directos, si caduca el enlace HLS (~30–60 min), el reproductor vuelve a pedir el stream con yt-dlp (como el watchdog de IPTV). Al cargar verás canal, título, si está en directo o VOD, calidad y si usa cookies. Las URLs recientes aparecen en **Reproducir → Historial**.
+
+**Twitch → Añadir a favoritos** guarda el canal o VOD que estés viendo en `favoritos.json` (igual que IPTV/YouTube). **Twitch → Buscar…** consulta Twitch (canales en directo, canales offline y VOD recientes) y reproduce el resultado en el reproductor con doble clic. **Twitch → VODs del canal…** pide el nombre del canal, comprueba si **está en directo** (con botón para verlo al momento) y lista los **VOD recientes** para reproducirlos con doble clic. **Twitch → Recientes** lista las últimas emisiones abiertas (también en **Reproducir → Historial**). **Twitch → Reexportar cookies** (o **Archivo → Preferencias → Cookies**) guarda tu sesión de Twitch desde el navegador en `twitch_cookies.txt`. Sirve para emisiones restringidas (p. ej. solo suscriptores). Usa el mismo **Navegador de cookies** de Preferencias (en Windows, lo fiable es **Firefox**). El estado **Sesión Twitch: OK / caducada** y el botón **Reexportar cookies** están en la pestaña **Cookies** de Preferencias; el menú **Twitch** también muestra el estado.
 
 ## Ayuda
 

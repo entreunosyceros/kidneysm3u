@@ -18,6 +18,98 @@ COOKIE_LABELS = (
 )
 
 _YT_DLP_UPDATING = False
+_PREFS_WINDOW = None
+
+
+def _tk_root(widget):
+    try:
+        return widget.winfo_toplevel()
+    except tk.TclError:
+        return widget.winfo_toplevel()
+
+
+class _PrefsSessionHost:
+    """Anfitrión mínimo para reexportar cookies sin abrir el reproductor."""
+
+    def __init__(self, window):
+        self.window = window
+
+    def update_youtube_session_ui(self, info=None):
+        refresh_preferences_session_ui(self.window, youtube_info=info)
+
+    def update_twitch_session_ui(self, info=None):
+        refresh_preferences_session_ui(self.window, twitch_info=info)
+
+
+def refresh_preferences_session_ui(parent=None, youtube_info=None, twitch_info=None):
+    """Actualiza las etiquetas de sesión en Preferencias si la ventana está abierta."""
+    window = _PREFS_WINDOW
+    if window is None:
+        return
+    try:
+        if not window.winfo_exists():
+            return
+    except tk.TclError:
+        return
+
+    if youtube_info is None:
+        from youtube_player import inspect_youtube_session
+        youtube_info = inspect_youtube_session()
+    yt_label = getattr(window, '_prefs_yt_session_label', None)
+    if yt_label is not None:
+        ok = bool(youtube_info.get('ok'))
+        text = f"Sesión YouTube: {'OK' if ok else 'caducada'}"
+        style = 'SessionOk.TLabel' if ok else 'SessionBad.TLabel'
+        try:
+            yt_label.configure(text=text, style=style)
+        except tk.TclError:
+            pass
+
+    if twitch_info is None:
+        from twitch_player import inspect_twitch_session
+        twitch_info = inspect_twitch_session()
+    tw_label = getattr(window, '_prefs_tw_session_label', None)
+    if tw_label is not None:
+        ok = bool(twitch_info.get('ok'))
+        text = f"Sesión Twitch: {'OK' if ok else 'caducada'}"
+        style = 'SessionOk.TLabel' if ok else 'SessionBad.TLabel'
+        try:
+            tw_label.configure(text=text, style=style)
+        except tk.TclError:
+            pass
+
+
+def _resolve_video_player(parent, explicit=None):
+    if explicit is not None:
+        return explicit
+    root = _tk_root(parent)
+    direct = getattr(root, '_video_player', None)
+    if direct is not None:
+        return direct
+    app = getattr(root, '_kidneys_app', None)
+    if app is not None:
+        return getattr(app, 'video_player', None)
+    return None
+
+
+def _reexport_youtube_cookies(parent, video_player=None):
+    player = _resolve_video_player(parent, video_player)
+    handler = getattr(player, 'youtube_handler', None) if player else None
+    if handler is None:
+        from youtube_player import YouTubeHandler
+        handler = YouTubeHandler(_PrefsSessionHost(_tk_root(parent)))
+    handler.reexport_youtube_cookies()
+    refresh_preferences_session_ui(parent)
+
+
+def _reexport_twitch_cookies(parent, video_player=None):
+    player = _resolve_video_player(parent, video_player)
+    handler = getattr(player, 'twitch_handler', None) if player else None
+    if handler is None:
+        from twitch_player import TwitchHandler
+        handler = TwitchHandler(_PrefsSessionHost(_tk_root(parent)))
+    handler.reexport_twitch_cookies()
+    refresh_preferences_session_ui(parent)
 
 
 def yt_dlp_installed_version():
@@ -141,22 +233,18 @@ def start_yt_dlp_upgrade(parent, on_done=None, busy_widgets=None):
     threading.Thread(target=work, daemon=True, name='yt-dlp-upgrade').start()
 
 
-def _tk_root(widget):
-    try:
-        return widget.nametowidget('.')
-    except tk.TclError:
-        return widget.winfo_toplevel()
-
-
-def show_preferences(parent, on_apply=None):
+def show_preferences(parent, on_apply=None, video_player=None):
+    global _PREFS_WINDOW
     root = _tk_root(parent)
-    existing = getattr(root, '_prefs_window', None)
+    existing = _PREFS_WINDOW or getattr(root, '_prefs_window', None)
     if existing:
         try:
             if existing.winfo_exists():
+                existing._prefs_video_player = video_player
                 existing.deiconify()
                 existing.lift()
                 existing.focus_force()
+                refresh_preferences_session_ui()
                 return existing
         except tk.TclError:
             pass
@@ -170,12 +258,15 @@ def show_preferences(parent, on_apply=None):
     set_window_icon(window)
     center_window(window, 560, 760)
     root._prefs_window = window
+    window._prefs_video_player = video_player
+    _PREFS_WINDOW = window
 
     theme_var = tk.StringVar(value=app_config.get_theme())
     volume_var = tk.IntVar(value=app_config.get_volume())
     volume_label_var = tk.StringVar(value=f'{volume_var.get()} %')
     download_var = tk.StringVar(value=app_config.get_download_dir())
     quality_var = tk.StringVar(value=str(app_config.get_youtube_quality()))
+    twitch_quality_var = tk.StringVar(value=str(app_config.get_twitch_quality()))
     buffer_var = tk.StringVar(value=app_config.get_iptv_buffer())
     cookie_var = tk.StringVar(value=app_config.get_cookie_browser())
     remember_var = tk.BooleanVar(value=app_config.get_remember_last_list())
@@ -202,11 +293,19 @@ def show_preferences(parent, on_apply=None):
     ttk.Label(shell, text='Preferencias', style='PageTitle.TLabel').pack(anchor=tk.W)
     ttk.Label(
         shell,
-        text='Tema, logos, reproducción, subtítulos, descargas, actualizaciones, sesión de YouTube y yt-dlp',
+        text='Tema, reproducción, subtítulos, descargas, actualizaciones y sesión de cookies',
         style='Muted.TLabel',
     ).pack(anchor=tk.W, pady=(0, 10))
 
-    body = ttk.Frame(shell)
+    notebook = ttk.Notebook(shell)
+    notebook.pack(fill=tk.BOTH, expand=True)
+
+    tab_general = ttk.Frame(notebook, padding=(0, 4))
+    tab_cookies = ttk.Frame(notebook, padding=(12, 12))
+    notebook.add(tab_general, text='General')
+    notebook.add(tab_cookies, text='Cookies')
+
+    body = ttk.Frame(tab_general)
     body.pack(fill=tk.BOTH, expand=True)
     body.columnconfigure(0, weight=1)
     body.rowconfigure(0, weight=1)
@@ -376,6 +475,20 @@ def show_preferences(parent, on_apply=None):
     ttk.Label(
         playback,
         text='Tope de altura al pedir el stream. «Mejor» usa la resolución más alta que VLC pueda abrir. Si cambias la calidad con un vídeo de YouTube en marcha, se recarga desde el segundo actual.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(8, 0))
+
+    twitch_quality_row = ttk.Frame(playback, style='Card.TFrame')
+    twitch_quality_row.pack(fill=tk.X, pady=(12, 0))
+    ttk.Label(twitch_quality_row, text='Calidad Twitch', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 16))
+    ttk.Radiobutton(twitch_quality_row, text='360p', variable=twitch_quality_var, value='360').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(twitch_quality_row, text='720p', variable=twitch_quality_var, value='720').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(twitch_quality_row, text='1080p', variable=twitch_quality_var, value='1080').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(twitch_quality_row, text='Mejor', variable=twitch_quality_var, value='0').pack(side=tk.LEFT)
+    ttk.Label(
+        playback,
+        text='Tope de altura para directos y VOD de Twitch. Si cambias la calidad con un directo en marcha, se vuelve a pedir el stream.',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
@@ -575,9 +688,9 @@ def show_preferences(parent, on_apply=None):
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
 
-    cookies = ttk.LabelFrame(main, text=' COOKIES DE YOUTUBE ', padding=12)
-    cookies.pack(fill=tk.X, pady=(0, 10))
-    cookie_row = ttk.Frame(cookies, style='Card.TFrame')
+    cookies_browser = ttk.LabelFrame(tab_cookies, text=' NAVEGADOR DE COOKIES ', padding=12)
+    cookies_browser.pack(fill=tk.X, pady=(0, 10))
+    cookie_row = ttk.Frame(cookies_browser, style='Card.TFrame')
     cookie_row.pack(fill=tk.X)
     ttk.Label(cookie_row, text='Navegador', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
     cookie_combo = ttk.Combobox(
@@ -591,8 +704,48 @@ def show_preferences(parent, on_apply=None):
     cookie_combo.set(labels_by_key.get(cookie_var.get(), labels_by_key['auto']))
     cookie_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
     ttk.Label(
-        cookies,
-        text='Lo fiable es Firefox con sesión en YouTube: ciérralo y pulsa Reexportar cookies. Automático prueba Firefox y, si el sistema lo permite, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer.',
+        cookies_browser,
+        text='Lo fiable es Firefox con sesión en YouTube o Twitch: ciérralo y pulsa Reexportar cookies abajo. Automático prueba Firefox y, si el sistema lo permite, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(8, 0))
+
+    yt_cookies = ttk.LabelFrame(tab_cookies, text=' YOUTUBE ', padding=12)
+    yt_cookies.pack(fill=tk.X, pady=(0, 10))
+    window._prefs_yt_session_label = ttk.Label(
+        yt_cookies,
+        text='Sesión YouTube: …',
+        style='Muted.TLabel',
+    )
+    window._prefs_yt_session_label.pack(anchor=tk.W)
+    ttk.Button(
+        yt_cookies,
+        text='Reexportar cookies',
+        command=lambda: _reexport_youtube_cookies(window, video_player),
+    ).pack(anchor=tk.W, pady=(8, 0))
+    ttk.Label(
+        yt_cookies,
+        text='Exporta cookies.txt desde el navegador. Sirve para vídeos restringidos, búsqueda y descargas de YouTube.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(8, 0))
+
+    tw_cookies = ttk.LabelFrame(tab_cookies, text=' TWITCH ', padding=12)
+    tw_cookies.pack(fill=tk.X, pady=(0, 10))
+    window._prefs_tw_session_label = ttk.Label(
+        tw_cookies,
+        text='Sesión Twitch: …',
+        style='Muted.TLabel',
+    )
+    window._prefs_tw_session_label.pack(anchor=tk.W)
+    ttk.Button(
+        tw_cookies,
+        text='Reexportar cookies',
+        command=lambda: _reexport_twitch_cookies(window, video_player),
+    ).pack(anchor=tk.W, pady=(8, 0))
+    ttk.Label(
+        tw_cookies,
+        text='Exporta twitch_cookies.txt. Sirve para directos o VOD solo suscriptores o restringidos que ya puedes ver logueado en twitch.tv.',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
@@ -632,8 +785,11 @@ def show_preferences(parent, on_apply=None):
     buttons.pack(fill=tk.X, pady=(12, 0))
 
     def close():
+        global _PREFS_WINDOW
         if getattr(root, '_prefs_window', None) is window:
             root._prefs_window = None
+        if _PREFS_WINDOW is window:
+            _PREFS_WINDOW = None
         window.destroy()
 
     def save():
@@ -701,6 +857,7 @@ def show_preferences(parent, on_apply=None):
             'show_cpu_monitor': bool(cpu_var.get()),
             'check_app_updates': bool(updates_var.get()),
             'youtube_quality': app_config.normalize_youtube_quality(quality),
+            'twitch_quality': app_config.normalize_twitch_quality(twitch_quality_var.get()),
             'iptv_buffer': app_config.normalize_iptv_buffer_profile(buffer_var.get()),
         }
         payload.update(sub_payload)
@@ -716,6 +873,8 @@ def show_preferences(parent, on_apply=None):
     _bind_wheel(canvas)
     _bind_wheel(main)
     window.after_idle(_sync_scroll)
+
+    window.after_idle(lambda: refresh_preferences_session_ui(window))
 
     window.protocol('WM_DELETE_WINDOW', close)
     window.bind('<Escape>', lambda e: close())

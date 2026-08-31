@@ -144,6 +144,7 @@ class PlayerControlsMixin:
         try:
             self.save_youtube_resume()
             self.save_iptv_resume()
+            self.save_twitch_resume()
             stop_rec = getattr(self, 'stop_stream_recording', None)
             if stop_rec:
                 stop_rec(notify=False)
@@ -153,6 +154,9 @@ class PlayerControlsMixin:
             self.hide_progress_bar()
             if hasattr(self, 'youtube_handler') and self.youtube_handler:
                 self.youtube_handler.cancel_pending_play()
+            twitch = getattr(self, 'twitch_handler', None)
+            if twitch:
+                twitch.cancel_pending_play()
             self._hide_channel_status()
         except Exception as e:
             print(f"Error al detener la reproducción: {e}")

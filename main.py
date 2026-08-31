@@ -20,11 +20,13 @@ from ui_clipboard import ask_string
 import app_config
 from app_paths import data_dir
 from app_update import start_startup_update_check, start_manual_update_check
+from twitch_player import is_twitch_url
 import sys
 
 class M3UProcessor:
     def __init__(self, root):
         self.root = root
+        self.root._kidneys_app = self
         self.root.title('Kidneys M3U/M3U8')
         self.root.geometry('900x620')
         self.root.minsize(780, 540)
@@ -474,14 +476,25 @@ class M3UProcessor:
         return self.video_player
 
     def load_url(self):
-        url = ask_string(self.root, "Cargar URL", "Introduce la URL de la lista M3U:")
-        if url:
-            player = self._ensure_player()
-            if not player:
-                return
-            player.run()
+        url = ask_string(
+            self.root,
+            "Cargar URL",
+            "Introduce la URL (lista M3U, YouTube o Twitch):",
+        )
+        if not url:
+            return
+        url = url.strip()
+        player = self._ensure_player()
+        if not player:
+            return
+        player.run()
+        if is_twitch_url(url):
+            player.play_twitch_url(url)
+        elif app_config._is_youtube_url(url):
+            player.youtube_handler.prompt_youtube_url(url)
+        else:
             player.load_m3u_url(url)
-            self._refresh_recent_menu()
+        self._refresh_recent_menu()
 
     def load_local_file(self):
         filename = filedialog.askopenfilename(
@@ -600,7 +613,8 @@ class M3UProcessor:
 
     def open_preferences(self):
         from preferences import show_preferences
-        show_preferences(self.root, on_apply=self.apply_preferences)
+        player = getattr(self, 'video_player', None)
+        show_preferences(self.root, on_apply=self.apply_preferences, video_player=player)
 
     def apply_preferences(self):
         self.config = app_config.load()

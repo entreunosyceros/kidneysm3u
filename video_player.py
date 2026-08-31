@@ -34,6 +34,7 @@ import threading
 import yt_dlp
 import traceback
 from youtube_player import YouTubeHandler, youtube_ydl_opts
+from twitch_player import TwitchHandler, is_twitch_url, is_twitch_vod_url, twitch_default_title
 from youtube_search import (
     YouTubeSearchDialog,
     fetch_youtube_channel_videos,
@@ -240,7 +241,10 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._yt_start_offset_ms = 0
         self._yt_resume_s = 0
         self._last_yt_resume_save = 0
+        self._last_twitch_resume_save = 0
+        self._tw_end_handled = False
         self._playing_youtube = False
+        self._playing_twitch = False
         self._pipe_ready = False
         self._playlist_source = ''
         self._playlist_kind = ''
@@ -288,6 +292,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
 
         # Inicializar el manejador de YouTube
         self.youtube_handler = YouTubeHandler(self)
+        self.twitch_handler = TwitchHandler(self)
 
         # Inicializar el manejador de favoritos
         self.favorites_manager = FavoritesManager(self)
@@ -302,6 +307,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
 
     def create_window(self):
         self.window = tk.Toplevel(class_='Kidneysm3u')
+        self.window._video_player = self
         self.window.title('Reproductor de vídeo')
         self.window.geometry('1100x750')
         style_window(self.window)
@@ -360,16 +366,6 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             wraplength=260,
             justify=tk.LEFT,
         )
-
-        session_frame = ttk.Frame(self.channels_frame)
-        session_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 8))
-        self._yt_session_label = ttk.Label(session_frame, text='Sesión YouTube: …', style='Muted.TLabel')
-        self._yt_session_label.pack(anchor=tk.W)
-        ttk.Button(
-            session_frame,
-            text="Reexportar cookies",
-            command=self.reexport_youtube_cookies,
-        ).pack(anchor=tk.W, pady=(4, 0))
 
         self.sidebar = ChannelSidebar(self.channels_frame)
         self.sidebar.now_text = self._epg_now_title
@@ -480,6 +476,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self.setup_performance_monitoring()
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.youtube_handler.notify_session()
+        self.twitch_handler.notify_session()
         self.setup_keyboard_shortcuts()
 
     def setup_performance_monitoring(self):
@@ -569,13 +566,35 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         youtube_menu.add_command(label="Reexportar cookies", command=self.reexport_youtube_cookies)
         youtube_menu.add_command(label="Actualizar yt-dlp", command=self.update_yt_dlp)
         self._youtube_menu = youtube_menu
+        twitch_menu = tk.Menu(self.menubar, tearoff=0)
+        twitch_menu.add_command(label="Cargar URL de Twitch", command=self.twitch_handler.prompt_twitch_url)
+        twitch_menu.add_command(
+            label=plain_ui_line("VODs del canal…"),
+            command=self.open_twitch_channel_browser,
+        )
+        twitch_menu.add_command(
+            label=plain_ui_line("Buscar…"),
+            command=self.open_twitch_search,
+        )
+        twitch_menu.add_command(
+            label=plain_ui_line("Añadir a favoritos"),
+            command=self.add_twitch_to_favorites,
+        )
+        self._twitch_recent_menu = tk.Menu(twitch_menu, tearoff=0)
+        self._twitch_recent_menu.configure(postcommand=self._fill_twitch_recent_menu)
+        twitch_menu.add_cascade(label=plain_ui_line("Recientes"), menu=self._twitch_recent_menu)
+        twitch_menu.add_separator()
+        twitch_menu.add_command(label="Sesión Twitch: …", state='disabled')
+        self._tw_session_menu_index = twitch_menu.index('end')
+        twitch_menu.add_command(label="Reexportar cookies", command=self.reexport_twitch_cookies)
+        self._twitch_menu = twitch_menu
         favoritos_menu = tk.Menu(self.menubar, tearoff=0)
         favoritos_menu.add_command(label="Mostrar Favoritos", command=self.show_favorites)
         favoritos_menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
         favoritos_menu.add_command(label="Eliminar de Favoritos", command=self.remove_from_favorites)
         favoritos_menu.add_separator()
-        favoritos_menu.add_command(label="Exportar favoritos…", command=self.export_favorites)
-        favoritos_menu.add_command(label="Importar favoritos…", command=self.import_favorites)
+        favoritos_menu.add_command(label=plain_ui_line('Exportar favoritos…'), command=self.export_favorites)
+        favoritos_menu.add_command(label=plain_ui_line('Importar favoritos…'), command=self.import_favorites)
 
         self.audio_menu = tk.Menu(self.menubar, tearoff=0)
         self.subs_menu = tk.Menu(self.menubar, tearoff=0)
@@ -586,6 +605,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._quality_choice = tk.StringVar(value=str(app_config.get_youtube_quality()))
         self.menubar.add_cascade(label="Reproducir", menu=reproducir_menu)
         self.menubar.add_cascade(label="Youtube", menu=youtube_menu)
+        self.menubar.add_cascade(label="Twitch", menu=twitch_menu)
         self.menubar.add_cascade(label="Favoritos", menu=favoritos_menu)
         self.menubar.add_cascade(label="Calidad / audio", menu=self.audio_menu)
         self.menubar.add_cascade(label="Subtítulos", menu=self.subs_menu)
@@ -1639,6 +1659,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             self._dismiss_track_menus()
             self.save_youtube_resume()
             self.save_iptv_resume()
+            self.save_twitch_resume()
             self._save_window_geometry()
             app_config.set_volume(self.volume)
             self.save_favorites()
@@ -2021,9 +2042,21 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
 
     def prompt_url(self):
         self.ensure_window()
-        url = ask_string(self.window, "Cargar URL", "Introduce la URL de la lista M3U:")
-        if url:
-            self.load_m3u_url(url)
+        url = ask_string(
+            self.window,
+            "Cargar URL",
+            "Introduce la URL (lista M3U, YouTube o Twitch):",
+        )
+        if not url:
+            return
+        url = url.strip()
+        if is_twitch_url(url):
+            self.play_twitch_url(url)
+            return
+        if app_config._is_youtube_url(url):
+            self.youtube_handler.prompt_youtube_url(url)
+            return
+        self.load_m3u_url(url)
 
     def prompt_file(self):
         filename = filedialog.askopenfilename(
@@ -2758,6 +2791,47 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 win.refresh()
             except tk.TclError:
                 pass
+        self._fill_twitch_recent_menu()
+
+    def _fill_twitch_recent_menu(self):
+        menu = getattr(self, '_twitch_recent_menu', None)
+        if menu is None:
+            return
+        try:
+            menu.delete(0, 'end')
+        except tk.TclError:
+            return
+        items = app_config.twitch_history()
+        if not items:
+            menu.add_command(label="Sin recientes", state='disabled')
+            return
+        for item in items[:12]:
+            url = item['url']
+            name = item.get('name') or 'Twitch'
+            menu.add_command(
+                label=app_config.twitch_history_label(
+                    item,
+                    with_time=bool(item.get('s') and item.get('kind') == 'vod'),
+                ),
+                command=lambda u=url, n=name: self.play_twitch_url(u, title=n, add_to_list=False),
+            )
+        menu.add_separator()
+        menu.add_command(
+            label=plain_ui_line("Vaciar recientes de Twitch"),
+            command=self.clear_twitch_history_prompt,
+        )
+
+    def clear_twitch_history_prompt(self):
+        if not app_config.twitch_history():
+            return
+        if not messagebox.askyesno(
+            'Twitch',
+            '¿Quitar el historial reciente de Twitch?',
+            parent=self.window,
+        ):
+            return
+        app_config.clear_twitch_history()
+        self._refresh_history_ui()
 
     def _fill_history_menu(self):
         menu = getattr(self, '_history_menu', None)
@@ -2771,6 +2845,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         recent = app_config.iptv_history()
         yt_watching = app_config.youtube_continue_watching()
         yt_recent = app_config.youtube_history()
+        tw_watching = app_config.twitch_continue_watching()
+        tw_recent = app_config.twitch_history()
         menu.add_command(label="Ver historial…", command=self.open_iptv_history)
         if watching:
             menu.add_separator()
@@ -2791,8 +2867,18 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                     label=app_config.youtube_history_label(item, with_time=True),
                     command=lambda u=url, n=name: self.play_youtube_url(u, title=n, add_to_list=False),
                 )
+        if tw_watching:
+            menu.add_separator()
+            menu.add_command(label="Twitch a medio ver", state='disabled')
+            for item in tw_watching[:8]:
+                url = item['url']
+                name = item.get('name') or 'Twitch'
+                menu.add_command(
+                    label=app_config.twitch_history_label(item, with_time=True),
+                    command=lambda u=url, n=name: self.play_twitch_url(u, title=n, add_to_list=False),
+                )
         menu.add_separator()
-        if not recent and not yt_recent:
+        if not recent and not yt_recent and not tw_recent:
             menu.add_command(label="Sin recientes", state='disabled')
         else:
             for item in recent[:10]:
@@ -2813,20 +2899,34 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                     label=app_config.youtube_history_label(item, with_time=True),
                     command=lambda u=url, n=name: self.play_youtube_url(u, title=n, add_to_list=False),
                 )
+            if tw_recent:
+                menu.add_separator()
+                menu.add_command(label="Twitch recientes", state='disabled')
+            for item in tw_recent[:10]:
+                url = item['url']
+                name = item.get('name') or 'Twitch'
+                menu.add_command(
+                    label=app_config.twitch_history_label(
+                        item,
+                        with_time=bool(item.get('s') and item.get('kind') == 'vod'),
+                    ),
+                    command=lambda u=url, n=name: self.play_twitch_url(u, title=n, add_to_list=False),
+                )
         menu.add_separator()
         menu.add_command(label="Vaciar historial", command=self.clear_iptv_history_prompt)
 
     def clear_iptv_history_prompt(self):
-        if not app_config.iptv_history() and not app_config.youtube_history():
+        if not app_config.iptv_history() and not app_config.youtube_history() and not app_config.twitch_history():
             return
         if not messagebox.askyesno(
             'Vaciar historial',
-            '¿Quitar el historial de IPTV y de YouTube?',
+            '¿Quitar el historial de IPTV, YouTube y Twitch?',
             parent=self.window,
         ):
             return
         app_config.clear_iptv_history()
         app_config.clear_youtube_history()
+        app_config.clear_twitch_history()
         self._refresh_history_ui()
 
     def play_history_url(self, url):
@@ -2836,6 +2936,11 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         if app_config._is_youtube_url(url):
             item = app_config.youtube_history_item_by_url(url) or {}
             self.play_youtube_url(url, title=item.get('name') or 'YouTube', add_to_list=False)
+            self._refresh_history_ui()
+            return
+        if is_twitch_url(url):
+            item = app_config.twitch_history_item_by_url(url) or {}
+            self.play_twitch_url(url, title=item.get('name') or 'Twitch', add_to_list=False)
             self._refresh_history_ui()
             return
         for index, (_name, item_url) in enumerate(self.channels):
@@ -2854,6 +2959,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         name = item.get('name') or 'Historial'
         self.save_youtube_resume()
         self.save_iptv_resume()
+        self.save_twitch_resume()
         self.current_channel = None
         app_config.remember_iptv_history(name, url, group=item.get('group') or '')
         self._ensure_vlc_style_instance()
@@ -3017,6 +3123,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 return
             self.save_youtube_resume()
             self.save_iptv_resume()
+            self.save_twitch_resume()
             self.current_channel = index
             self._refresh_epg_label(index)
             app_config.remember_channel(index, name, url)
@@ -3048,6 +3155,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             self._iptv_resume_s = 0
             if "youtube.com" in url or "youtu.be" in url:
                 self._playing_youtube = True
+                self._playing_twitch = False
                 kind = getattr(self, '_playlist_kind', '') or ''
                 self._yt_standalone = not (
                     self.is_sequential_playback
@@ -3060,6 +3168,12 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                     is_sequential=self.is_sequential_playback,
                     title=name,
                 )
+                return
+            if is_twitch_url(url):
+                self.current_channel = index
+                self._refresh_epg_label(index)
+                app_config.remember_channel(index, name, url)
+                self.play_twitch_url(url, title=name, add_to_list=False)
                 return
             self._iptv_resume_s = app_config.iptv_resume_seconds(url)
             try:
@@ -3262,6 +3376,34 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             return None
         return handler.extract_youtube_id(url)
 
+    def save_twitch_resume(self):
+        if not getattr(self, '_playing_twitch', False):
+            return
+        handler = getattr(self, 'twitch_handler', None)
+        url = getattr(handler, '_current_url', '') if handler else ''
+        if not url or not is_twitch_vod_url(url):
+            return
+        stream = getattr(handler, '_current_stream', None) or {}
+        if stream.get('is_live'):
+            return
+        elapsed_ms = self._playback_elapsed_ms()
+        duration_ms = self._media_length_ms()
+        duration_s = (duration_ms / 1000.0) if duration_ms else stream.get('duration')
+        app_config.update_twitch_position(url, elapsed_ms / 1000.0, duration_s)
+        self._last_twitch_resume_save = time.time()
+
+    def clear_twitch_resume(self):
+        handler = getattr(self, 'twitch_handler', None)
+        url = getattr(handler, '_current_url', '') if handler else ''
+        if url and is_twitch_vod_url(url):
+            app_config.clear_twitch_position(url)
+
+    def _on_twitch_vod_ended(self):
+        if getattr(self, '_tw_end_handled', False):
+            return
+        self._tw_end_handled = True
+        self.clear_twitch_resume()
+
     def save_youtube_resume(self):
         if not getattr(self, '_playing_youtube', False):
             return
@@ -3412,11 +3554,16 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                         name = self.channels[self.current_channel][0]
                     self._show_channel_unavailable(name)
                 elif state == vlc.State.Playing:
-                    if getattr(self, '_playing_youtube', False) or self._iptv_has_real_media():
+                    if (
+                        getattr(self, '_playing_youtube', False)
+                        or getattr(self, '_playing_twitch', False)
+                        or self._iptv_has_real_media()
+                    ):
                         started = getattr(self, '_media_started', False)
                         self._media_started = True
                         if started is False:
                             self._yt_end_handled = False
+                            self._tw_end_handled = False
                         if not started and not getattr(self, '_playing_youtube', False):
                             self._apply_pending_iptv_resume()
                 elif (
@@ -3426,6 +3573,13 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                     and not getattr(self, '_yt_end_handled', False)
                 ):
                     self._on_media_ended(getattr(self, '_media_end_gen', 0))
+                elif (
+                    state == vlc.State.Ended
+                    and getattr(self, '_playing_twitch', False)
+                    and self.progress_frame.winfo_ismapped()
+                    and not getattr(self, '_tw_end_handled', False)
+                ):
+                    self._on_twitch_vod_ended()
                 if active and not self.is_seeking and self.progress_frame.winfo_ismapped():
                     elapsed = self._playback_elapsed_ms()
                     if holding:
@@ -3448,6 +3602,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                         self.save_youtube_resume()
                     if active and now - getattr(self, '_last_iptv_resume_save', 0) >= 20:
                         self.save_iptv_resume()
+                    if active and now - getattr(self, '_last_twitch_resume_save', 0) >= 20:
+                        self.save_twitch_resume()
         except Exception as e:
             print(f"Error actualizando tiempo: {e}")
         self.update_time_job = self.window.after(250, self.update_time)
@@ -3572,9 +3728,14 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         existing = {item_url for _name, item_url in self.all_channels}
         if url in existing:
             return 0
-        title = (name or '').strip() or 'YouTube'
+        if is_twitch_url(url):
+            group = 'Twitch'
+            title = twitch_default_title(url, name)
+        else:
+            group = 'YouTube'
+            title = (name or '').strip() or 'YouTube'
         self.all_channels.append((title, url))
-        self._groups_all.append('YouTube')
+        self._groups_all.append(group)
         self._tvg_ids_all.append('')
         self._logos_all.append('')
         if self._playlist_kind in ('file', 'url') and len(self.all_channels) <= 1500:
@@ -3591,7 +3752,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             self.filter_channels()
         else:
             self.channels.append((title, url))
-            self._groups.append('YouTube')
+            self._groups.append(group)
             self._tvg_ids.append('')
             self._logos.append('')
             self._rebuild_sidebar()
@@ -3724,6 +3885,54 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         )
         self._refresh_history_ui()
 
+    def _prepare_web_stream_player(self):
+        self._ensure_vlc_style_instance()
+        if self.instance is None:
+            self.instance = _make_vlc_instance()
+            self._vlc_style_key = fingerprint()
+        self._cleanup_vlc_player()
+        self.player = self.instance.media_player_new()
+        try:
+            self.player.audio_set_volume(self.volume)
+        except Exception:
+            pass
+        self.show_controls_and_menu()
+
+    def play_twitch_url(self, url, title=None, add_to_list=True):
+        """Reproduce una emisión de Twitch (directo, VOD o clip)."""
+        self.ensure_window()
+        url = (url or '').strip()
+        if not is_twitch_url(url):
+            messagebox.showerror('Twitch', 'La URL no parece ser de Twitch.', parent=self.window)
+            return
+        if add_to_list:
+            label = twitch_default_title(url, title)
+            existing = next((name for name, item_url in self.all_channels if item_url == url), None)
+            if existing and existing not in ('Twitch', url):
+                label = title or existing
+            elif not existing:
+                self.add_channel_to_list(label, url)
+        self._playing_youtube = False
+        self._playing_twitch = True
+        self._yt_standalone = True
+        self.twitch_handler.play_twitch_url(url, title=twitch_default_title(url, title))
+        self._refresh_history_ui()
+
+    def add_twitch_to_favorites(self):
+        handler = getattr(self, 'twitch_handler', None)
+        if handler:
+            handler.add_current_to_favorites()
+
+    def open_twitch_channel_browser(self):
+        from twitch_browse import open_twitch_channel_browser
+        self.ensure_window()
+        open_twitch_channel_browser(self)
+
+    def open_twitch_search(self):
+        from twitch_search import open_twitch_search
+        self.ensure_window()
+        open_twitch_search(self)
+
     def cargar_videos_playlist(self, canales):
         """Carga los vídeos de una playlist de YouTube como canales en el listado."""
         self.channels = canales
@@ -3814,13 +4023,6 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         info = info or self.youtube_handler.session_view()
         ok = bool(info.get('ok'))
         text = f"Sesión YouTube: {'OK' if ok else 'caducada'}"
-        style = 'SessionOk.TLabel' if ok else 'SessionBad.TLabel'
-        label = getattr(self, '_yt_session_label', None)
-        if label:
-            try:
-                label.configure(text=text, style=style)
-            except tk.TclError:
-                pass
         menu = getattr(self, '_youtube_menu', None)
         index = getattr(self, '_yt_session_menu_index', None)
         if menu is not None and index is not None:
@@ -3828,11 +4030,27 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 menu.entryconfigure(index, label=text)
             except tk.TclError:
                 pass
+        from preferences import refresh_preferences_session_ui
+        refresh_preferences_session_ui(youtube_info=info)
+
+    def update_twitch_session_ui(self, info=None):
+        info = info or self.twitch_handler.session_view()
+        ok = bool(info.get('ok'))
+        text = f"Sesión Twitch: {'OK' if ok else 'caducada'}"
+        menu = getattr(self, '_twitch_menu', None)
+        index = getattr(self, '_tw_session_menu_index', None)
+        if menu is not None and index is not None:
+            try:
+                menu.entryconfigure(index, label=text)
+            except tk.TclError:
+                pass
+        from preferences import refresh_preferences_session_ui
+        refresh_preferences_session_ui(twitch_info=info)
 
     def open_preferences(self):
         from preferences import show_preferences
         callback = getattr(self, '_prefs_apply', self.apply_preferences)
-        show_preferences(self.window, on_apply=callback)
+        show_preferences(self.window, on_apply=callback, video_player=self)
 
     def apply_preferences(self):
         if not self._widget_exists(self.window):
@@ -3870,6 +4088,17 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                 pass
         if previous is not None and previous != height and getattr(self, '_playing_youtube', False):
             self._apply_youtube_quality(height, force=True)
+        tw_height = app_config.effective_twitch_quality()
+        prev_tw = getattr(self, '_twitch_quality_applied', None)
+        if prev_tw is None:
+            self._twitch_quality_applied = tw_height
+        elif prev_tw != tw_height and getattr(self, '_playing_twitch', False):
+            self._twitch_quality_applied = tw_height
+            tw_url = getattr(getattr(self, 'twitch_handler', None), '_current_url', '')
+            if tw_url:
+                self.twitch_handler.play_twitch_url(tw_url)
+        else:
+            self._twitch_quality_applied = tw_height
         self._logo_photos = {}
         style_changed = fingerprint() != getattr(self, '_vlc_style_key', None)
         self._ensure_vlc_style_instance()
@@ -3990,9 +4219,15 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         handler = getattr(self, 'youtube_handler', None)
         if handler:
             handler.notify_session()
+        twitch = getattr(self, 'twitch_handler', None)
+        if twitch:
+            twitch.notify_session()
 
     def reexport_youtube_cookies(self):
         self.youtube_handler.reexport_youtube_cookies()
+
+    def reexport_twitch_cookies(self):
+        self.twitch_handler.reexport_twitch_cookies()
 
     def update_yt_dlp(self):
         from preferences import start_yt_dlp_upgrade
