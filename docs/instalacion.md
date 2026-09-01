@@ -65,7 +65,7 @@ python3 -m pytest
 2. En una terminal:
 
 ```bash
-sudo dpkg -i kidneysm3u_1.2.4_all.deb
+sudo dpkg -i kidneysm3u_1.2.5_all.deb
 sudo apt-get install -f   # si hace falta
 ```
 
@@ -117,7 +117,7 @@ Para YouTube en Windows hace falta **Firefox**: Chrome, Brave y Edge cifran las 
 
 ### Instalador de Windows
 
-El usuario instala **Kidneysm3u-Setup-1.2.4.exe** (asistente de Inno Setup): Program Files, menú Inicio y desinstalador. Hace falta [VLC](https://www.videolan.org/vlc/) en el PATH.
+El usuario instala **Kidneysm3u-Setup-1.2.5.exe** (asistente de Inno Setup): Program Files, menú Inicio y desinstalador. Hace falta [VLC](https://www.videolan.org/vlc/) en el PATH.
 
 Para generar el instalador desde Linux (Docker) o desde Windows:
 
@@ -125,7 +125,7 @@ Para generar el instalador desde Linux (Docker) o desde Windows:
 bash build-windows.sh
 ```
 
-El archivo queda en `dist/Kidneysm3u-Setup-1.2.4.exe`. Las preferencias y cookies van a `%LOCALAPPDATA%\kidneysm3u`. Al desinstalar, el asistente pregunta si quieres borrar también esa carpeta. Editor/compañía: **entreunosyceros**.
+El archivo queda en `dist/Kidneysm3u-Setup-1.2.5.exe`. Las preferencias y cookies van a `%LOCALAPPDATA%\kidneysm3u`. Al desinstalar, el asistente pregunta si quieres borrar también esa carpeta. Editor/compañía: **entreunosyceros**.
 
 ## Actualizar el programa
 
@@ -161,8 +161,8 @@ El programa mira el último release de GitHub (`releases/latest`) y saca el núm
 
 En cada versión hay que adjuntar en GitHub, con estos nombres (el número del archivo, no el del tag):
 
-- `Kidneysm3u-Setup-1.2.4.exe`
-- `kidneysm3u_1.2.4_all.deb`
+- `Kidneysm3u-Setup-1.2.5.exe`
+- `kidneysm3u_1.2.5_all.deb`
 
 (cambia el número según `packaging/VERSION` / `app_version.py`). Sin esos archivos, el programa puede avisar de que hay versión nueva pero no podrá descargar el instalador.
 

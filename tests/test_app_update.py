@@ -14,8 +14,8 @@ def test_normalize_and_compare_versions():
     assert app_update.is_newer_version('1.2.3', '1.2.3') is False
     assert app_update.is_newer_version('1.2.2', '1.2.3') is False
     assert app_update.is_newer_version('2.0', '1.9.9') is True
-    assert app_update.current_version() == '1.2.4'
-    assert app_version.__version__ == '1.2.4'
+    assert app_update.current_version() == '1.2.5'
+    assert app_version.__version__ == '1.2.5'
 
 
 def test_install_kind_windows_deb_and_source(tmp_path, monkeypatch):

@@ -1,6 +1,6 @@
 """Versión de Kidneysm3u y repositorio de lanzamientos."""
 
-__version__ = '1.2.4'
+__version__ = '1.2.5'
 GITHUB_OWNER = 'entreunosyceros'
 GITHUB_REPO = 'kidneysm3u'
 GITHUB_RELEASES_URL = f'https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases'
