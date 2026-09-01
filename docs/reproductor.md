@@ -38,7 +38,7 @@ Play/pausa (también **un clic en el vídeo** o `Espacio`), stop, **grabar** (c�
 
 **Calidad / audio** (botón y menú): en YouTube eliges **360p**, **720p**, **1080p** o **mejor disponible** (también en **Preferencias**; si cambias con el vídeo en marcha, se recarga desde el segundo actual). En IPTV, si el stream trae varias pistas de audio, aparecen debajo para cambiar de idioma. YouTube solo trae una pista de audio (no hay doblajes).
 
-Los **subtítulos** listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC. En YouTube el menú pone el español primero: **auto** (transcribe el audio), los del autor, o **traducción automática** (YouTube traduce; no es un doblaje). Se descarga el idioma elegido, no un archivo en caché de otro idioma.
+Los **subtítulos** listan las pistas cuando el stream las tiene. En IPTV y VOD son las pistas embebidas que ve VLC. En YouTube el menú pone el español primero: **auto** (transcribe el audio), los del autor, o **traducción automática** (YouTube traduce; no es un doblaje). Por defecto se activan al reproducir si hay subtítulos disponibles (**Preferencias → Subtítulos**). Se descarga el idioma elegido, no un archivo en caché de otro idioma.
 
 El aspecto de los subtítulos de **texto** (tamaño, color, fondo, contorno, margen y retraso) se ajusta en **Preferencias → Subtítulos**. VLC 3 usa nombres concretos (`freetype-rel-fontsize`, paleta fija de colores); el programa los traduce desde tus preferencias. En YouTube se recarga el vídeo al guardar; en IPTV se recarga el canal en curso. No cambia los subtítulos de imagen que traen algunos canales IPTV.
 

@@ -14,6 +14,7 @@ from youtube_player import (
     youtube_ydl_opts, youtube_auth_blocked, youtube_auth_help, slim_youtube_cookies_file,
 )
 from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window, get_colors
+from ui_layout import setup_resizable_dialog, walk_wraplength
 import app_config
 from display_text import plain_display_text, plain_ui_line
 
@@ -537,11 +538,9 @@ class YouTubeSearchDialog:
         self._posted_menu = None
         self.window = tk.Toplevel(parent)
         self.window.title("Buscar en YouTube")
-        self.window.geometry("820x760")
-        self.window.minsize(680, 580)
+        setup_resizable_dialog(self.window, 820, 760, 680, 580)
         style_window(self.window)
         set_window_icon(self.window)
-        center_window(self.window, 820, 760)
         self.create_widgets()
         if self.youtube_handler:
             self.youtube_handler.add_session_listener(self.update_youtube_session_ui)
@@ -554,9 +553,8 @@ class YouTubeSearchDialog:
         shell.pack(fill=tk.BOTH, expand=True)
 
         body = ttk.Frame(shell)
-        body.pack(fill=tk.BOTH, expand=True)
+        body.pack(fill=tk.X)
         body.columnconfigure(0, weight=1)
-        body.rowconfigure(0, weight=1)
 
         canvas = tk.Canvas(body, bg=colors['bg'], highlightthickness=0, bd=0)
         scroll = ttk.Scrollbar(body, orient=tk.VERTICAL, command=canvas.yview)
@@ -574,6 +572,7 @@ class YouTubeSearchDialog:
             main_frame,
             text='Vídeos, Shorts, listas y canales. Las 5 últimas búsquedas están debajo: un clic las vuelve a lanzar. Pulsa ☆ junto al nombre para guardarlo en favoritos.',
             style='Muted.TLabel',
+            wraplength=500,
         ).pack(anchor=tk.W, pady=(0, 8))
 
         session_frame = ttk.Frame(main_frame)
@@ -626,71 +625,68 @@ class YouTubeSearchDialog:
         # Frame de filtros
         filter_frame = ttk.Frame(main_frame)
         filter_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        # Filtro por tipo de contenido
-        ttk.Label(filter_frame, text="Tipo:").pack(side=tk.LEFT, padx=(0, 2))
+        for col in (1, 3):
+            filter_frame.columnconfigure(col, weight=1)
+
+        ttk.Label(filter_frame, text="Tipo:").grid(row=0, column=0, sticky=tk.W, padx=(0, 2), pady=(0, 6))
         self.type_var = tk.StringVar(value="Vídeos")
         type_combobox = ttk.Combobox(
             filter_frame, textvariable=self.type_var,
             values=["Vídeos", "Shorts", "Listas de reproducción", "Canales"],
-            width=15, state="readonly"
+            state="readonly",
         )
-        type_combobox.pack(side=tk.LEFT, padx=(0, 10))
+        type_combobox.grid(row=0, column=1, sticky='ew', padx=(0, 10), pady=(0, 6))
         type_combobox.bind('<<ComboboxSelected>>', self._on_type_change)
-        
-        # Filtro por fecha
-        ttk.Label(filter_frame, text="Fecha:").pack(side=tk.LEFT, padx=(0, 2))
+
+        ttk.Label(filter_frame, text="Fecha:").grid(row=0, column=2, sticky=tk.W, padx=(0, 2), pady=(0, 6))
         self.date_var = tk.StringVar(value="Cualquier fecha")
         date_combobox = ttk.Combobox(
             filter_frame, textvariable=self.date_var,
             values=["Cualquier fecha", "Hoy", "Esta semana", "Este mes", "Este año"],
-            width=15, state="readonly"
+            state="readonly",
         )
-        date_combobox.pack(side=tk.LEFT, padx=(0, 10))
-        
-        # Filtro por duración
-        ttk.Label(filter_frame, text="Duración:").pack(side=tk.LEFT, padx=(0, 2))
+        date_combobox.grid(row=0, column=3, sticky='ew', pady=(0, 6))
+
+        ttk.Label(filter_frame, text="Duración:").grid(row=1, column=0, sticky=tk.W, padx=(0, 2))
         self.duration_var = tk.StringVar(value="Cualquier duración")
         self.duration_combobox = ttk.Combobox(
             filter_frame, textvariable=self.duration_var,
             values=["Cualquier duración", "Corto (<4 min)", "Medio (4-20 min)", "Largo (>20 min)"],
-            width=15, state="readonly"
+            state="readonly",
         )
-        self.duration_combobox.pack(side=tk.LEFT, padx=(0, 10))
-        
-        # Filtro por orden
-        ttk.Label(filter_frame, text="Ordenar por:").pack(side=tk.LEFT, padx=(0, 2))
+        self.duration_combobox.grid(row=1, column=1, sticky='ew', padx=(0, 10))
+
+        ttk.Label(filter_frame, text="Ordenar por:").grid(row=1, column=2, sticky=tk.W, padx=(0, 2))
         self.sort_var = tk.StringVar(value="Relevancia")
         sort_combobox = ttk.Combobox(
             filter_frame, textvariable=self.sort_var,
             values=["Relevancia", "Fecha", "Vistas", "Valoración"],
-            width=15, state="readonly"
+            state="readonly",
         )
-        sort_combobox.pack(side=tk.LEFT)
+        sort_combobox.grid(row=1, column=3, sticky='ew')
 
-        # Frame para la lista de resultados
         results_frame = ttk.Frame(main_frame)
         results_frame.pack(fill=tk.X, pady=(0, 10))
-        
+
         ttk.Label(results_frame, text="Número de resultados:").pack(side=tk.LEFT, padx=(0, 2))
         self.results_count = tk.IntVar(value=10)
         results_spinbox = ttk.Spinbox(
             results_frame, from_=1, to=100, textvariable=self.results_count, width=4
         )
         results_spinbox.pack(side=tk.LEFT)
-        
-        # Frame para la lista de resultados y barra de desplazamiento
-        results_list_frame = ttk.Frame(main_frame)
-        results_list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 4))
-        
-        # Scrollbar
+
+        self._search_main_frame = main_frame
+        main_frame.bind('<Configure>', self._sync_search_scroll)
+        canvas.bind('<Configure>', self._sync_search_scroll)
+
+        results_list_frame = ttk.Frame(shell)
+        results_list_frame.pack(fill=tk.BOTH, expand=True, pady=(8, 4))
+
         scrollbar = ttk.Scrollbar(results_list_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Listbox
+
         self.results_listbox = tk.Listbox(
             results_list_frame,
-            height=14,
             yscrollcommand=scrollbar.set,
             selectmode=tk.EXTENDED,
         )
@@ -710,12 +706,11 @@ class YouTubeSearchDialog:
         self.window.bind_all('<Escape>', self._on_escape_dismiss_menu, add='+')
 
         # Barra de progreso
-        self.progress_frame = ttk.Frame(main_frame)
+        self.progress_frame = ttk.Frame(shell)
         self.progress_frame.pack(fill=tk.X, pady=(5, 10))
         self.progress_bar = ttk.Progressbar(self.progress_frame, mode='indeterminate')
-        
-        # Frame de botones
-        button_frame = ttk.Frame(main_frame)
+
+        button_frame = ttk.Frame(shell)
         button_frame.pack(fill=tk.X, pady=(10, 0))
         
         play_btn = ttk.Button(button_frame, text="Reproducir", style='Accent.TButton', command=self.play_selected)
@@ -742,15 +737,13 @@ class YouTubeSearchDialog:
         close_btn = ttk.Button(button_frame, text="Cerrar", command=self._on_close)
         close_btn.pack(side=tk.RIGHT)
 
-        self.queue_status = ttk.Label(main_frame, text='', style='Muted.TLabel')
+        self.queue_status = ttk.Label(shell, text='', style='Muted.TLabel')
         self.queue_status.pack(anchor=tk.W, pady=(8, 0))
-        
+
         self.results = []
         self.result_types = []
         self.result_details = []
 
-        main_frame.bind('<Configure>', self._sync_search_scroll)
-        canvas.bind('<Configure>', self._sync_search_scroll)
         self._bind_search_wheel(self.window)
         self.window.after_idle(self._sync_search_scroll)
 
@@ -765,6 +758,10 @@ class YouTubeSearchDialog:
         try:
             width = max(1, int(canvas.winfo_width()))
             canvas.itemconfigure(main_id, width=width)
+            wrap = max(240, width - 36)
+            main_frame = getattr(self, '_search_main_frame', None)
+            if main_frame is not None:
+                walk_wraplength(main_frame, wrap)
             canvas.configure(scrollregion=canvas.bbox('all') or (0, 0, 0, 0))
         except tk.TclError:
             pass

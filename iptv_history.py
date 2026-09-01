@@ -7,6 +7,7 @@ import app_config
 from ui_theme import (
     center_window, get_colors, set_window_icon, style_window,
 )
+from ui_layout import bind_wraplength, bind_tree_stretch, setup_resizable_dialog
 
 
 def show_iptv_history(player):
@@ -32,11 +33,9 @@ class HistoryWindow:
         colors = get_colors()
         window = tk.Toplevel(player.window)
         window.title('Historial')
-        window.geometry('720x520')
-        window.minsize(520, 360)
+        setup_resizable_dialog(window, 720, 520, 520, 360)
         style_window(window)
         set_window_icon(window)
-        center_window(window, 720, 520)
         window.transient(player.window)
         self.window = window
         self._entries = {}
@@ -52,6 +51,7 @@ class HistoryWindow:
             style='Muted.TLabel',
             wraplength=680,
         ).pack(anchor=tk.W, padx=12, pady=(0, 8))
+        bind_wraplength(window, padding=24)
 
         body = ttk.Frame(window, padding=(12, 0, 12, 12))
         body.pack(fill=tk.BOTH, expand=True)
@@ -72,6 +72,7 @@ class HistoryWindow:
         self.tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        bind_tree_stretch(self.tree, stretch_columns=('#0',))
         self.tree.tag_configure('section', foreground=colors['text_muted'])
         self.tree.bind('<Double-Button-1>', self._play_selected)
         self.tree.bind('<Return>', self._play_selected)

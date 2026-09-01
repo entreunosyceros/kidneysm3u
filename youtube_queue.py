@@ -7,6 +7,7 @@ import app_config
 from ui_theme import (
     center_window, get_colors, set_window_icon, style_window,
 )
+from ui_layout import bind_wraplength, bind_tree_stretch, setup_resizable_dialog
 
 
 def show_youtube_queue(player):
@@ -32,11 +33,9 @@ class YoutubeQueueWindow:
         colors = get_colors()
         window = tk.Toplevel(player.window)
         window.title('Cola de YouTube')
-        window.geometry('560x420')
-        window.minsize(420, 300)
+        setup_resizable_dialog(window, 560, 420, 420, 300)
         style_window(window)
         set_window_icon(window)
-        center_window(window, 560, 420)
         window.transient(player.window)
         self.window = window
 
@@ -45,12 +44,14 @@ class YoutubeQueueWindow:
         ttk.Label(top, text='Cola de YouTube', style='PageTitle.TLabel').pack(side=tk.LEFT)
         ttk.Button(top, text='Cerrar', command=self.close).pack(side=tk.RIGHT)
 
-        ttk.Label(
+        intro = ttk.Label(
             window,
             text='Lo que añadas aquí se reproduce al terminar el vídeo actual. No se mezcla con la lista IPTV.',
             style='Muted.TLabel',
             wraplength=520,
-        ).pack(anchor=tk.W, padx=12, pady=(0, 8))
+        )
+        intro.pack(anchor=tk.W, padx=12, pady=(0, 8))
+        bind_wraplength(window, padding=24)
 
         body = ttk.Frame(window, padding=(12, 0, 12, 12))
         body.pack(fill=tk.BOTH, expand=True)
@@ -68,6 +69,7 @@ class YoutubeQueueWindow:
         self.tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        bind_tree_stretch(self.tree, stretch_columns=('#0',))
         self.tree.tag_configure('empty', foreground=colors['text_muted'])
         self.tree.bind('<Double-Button-1>', self._play_selected)
         self.tree.bind('<Return>', self._play_selected)

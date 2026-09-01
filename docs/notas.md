@@ -15,11 +15,13 @@
 
 El reproductor está partido en `video_player.py` más mixins: `player_iptv.py` (apertura VLC y stream muerto), `iptv_buffer.py` (caché según tipo/perfil y reconexión), `player_overlay.py` (aviso en pantalla), `player_controls.py` (barra, volumen, pantalla completa) y `player_pip.py` (recuadro PiP y siempre encima). Los menús de **calidad / audio** y **subtítulos** se colocan para que quepan en la ventana (`popup_menu_origin` en `video_player.py`): si no hay sitio debajo del botón, se abren hacia arriba. La grabación del stream actual está en `iptv_record.py`: `ffmpeg -c copy` a un `.ts`/`.mkv` local (carpeta de descargas de Preferencias). No sube nada ni descifra DRM.
 
+Las ventanas Tk del programa son redimensionables: el módulo `ui_layout.py` centraliza scroll vertical, `wraplength` dinámico en etiquetas, listas y árboles expandibles y diálogos con tamaño mínimo. Al agrandar o estrechar una ventana, el texto se reajusta y las listas ocupan el espacio disponible (p. ej. preferencias, búsqueda YouTube, parrilla EPG con scroll horizontal).
+
 Caché de red de VLC con el perfil **Equilibrado** (ms): MPEG-TS 5000, HLS 8000, VOD/contenedor 4000, relevo local 1500. **Rápido** baja esos valores (MPEG-TS 2000, HLS 5000); **Estable** los sube (MPEG-TS 8000, HLS 12000). Tope 15000 ms. En directo se envía `clock-synchro=0` y `clock-jitter` igual a la caché (no 0). En VOD no se toca el reloj. Si hay varios microcortes con bytes llegando (~3 en 30 s), se reabre una vez con +3000 ms.
 
 ## Tests
 
-El parseo de M3U (`#EXTINF`, `tvg-id`, `tvg-logo`, encabezado `#EXTM3U` con `url-tvg`), la guía XMLTV (ahora/siguiente, parrilla, iconos), el buffer IPTV (`tests/test_iptv_buffer.py`), el zap por número (`tests/test_channel_zap.py`), las actualizaciones (`tests/test_app_update.py`) y los mixins del reproductor (menús emergentes, PiP) tienen pruebas en `tests/`. No van en el `.deb`; son para desarrollo:
+El parseo de M3U (`#EXTINF`, `tvg-id`, `tvg-logo`, encabezado `#EXTM3U` con `url-tvg`), la guía XMLTV (ahora/siguiente, parrilla, iconos), el buffer IPTV (`tests/test_iptv_buffer.py`), el zap por número (`tests/test_channel_zap.py`), las actualizaciones (`tests/test_app_update.py`), el layout adaptable de ventanas (`tests/test_ui_layout.py`) y los mixins del reproductor (menús emergentes, PiP) tienen pruebas en `tests/`. No van en el `.deb`; son para desarrollo:
 
 ```bash
 python3 -m pip install -r requirements-dev.txt

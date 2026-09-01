@@ -61,7 +61,7 @@ from iptv_history import show_iptv_history
 from youtube_queue import show_youtube_queue
 from player_controls import PlayerControlsMixin
 from player_iptv import IptvPlaybackMixin
-from player_overlay import ChannelNoticeMixin
+from player_overlay import ChannelNoticeMixin, YoutubeTitleOverlayMixin
 from player_pip import PlayerPipMixin
 from iptv_record import StreamRecorder, default_recording_path, show_recordings
 
@@ -185,7 +185,13 @@ def should_offer_youtube_replay(playing_youtube, standalone, sequential, queue_p
     return bool(playing_youtube and standalone and not sequential and not queue_pending)
 
 
-class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, PlayerPipMixin):
+class VideoPlayer(
+    PlayerControlsMixin,
+    IptvPlaybackMixin,
+    YoutubeTitleOverlayMixin,
+    ChannelNoticeMixin,
+    PlayerPipMixin,
+):
     def __init__(self):
         self.window = None
         self.instance = _make_vlc_instance()
@@ -381,6 +387,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         self._listbox_tip_index = None
         self.channels_listbox.bind('<Motion>', self.on_listbox_motion)
         self.channels_listbox.bind('<Leave>', self.on_listbox_leave)
+        self.channels_frame.bind('<Configure>', self._sync_sidebar_layout, add='+')
         self.channels_listbox.bind('<Button-4>', self._hide_listbox_tooltip, add='+')
         self.channels_listbox.bind('<Button-5>', self._hide_listbox_tooltip, add='+')
         self.channels_listbox.bind('<MouseWheel>', self._hide_listbox_tooltip, add='+')
@@ -1178,6 +1185,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
     def clear_youtube_subtitles(self):
         self._yt_subtitles = []
         self._active_yt_sub = None
+        self._cancel_youtube_auto_sub_job()
         self._clear_yt_sub_files()
         if getattr(self, '_subs_choice', None) is not None:
             self._subs_choice.set('off')
@@ -1186,6 +1194,53 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
     def set_youtube_subtitles(self, items):
         self._yt_subtitles = list(items or [])
         self._rebuild_track_menus()
+
+    def _mark_active_youtube_subtitle(self, kind, lang):
+        self._active_yt_sub = (kind, lang)
+        if getattr(self, '_subs_choice', None) is not None and kind and lang:
+            self._subs_choice.set(f'{kind}:{lang}')
+        self._rebuild_track_menus()
+
+    def _cancel_youtube_auto_sub_job(self):
+        job = getattr(self, '_yt_auto_sub_job', None)
+        self._yt_auto_sub_job = None
+        if not job or not self._widget_exists(getattr(self, 'window', None)):
+            return
+        try:
+            self.window.after_cancel(job)
+        except tk.TclError:
+            pass
+
+    def _schedule_youtube_auto_subtitle(self, item):
+        if not item or self._active_yt_sub:
+            return
+        self._cancel_youtube_auto_sub_job()
+        if not self._widget_exists(getattr(self, 'window', None)):
+            return
+        self._yt_auto_sub_job = self.window.after(1200, lambda it=item: self._try_youtube_auto_subtitle(it))
+
+    def _try_youtube_auto_subtitle(self, item):
+        self._yt_auto_sub_job = None
+        if self._active_yt_sub or not getattr(self, '_playing_youtube', False):
+            return
+        if not app_config.get_youtube_auto_subtitles():
+            return
+        self._apply_youtube_subtitle(item)
+
+    def _attach_youtube_subtitle_file(self, path, item=None):
+        if not path or not os.path.isfile(path) or not self.player:
+            return False
+        self._ensure_vlc_style_instance()
+        try:
+            self.player.video_set_subtitle_file(path)
+            self._active_spu_id = -1
+            if item:
+                self._mark_active_youtube_subtitle(item.get('kind'), item.get('lang'))
+            print(f"[VLC] Subtítulo cargado: {path}")
+            return True
+        except Exception as exc:
+            print(f"[VLC] No se pudo cargar subtítulo: {exc}")
+            return False
 
     def _clear_yt_sub_files(self):
         path = getattr(self, '_yt_sub_dir', None)
@@ -1429,9 +1484,13 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             keep_ms = self._playback_elapsed_ms()
             handler = self.youtube_handler
             direct = getattr(handler, '_direct_url', '') or ''
-            if not direct:
-                print('[YouTube] No hay URL de stream para recargar con subtítulos')
-                return
+            via_pipe = getattr(self, '_yt_via_pipe', False)
+            if via_pipe or not direct:
+                if self._attach_youtube_subtitle_file(path, item):
+                    return
+                if not direct:
+                    print('[YouTube] No hay URL de stream para recargar con subtítulos')
+                    return
             self._ensure_vlc_style_instance()
             self.play_video_url(
                 direct,
@@ -1490,6 +1549,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
 
         # Clic en el vídeo: pausa/reanuda. VLC no debe tragarse el ratón (si no, el clic no llega a Tk).
         self.video_frame.bind('<Button-1>', self._on_video_click)
+        self._bind_youtube_title_motion(self.video_frame)
 
         # Eventos para el sizer
         self.sizer.bind('<Button-1>', self.start_resize)
@@ -2565,6 +2625,17 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             return ''
         current, nxt = self._epg.now_next(self._epg_key(index))
         return epg.format_now_next(current, nxt)
+
+    def _sync_sidebar_layout(self, event=None):
+        frame = getattr(self, 'channels_frame', None)
+        label = getattr(self, '_epg_label', None)
+        if not frame or not label:
+            return
+        try:
+            from ui_layout import wraplength_for
+            label.configure(wraplength=wraplength_for(frame.winfo_width(), padding=16, min_wrap=80))
+        except tk.TclError:
+            pass
 
     def _set_epg_label(self, text):
         label = getattr(self, '_epg_label', None)
@@ -4207,15 +4278,17 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         """Vuelve a abrir el stream de YouTube con la instancia VLC del estilo actual."""
         handler = getattr(self, 'youtube_handler', None)
         direct = getattr(handler, '_direct_url', '') or '' if handler else ''
-        if not handler or not direct:
+        if not handler:
             self._ensure_vlc_style_instance()
             return
         keep_ms = self._playback_elapsed_ms()
         sub_path = None
         active = getattr(self, '_active_yt_sub', None)
+        active_item = None
         for item in getattr(self, '_yt_subtitles', []) or []:
             if active and (item.get('kind'), item.get('lang')) == active:
                 sub_path = item.get('path')
+                active_item = item
                 break
         if sub_path and os.path.isfile(sub_path):
             from youtube_subs import prepare_subtitle_for_vlc
@@ -4226,8 +4299,12 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
                     if active and (item.get('kind'), item.get('lang')) == active:
                         item['path'] = ready
                         break
-        kwargs = dict(getattr(handler, '_play_kwargs', {}) or {})
         self._ensure_vlc_style_instance()
+        if getattr(self, '_yt_via_pipe', False) or not direct:
+            if sub_path and os.path.isfile(sub_path):
+                self._attach_youtube_subtitle_file(sub_path, active_item)
+            return
+        kwargs = dict(getattr(handler, '_play_kwargs', {}) or {})
         self.play_video_url(
             direct,
             force_pulse=kwargs.get('force_pulse', True),
@@ -4355,7 +4432,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             text,
             event.x_root + 14,
             event.y_root + 12,
-            wraplength=360,
+            wraplength=max(200, min(360, int(getattr(self, 'channels_frame', self.channels_listbox).winfo_width()) + 40)),
         )
 
     def on_listbox_leave(self, event):
@@ -4550,6 +4627,8 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
             wraplength=460,
             justify='center',
         ).pack(pady=(12, 16))
+        from ui_layout import bind_wraplength
+        bind_wraplength(panel, padding=56, min_wrap=120)
         buttons = ttk.Frame(card, style='Card.TFrame')
         buttons.pack()
         ttk.Button(
@@ -5039,6 +5118,7 @@ class VideoPlayer(PlayerControlsMixin, IptvPlaybackMixin, ChannelNoticeMixin, Pl
         # Limitar el ancho mínimo y máximo
         if 200 <= new_width <= 600:
             self.channels_frame.configure(width=new_width)
+            self._sync_sidebar_layout()
         self.last_x = event.x_root
 
     def stop_resize(self, event):

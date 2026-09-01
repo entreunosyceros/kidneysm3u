@@ -16,6 +16,7 @@ from ui_theme import (
     apply_theme, get_colors, style_window, style_menu_tree,
     set_window_icon, center_window,
 )
+from ui_layout import bind_wraplength, setup_resizable_dialog
 from ui_clipboard import ask_string
 import app_config
 from app_paths import data_dir
@@ -170,7 +171,13 @@ class M3UProcessor:
 
         status = ttk.Frame(self.root, style='Status.TFrame', padding=(24, 10))
         status.pack(fill=tk.X, side=tk.BOTTOM)
-        ttk.Label(status, textvariable=self.status_var, style='Status.TLabel').pack(side=tk.LEFT)
+        ttk.Label(
+            status,
+            textvariable=self.status_var,
+            style='Status.TLabel',
+            wraplength=720,
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        bind_wraplength(status, padding=48)
         ttk.Separator(self.root, orient='horizontal').pack(fill=tk.X, side=tk.BOTTOM)
 
         body = ttk.Frame(self.root, padding=24)
@@ -273,12 +280,11 @@ class M3UProcessor:
     def edit_pattern(self):
         pattern_window = tk.Toplevel(self.root)
         pattern_window.title('Editar Patrón de Búsqueda')
-        pattern_window.geometry('460x340')
+        setup_resizable_dialog(pattern_window, 460, 340, 360, 280)
         pattern_window.transient(self.root)
         pattern_window.grab_set()
         style_window(pattern_window)
         set_window_icon(pattern_window)
-        center_window(pattern_window, 460, 340)
 
         edit_frame = ttk.Frame(pattern_window, padding=20)
         edit_frame.pack(fill=tk.BOTH, expand=True)
@@ -309,6 +315,7 @@ class M3UProcessor:
             command=lambda: self.apply_custom_pattern(custom_pattern.get(), pattern_window),
         ).pack(side=tk.LEFT)
         ttk.Button(buttons_frame, text='Cancelar', command=pattern_window.destroy).pack(side=tk.LEFT, padx=8)
+        bind_wraplength(pattern_window, padding=40)
     
     def set_pattern(self, pattern, window):
         self.search_pattern.set(pattern)

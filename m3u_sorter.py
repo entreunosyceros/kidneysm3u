@@ -1,17 +1,16 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import re
-from ui_theme import style_window, style_listbox, style_text, set_window_icon, center_window
+from ui_theme import style_window, style_listbox, style_text, set_window_icon
+from ui_layout import bind_wraplength, setup_resizable_dialog
 
 class M3USorter:
     def __init__(self, root, input_file):
         self.window = tk.Toplevel(root)
         self.window.title('Ordenar Lista M3U')
-        self.window.geometry('860x640')
-        self.window.minsize(640, 420)
+        setup_resizable_dialog(self.window, 860, 640, 640, 420)
         style_window(self.window)
         set_window_icon(self.window)
-        center_window(self.window, 860, 640)
         
         self.input_file = input_file
         self.channels = []
@@ -55,24 +54,38 @@ class M3USorter:
         
         buttons_frame = ttk.Frame(main_frame)
         buttons_frame.pack(fill=tk.X)
-        
+        for col in range(4):
+            buttons_frame.columnconfigure(col, weight=1 if col == 3 else 0)
+
         self.drag_enabled = tk.BooleanVar(value=False)
-        
-        ttk.Button(buttons_frame, text='Cortar', command=self.cut_channels).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(buttons_frame, text='Copiar', command=self.copy_channels).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(buttons_frame, text='Pegar', command=self.paste_channels).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(buttons_frame, text='Eliminar', command=self.delete_channels).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(buttons_frame, text='Editar canal', command=self.edit_channel).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(buttons_frame, text='Cambiar grupo', command=self.change_group).pack(side=tk.LEFT, padx=(0, 6))
+
+        ttk.Button(buttons_frame, text='Cortar', command=self.cut_channels).grid(
+            row=0, column=0, padx=(0, 6), pady=(0, 6), sticky=tk.W,
+        )
+        ttk.Button(buttons_frame, text='Copiar', command=self.copy_channels).grid(
+            row=0, column=1, padx=(0, 6), pady=(0, 6), sticky=tk.W,
+        )
+        ttk.Button(buttons_frame, text='Pegar', command=self.paste_channels).grid(
+            row=0, column=2, padx=(0, 6), pady=(0, 6), sticky=tk.W,
+        )
+        ttk.Button(buttons_frame, text='Eliminar', command=self.delete_channels).grid(
+            row=0, column=3, padx=(0, 6), pady=(0, 6), sticky=tk.W,
+        )
+        ttk.Button(buttons_frame, text='Editar canal', command=self.edit_channel).grid(
+            row=1, column=0, padx=(0, 6), sticky=tk.W,
+        )
+        ttk.Button(buttons_frame, text='Cambiar grupo', command=self.change_group).grid(
+            row=1, column=1, padx=(0, 6), sticky=tk.W,
+        )
         ttk.Checkbutton(
             buttons_frame,
             text='Drag & drop',
             variable=self.drag_enabled,
             command=self.toggle_drag_drop,
-        ).pack(side=tk.LEFT, padx=(8, 0))
+        ).grid(row=1, column=2, padx=(8, 0), sticky=tk.W)
         ttk.Button(
-            buttons_frame, text='Guardar', style='Accent.TButton', command=self.save_channels
-        ).pack(side=tk.RIGHT)
+            buttons_frame, text='Guardar', style='Accent.TButton', command=self.save_channels,
+        ).grid(row=1, column=3, sticky=tk.E)
         
         self.window.bind('<Control-x>', lambda e: self.cut_channels())
         self.window.bind('<Control-c>', lambda e: self.copy_channels())
@@ -151,24 +164,30 @@ class M3USorter:
         
         edit_window = tk.Toplevel(self.window)
         edit_window.title('Editar Canal')
-        edit_window.geometry('640x340')
+        setup_resizable_dialog(edit_window, 640, 340, 480, 280)
         style_window(edit_window)
         set_window_icon(edit_window)
-        center_window(edit_window, 640, 340)
 
         edit_frame = ttk.Frame(edit_window, padding=16)
         edit_frame.pack(fill=tk.BOTH, expand=True)
-        
-        ttk.Label(edit_frame, text='Información del canal', style='Muted.TLabel').pack(anchor=tk.W, pady=(0, 6))
+        edit_frame.rowconfigure(1, weight=1)
+        edit_frame.rowconfigure(3, weight=1)
+        edit_frame.columnconfigure(0, weight=1)
+
+        ttk.Label(edit_frame, text='Información del canal', style='Muted.TLabel').grid(
+            row=0, column=0, sticky=tk.W, pady=(0, 6),
+        )
         info_text = tk.Text(edit_frame, height=5)
         info_text.insert('1.0', extinf_line)
-        info_text.pack(fill=tk.X, pady=(0, 12))
+        info_text.grid(row=1, column=0, sticky='nsew', pady=(0, 12))
         style_text(info_text)
-        
-        ttk.Label(edit_frame, text='URL', style='Muted.TLabel').pack(anchor=tk.W, pady=(0, 6))
+
+        ttk.Label(edit_frame, text='URL', style='Muted.TLabel').grid(
+            row=2, column=0, sticky=tk.W, pady=(0, 6),
+        )
         url_text = tk.Text(edit_frame, height=2)
         url_text.insert('1.0', url_line)
-        url_text.pack(fill=tk.X, pady=(0, 16))
+        url_text.grid(row=3, column=0, sticky='nsew', pady=(0, 16))
         style_text(url_text)
         
         def save_changes():
@@ -179,7 +198,10 @@ class M3USorter:
             self.channels_listbox.insert(index, self.get_channel_name(new_extinf))
             edit_window.destroy()
             
-        ttk.Button(edit_frame, text='Guardar', style='Accent.TButton', command=save_changes).pack(anchor=tk.E)
+        ttk.Button(edit_frame, text='Guardar', style='Accent.TButton', command=save_changes).grid(
+            row=4, column=0, sticky=tk.E,
+        )
+        bind_wraplength(edit_window, padding=32)
 
     def save_channels(self):
         output_file = filedialog.asksaveasfilename(

@@ -16,6 +16,7 @@ import app_config
 import app_version
 from display_text import plain_ui_line
 from ui_theme import style_window, set_window_icon, center_window
+from ui_layout import bind_wraplength, setup_resizable_dialog
 
 CHECK_INTERVAL_S = 24 * 3600
 MAX_ASSET_BYTES = 200 * 1024 * 1024
@@ -385,16 +386,15 @@ def show_update_dialog(root, result, quit_app=None):
 
     window = tk.Toplevel(root)
     window.title('Nueva versión')
-    window.geometry('460x280')
-    window.minsize(420, 240)
+    setup_resizable_dialog(window, 460, 280, 420, 240)
     window.transient(root)
     style_window(window)
     set_window_icon(window)
-    center_window(window, 460, 280)
     _dialog = window
 
     frame = ttk.Frame(window, padding=20)
     frame.pack(fill=tk.BOTH, expand=True)
+    bind_wraplength(frame, padding=40)
 
     ttk.Label(frame, text='Hay una versión nueva', style='PageTitle.TLabel').pack(anchor=tk.W)
     ttk.Label(

@@ -71,6 +71,7 @@ class PlayerPipMixin:
         pip.bind('<Escape>', lambda e: self.close_pip())
         pip.bind('<Double-Button-1>', lambda e: self.close_pip())
         frame.bind('<Double-Button-1>', lambda e: self.close_pip())
+        self._bind_youtube_title_motion(frame)
         click = getattr(self, '_on_video_click', None)
         if click:
             frame.bind('<Button-1>', click)

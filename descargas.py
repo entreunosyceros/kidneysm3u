@@ -10,6 +10,7 @@ import pathlib
 import requests
 from urllib.parse import unquote
 from ui_theme import style_window, set_window_icon, center_window, style_listbox, style_menu_tree
+from ui_layout import bind_wraplength, setup_resizable_dialog, walk_wraplength
 import app_config
 from display_text import truncate_ui_text
 
@@ -95,14 +96,10 @@ class DownloadManager:
     def __init__(self, parent):
         self.window = tk.Toplevel(parent)
         self.window.title("Descargar URL")
-        self.window.geometry("640x700")
-        self.window.resizable(True, True)
-        self.window.minsize(520, 600)
+        from ui_layout import setup_resizable_dialog
+        setup_resizable_dialog(self.window, 640, 700, 520, 600)
         style_window(self.window)
         set_window_icon(self.window)
-        center_window(self.window, 640, 700)
-        
-        # Variables
         self.url = tk.StringVar()
         self.output_path = tk.StringVar(value=app_config.get_download_dir())
         self.filename = tk.StringVar()
@@ -128,7 +125,9 @@ class DownloadManager:
             main_frame,
             text='YouTube, listas y archivos directos',
             style='Muted.TLabel',
+            wraplength=500,
         ).pack(anchor=tk.W, pady=(0, 16))
+        bind_wraplength(main_frame, padding=40)
         
         url_frame = ttk.LabelFrame(main_frame, text=" URL ", padding=10)
         url_frame.pack(fill=tk.X, pady=(0, 12))
@@ -143,7 +142,6 @@ class DownloadManager:
         scroll = ttk.Scrollbar(list_row)
         self.recent_list = tk.Listbox(
             list_row,
-            height=5,
             activestyle='dotbox',
             exportselection=False,
             yscrollcommand=scroll.set,

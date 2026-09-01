@@ -1423,6 +1423,9 @@ class TwitchHandler:
         detail_label.pack(pady=(8, 0))
         self._loading_detail_label = detail_label
 
+        from ui_layout import bind_loading_card
+        bind_loading_card(overlay, card, [title_label, status_label, detail_label])
+
     def _set_loading_detail(self, text):
         label = getattr(self, '_loading_detail_label', None)
         if not label:

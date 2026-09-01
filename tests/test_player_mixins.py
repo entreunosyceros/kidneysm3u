@@ -1,6 +1,6 @@
 from player_controls import PlayerControlsMixin
 from player_iptv import IptvPlaybackMixin
-from player_overlay import ChannelNoticeMixin
+from player_overlay import ChannelNoticeMixin, YoutubeTitleOverlayMixin
 from player_pip import PlayerPipMixin, pip_surface_ready
 from video_player import VideoPlayer, popup_menu_origin
 
@@ -8,6 +8,7 @@ from video_player import VideoPlayer, popup_menu_origin
 def test_player_uses_iptv_overlay_and_controls_mixins():
     assert issubclass(VideoPlayer, IptvPlaybackMixin)
     assert issubclass(VideoPlayer, ChannelNoticeMixin)
+    assert issubclass(VideoPlayer, YoutubeTitleOverlayMixin)
     assert issubclass(VideoPlayer, PlayerControlsMixin)
     assert issubclass(VideoPlayer, PlayerPipMixin)
     for name in (
@@ -83,6 +84,18 @@ def test_popup_menu_clamps_x_to_stay_in_window():
     x, y = popup_menu_origin(750, 100, 30, 200, 80, 0, 0, 800, 600)
     assert x == 596
     assert y == 130
+
+
+def test_youtube_title_text_uses_handler_title():
+    class Dummy(YoutubeTitleOverlayMixin):
+        _playing_youtube = True
+        current_channel = None
+        youtube_handler = type('H', (), {'_loading_title_text': 'Mi vídeo'})()
+
+        def _widget_exists(self, widget):
+            return False
+
+    assert Dummy()._youtube_title_text() == 'Mi vídeo'
 
 
 def test_hide_controls_keeps_bar_when_popup_open():

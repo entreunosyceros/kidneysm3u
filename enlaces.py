@@ -3,17 +3,16 @@ from tkinter import ttk, messagebox
 import json
 import webbrowser
 import os
-from ui_theme import style_window, style_listbox, set_window_icon, center_window
+from ui_theme import style_window, style_listbox, set_window_icon
+from ui_layout import setup_resizable_dialog
 
 class EnlacesManager:
     def __init__(self, root):
         self.window = tk.Toplevel(root)
         self.window.title('Gestionar Enlaces')
-        self.window.geometry('520x380')
-        self.window.minsize(420, 300)
+        setup_resizable_dialog(self.window, 520, 380, 420, 300)
         style_window(self.window)
         set_window_icon(self.window)
-        center_window(self.window, 520, 380)
         
         self.enlaces = self.cargar_enlaces()
         self.create_widgets()

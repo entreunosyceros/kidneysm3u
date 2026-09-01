@@ -15,6 +15,7 @@ from twitch_player import (
 )
 from ui_clipboard import ask_string
 from ui_theme import center_window, get_colors, set_window_icon, style_listbox, style_window
+from ui_layout import bind_wraplength, setup_resizable_dialog
 
 
 def _format_duration(seconds):
@@ -72,16 +73,15 @@ class TwitchChannelBrowser:
 
         window = tk.Toplevel(player.window)
         window.title(f'Twitch · {channel}')
-        window.geometry('760x560')
-        window.minsize(560, 420)
+        setup_resizable_dialog(window, 760, 560, 560, 420)
         style_window(window)
         set_window_icon(window)
-        center_window(window, 760, 560)
         window.transient(player.window)
         self.window = window
 
         top = ttk.Frame(window, padding=(12, 10, 12, 6))
         top.pack(fill=tk.X)
+        bind_wraplength(window, padding=40)
         ttk.Label(top, text='VODs del canal', style='PageTitle.TLabel').pack(side=tk.LEFT)
         ttk.Button(top, text='Cerrar', command=self.close).pack(side=tk.RIGHT)
         ttk.Button(top, text='Actualizar', command=self._reload).pack(side=tk.RIGHT, padx=(0, 8))

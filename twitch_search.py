@@ -17,6 +17,7 @@ from twitch_player import (
     twitch_auth_help,
 )
 from ui_theme import center_window, get_colors, set_window_icon, style_listbox, style_window
+from ui_layout import bind_wraplength, setup_resizable_dialog
 
 TWITCH_GQL_URL = 'https://gql.twitch.tv/gql'
 TWITCH_GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
@@ -284,16 +285,15 @@ class TwitchSearchDialog:
 
         window = tk.Toplevel(player.window)
         window.title('Buscar en Twitch')
-        window.geometry('820x620')
-        window.minsize(640, 480)
+        setup_resizable_dialog(window, 820, 620, 640, 480)
         style_window(window)
         set_window_icon(window)
-        center_window(window, 820, 620)
         window.transient(player.window)
         self.window = window
 
         shell = ttk.Frame(window, padding=(16, 14, 16, 12))
         shell.pack(fill=tk.BOTH, expand=True)
+        bind_wraplength(shell, padding=40)
         ttk.Label(shell, text='Buscar en Twitch', style='PageTitle.TLabel').pack(anchor=tk.W)
         ttk.Label(
             shell,

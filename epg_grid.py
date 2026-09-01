@@ -7,9 +7,8 @@ from tkinter import ttk
 
 import logo_cache
 from display_text import plain_ui_line
-from ui_theme import (
-    center_window, get_colors, get_font, set_window_icon, style_window,
-)
+from ui_theme import get_colors, get_font, set_window_icon, style_window
+from ui_layout import setup_resizable_dialog
 
 HOURS = 6
 PX_HOUR = 118
@@ -42,14 +41,13 @@ class EpgGridWindow:
         colors = get_colors()
         window = tk.Toplevel(player.window)
         window.title('Guía EPG')
-        window.geometry('980x560')
-        window.minsize(720, 400)
+        setup_resizable_dialog(window, 980, 560, 720, 400)
         style_window(window)
         set_window_icon(window)
-        center_window(window, 980, 560)
         window.transient(player.window)
         self.window = window
         self._photos = {}
+        self._px_hour = PX_HOUR
         self._start = _floor_half_hour(time.time())
         self._tick_job = None
 
@@ -64,16 +62,26 @@ class EpgGridWindow:
 
         body = ttk.Frame(window)
         body.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+        body.rowconfigure(0, weight=1)
+        body.columnconfigure(0, weight=1)
+
+        grid_frame = ttk.Frame(body)
+        grid_frame.grid(row=0, column=0, sticky='nsew')
+        grid_frame.rowconfigure(0, weight=1)
+        grid_frame.columnconfigure(0, weight=1)
+
         self.canvas = tk.Canvas(
-            body,
+            grid_frame,
             bg=colors['list_bg'],
             highlightthickness=0,
             bd=0,
         )
-        yscroll = ttk.Scrollbar(body, orient=tk.VERTICAL, command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=yscroll.set)
-        yscroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        yscroll = ttk.Scrollbar(grid_frame, orient=tk.VERTICAL, command=self.canvas.yview)
+        xscroll = ttk.Scrollbar(body, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        self.canvas.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+        self.canvas.grid(row=0, column=0, sticky='nsew')
+        yscroll.grid(row=0, column=1, sticky='ns')
+        xscroll.grid(row=1, column=0, sticky='ew')
         self.canvas.bind('<Button-1>', self._on_click)
         self.canvas.bind('<Configure>', lambda e: self.draw())
         self.canvas.bind('<MouseWheel>', self._on_wheel)
@@ -158,7 +166,14 @@ class EpgGridWindow:
             start = self._start
         span = HOURS * 3600
         stop = start + span
-        width = max(int(canvas.winfo_width() or 900), NAME_W + PX_HOUR * HOURS)
+        viewport_w = max(1, int(canvas.winfo_width() or 900))
+        min_full = NAME_W + PX_HOUR * HOURS
+        if viewport_w < min_full:
+            self._px_hour = max(48, (viewport_w - NAME_W - 8) / HOURS)
+        else:
+            self._px_hour = PX_HOUR
+        px = self._px_hour
+        width = NAME_W + px * HOURS
         rows = self._rows()
         height = HEAD_H + max(1, len(rows)) * ROW_H + 8
         canvas.configure(scrollregion=(0, 0, width, height))
@@ -188,7 +203,7 @@ class EpgGridWindow:
         )
         for hour in range(HOURS * 2 + 1):
             ts = start + hour * 1800
-            x = NAME_W + (ts - start) / 3600 * PX_HOUR
+            x = NAME_W + (ts - start) / 3600 * px
             canvas.create_line(x, 0, x, height, fill=colors['border'])
             if hour % 2 == 0:
                 canvas.create_text(
@@ -250,8 +265,8 @@ class EpgGridWindow:
                 )
                 continue
             for prog in programmes:
-                left = NAME_W + max(0, (prog.start - start) / 3600 * PX_HOUR)
-                right = NAME_W + min(HOURS * PX_HOUR, (prog.stop - start) / 3600 * PX_HOUR)
+                left = NAME_W + max(0, (prog.start - start) / 3600 * px)
+                right = NAME_W + min(HOURS * px, (prog.stop - start) / 3600 * px)
                 if right - left < 8:
                     continue
                 current = prog.start <= now < prog.stop
@@ -272,8 +287,8 @@ class EpgGridWindow:
                         width=right - left - 10,
                     )
 
-        now_x = NAME_W + (now - start) / 3600 * PX_HOUR
-        if NAME_W <= now_x <= NAME_W + HOURS * PX_HOUR:
+        now_x = NAME_W + (now - start) / 3600 * px
+        if NAME_W <= now_x <= NAME_W + HOURS * px:
             canvas.create_line(now_x, 0, now_x, height, fill=colors['accent'], width=2)
 
 

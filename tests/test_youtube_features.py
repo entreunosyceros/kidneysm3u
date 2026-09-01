@@ -221,6 +221,61 @@ def test_translated_spanish_uses_vtt_not_cached_english():
     assert spanish['label'] == 'Español (traducción automática)'
 
 
+def test_youtube_ydl_opts_without_global_lang():
+    from youtube_player import youtube_ydl_opts
+
+    opts = youtube_ydl_opts(silent=True)
+    assert opts.get('no_warnings') is True
+    assert 'extractor_args' not in opts or 'lang' not in (opts.get('extractor_args') or {}).get('youtube', {})
+
+
+def test_pick_preferred_youtube_sub_returns_first_item():
+    from youtube_subs import collect_youtube_subs, pick_preferred_youtube_sub
+
+    items = collect_youtube_subs({
+        'subtitles': {'en': _sub_entries('vtt')},
+        'automatic_captions': {
+            'es-orig': _sub_entries('json3'),
+            'en-orig': _sub_entries('json3'),
+        },
+    })
+    preferred = pick_preferred_youtube_sub(items)
+    assert preferred is not None
+    assert preferred['lang'] == 'es-orig'
+    assert pick_preferred_youtube_sub([]) is None
+
+
+def test_youtube_auto_subtitles_preference(tmp_path, monkeypatch):
+    previous = _isolate_config(tmp_path, monkeypatch)
+    try:
+        assert app_config.get_youtube_auto_subtitles() is True
+        app_config.set_youtube_auto_subtitles(False)
+        assert app_config.get_youtube_auto_subtitles() is False
+    finally:
+        app_config._cache = previous
+
+
+def test_populate_stream_subtitles_uses_fallback(monkeypatch):
+    from youtube_player import YouTubeHandler
+
+    handler = YouTubeHandler.__new__(YouTubeHandler)
+    fallback_called = []
+
+    def fake_extract(url):
+        fallback_called.append(url)
+        return [{'lang': 'en', 'kind': 'official', 'label': 'English', 'url': 'http://x', 'ext': 'vtt'}]
+
+    monkeypatch.setattr('youtube_player.collect_youtube_subs', lambda info: [])
+    monkeypatch.setattr(handler, '_extract_subtitle_info', fake_extract)
+    monkeypatch.setattr(handler, '_write_subs_from_info', lambda *args: None)
+
+    stream = {}
+    subs = handler._populate_stream_subtitles('https://youtu.be/x', stream, {}, object())
+    assert len(subs) == 1
+    assert stream['subtitles'][0]['lang'] == 'en'
+    assert fallback_called == ['https://youtu.be/x']
+
+
 def test_sanitize_youtube_vtt_and_json3(tmp_path):
     from youtube_subs import json3_to_vtt, prepare_subtitle_for_vlc, sanitize_youtube_vtt, vtt_to_srt
 

@@ -193,6 +193,14 @@ def collect_youtube_subs(info):
     return items[:20]
 
 
+def pick_preferred_youtube_sub(items):
+    """Primer subtítulo de la lista (español auto/oficial priorizado por collect_youtube_subs)."""
+    for item in items or []:
+        if isinstance(item, dict) and item.get('lang'):
+            return item
+    return None
+
+
 def _stamp_to_ms(stamp):
     parts = stamp.split(':')
     if len(parts) == 3:

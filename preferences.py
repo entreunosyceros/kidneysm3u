@@ -11,7 +11,8 @@ from tkinter import ttk, filedialog, messagebox, colorchooser
 import app_config
 import subtitle_style
 from display_text import plain_ui_line
-from ui_theme import apply_theme, get_colors, style_window, set_window_icon, center_window
+from ui_layout import bind_wraplength, make_vertical_scroll, setup_resizable_dialog
+from ui_theme import apply_theme, get_colors, style_window, set_window_icon
 
 COOKIE_LABELS = (
     ('auto', 'Automático (el que tenga sesión)'),
@@ -252,12 +253,10 @@ def show_preferences(parent, on_apply=None, video_player=None):
 
     window = tk.Toplevel(parent)
     window.title('Preferencias')
-    window.geometry('560x760')
-    window.minsize(480, 460)
+    setup_resizable_dialog(window, 560, 760, 480, 460)
     window.transient(parent)
     style_window(window)
     set_window_icon(window)
-    center_window(window, 560, 760)
     root._prefs_window = window
     window._prefs_video_player = video_player
     _PREFS_WINDOW = window
@@ -277,6 +276,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     hw_decode_var = tk.BooleanVar(value=app_config.get_light_mode_hw_decode())
     cpu_var = tk.BooleanVar(value=app_config.get_show_cpu_monitor())
     updates_var = tk.BooleanVar(value=app_config.get_check_app_updates())
+    yt_auto_subs_var = tk.BooleanVar(value=app_config.get_youtube_auto_subtitles())
     sub_cfg = app_config.get_subtitle_style()
     sub_size_var = tk.StringVar(value=str(sub_cfg['subtitle_size']))
     sub_color_var = tk.StringVar(value=sub_cfg['subtitle_color'])
@@ -303,75 +303,17 @@ def show_preferences(parent, on_apply=None, video_player=None):
     notebook.pack(fill=tk.BOTH, expand=True)
 
     tab_general = ttk.Frame(notebook, padding=(0, 4))
-    tab_cookies = ttk.Frame(notebook, padding=(12, 12))
+    tab_cookies = ttk.Frame(notebook, padding=(0, 4))
     notebook.add(tab_general, text='General')
     notebook.add(tab_cookies, text='Cookies')
 
     body = ttk.Frame(tab_general)
     body.pack(fill=tk.BOTH, expand=True)
-    body.columnconfigure(0, weight=1)
-    body.rowconfigure(0, weight=1)
+    _canvas, main, _sync_general = make_vertical_scroll(body)
 
-    canvas = tk.Canvas(body, bg=colors['bg'], highlightthickness=0, bd=0)
-    scroll = ttk.Scrollbar(body, orient=tk.VERTICAL, command=canvas.yview)
-    canvas.configure(yscrollcommand=scroll.set)
-    canvas.grid(row=0, column=0, sticky='nsew')
-    scroll.grid(row=0, column=1, sticky='ns', padx=(4, 0))
-
-    main = ttk.Frame(canvas, padding=(0, 0, 8, 4))
-    main_id = canvas.create_window((0, 0), window=main, anchor='nw')
-    _syncing = {'on': False}
-    _last_wrap = {'value': 0}
-
-    def _sync_scroll(_event=None):
-        if _syncing['on']:
-            return
-        _syncing['on'] = True
-        try:
-            width = max(1, int(canvas.winfo_width()))
-            canvas.itemconfigure(main_id, width=width)
-            wrap = max(240, width - 36)
-            if wrap != _last_wrap['value']:
-                _last_wrap['value'] = wrap
-
-                def _walk(widget):
-                    for child in widget.winfo_children():
-                        try:
-                            if int(child.cget('wraplength') or 0) > 0:
-                                child.configure(wraplength=wrap)
-                        except (tk.TclError, TypeError, ValueError):
-                            pass
-                        _walk(child)
-
-                _walk(main)
-            canvas.configure(scrollregion=canvas.bbox('all') or (0, 0, 0, 0))
-        except tk.TclError:
-            pass
-        finally:
-            _syncing['on'] = False
-
-    def _on_wheel(event):
-        if getattr(event, 'num', None) == 5:
-            steps = 1
-        elif getattr(event, 'num', None) == 4:
-            steps = -1
-        else:
-            delta = getattr(event, 'delta', 0) or 0
-            if not delta:
-                return
-            steps = int(-delta / 120) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
-        canvas.yview_scroll(steps, 'units')
-        return 'break'
-
-    def _bind_wheel(widget):
-        widget.bind('<MouseWheel>', _on_wheel)
-        widget.bind('<Button-4>', _on_wheel)
-        widget.bind('<Button-5>', _on_wheel)
-        for child in widget.winfo_children():
-            _bind_wheel(child)
-
-    main.bind('<Configure>', _sync_scroll)
-    canvas.bind('<Configure>', _sync_scroll)
+    cookies_body = ttk.Frame(tab_cookies)
+    cookies_body.pack(fill=tk.BOTH, expand=True)
+    _cookies_canvas, cookies_main, _sync_cookies = make_vertical_scroll(cookies_body)
 
     performance = ttk.LabelFrame(main, text=' MODO LIGERO ', padding=12)
     performance.pack(fill=tk.X, pady=(0, 10))
@@ -522,6 +464,13 @@ def show_preferences(parent, on_apply=None, video_player=None):
 
     subs = ttk.LabelFrame(main, text=' SUBTÍTULOS ', padding=12)
     subs.pack(fill=tk.X, pady=(0, 10))
+
+    ttk.Checkbutton(
+        subs,
+        text='Activar subtítulos de YouTube automáticamente (español preferido)',
+        variable=yt_auto_subs_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W, pady=(0, 8))
 
     def _paint_swatch(swatch, var):
         try:
@@ -702,7 +651,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
 
-    cookies_browser = ttk.LabelFrame(tab_cookies, text=' NAVEGADOR DE COOKIES ', padding=12)
+    cookies_browser = ttk.LabelFrame(cookies_main, text=' NAVEGADOR DE COOKIES ', padding=12)
     cookies_browser.pack(fill=tk.X, pady=(0, 10))
     cookie_row = ttk.Frame(cookies_browser, style='Card.TFrame')
     cookie_row.pack(fill=tk.X)
@@ -724,7 +673,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
 
-    yt_cookies = ttk.LabelFrame(tab_cookies, text=' YOUTUBE ', padding=12)
+    yt_cookies = ttk.LabelFrame(cookies_main, text=' YOUTUBE ', padding=12)
     yt_cookies.pack(fill=tk.X, pady=(0, 10))
     window._prefs_yt_session_label = ttk.Label(
         yt_cookies,
@@ -744,7 +693,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
 
-    tw_cookies = ttk.LabelFrame(tab_cookies, text=' TWITCH ', padding=12)
+    tw_cookies = ttk.LabelFrame(cookies_main, text=' TWITCH ', padding=12)
     tw_cookies.pack(fill=tk.X, pady=(0, 10))
     window._prefs_tw_session_label = ttk.Label(
         tw_cookies,
@@ -873,6 +822,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
             'youtube_quality': app_config.normalize_youtube_quality(quality),
             'twitch_quality': app_config.normalize_twitch_quality(twitch_quality_var.get()),
             'twitch_chat_auto_open': bool(twitch_chat_auto_var.get()),
+            'youtube_auto_subtitles': bool(yt_auto_subs_var.get()),
             'iptv_buffer': app_config.normalize_iptv_buffer_profile(buffer_var.get()),
         }
         payload.update(sub_payload)
@@ -885,9 +835,8 @@ def show_preferences(parent, on_apply=None, video_player=None):
     ttk.Button(buttons, text='Guardar', style='Accent.TButton', command=save).pack(side=tk.LEFT)
     ttk.Button(buttons, text='Cancelar', command=close).pack(side=tk.RIGHT)
 
-    _bind_wheel(canvas)
-    _bind_wheel(main)
-    window.after_idle(_sync_scroll)
+    window.after_idle(_sync_general)
+    window.after_idle(_sync_cookies)
 
     window.after_idle(lambda: refresh_preferences_session_ui(window))
 

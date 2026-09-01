@@ -62,6 +62,7 @@ _DEFAULTS = {
     'youtube_searches': [],
     'iptv_history': [],
     'youtube_quality': 720,
+    'youtube_auto_subtitles': True,
     'twitch_quality': 720,
     'twitch_chat_auto_open': False,
     'iptv_buffer': 'balanced',
@@ -404,6 +405,14 @@ def get_youtube_quality():
 
 def set_youtube_quality(height):
     save({'youtube_quality': normalize_youtube_quality(height)})
+
+
+def get_youtube_auto_subtitles():
+    return bool(load().get('youtube_auto_subtitles', True))
+
+
+def set_youtube_auto_subtitles(enabled):
+    save({'youtube_auto_subtitles': bool(enabled)})
 
 
 def normalize_twitch_quality(value):

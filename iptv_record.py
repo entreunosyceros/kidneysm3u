@@ -9,7 +9,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from m3u_parse import IPTV_USER_AGENT
-from ui_theme import center_window, get_colors, set_window_icon, style_window
+from ui_theme import get_colors, set_window_icon, style_window
+from ui_layout import bind_wraplength, bind_tree_stretch, setup_resizable_dialog
 import app_config
 
 
@@ -142,11 +143,9 @@ class RecordingsWindow:
         colors = get_colors()
         window = tk.Toplevel(player.window)
         window.title('Grabaciones')
-        window.geometry('560x380')
-        window.minsize(420, 280)
+        setup_resizable_dialog(window, 560, 380, 420, 280)
         style_window(window)
         set_window_icon(window)
-        center_window(window, 560, 380)
         window.transient(player.window)
         self.window = window
         self._paths = {}
@@ -161,6 +160,7 @@ class RecordingsWindow:
             style='Muted.TLabel',
             wraplength=520,
         ).pack(anchor=tk.W, padx=12, pady=(0, 8))
+        bind_wraplength(window, padding=24)
 
         body = ttk.Frame(window, padding=(12, 0, 12, 12))
         body.pack(fill=tk.BOTH, expand=True)
@@ -173,6 +173,7 @@ class RecordingsWindow:
         self.tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        bind_tree_stretch(self.tree, stretch_columns=('#0',))
         self.tree.tag_configure('empty', foreground=colors['text_muted'])
         self.tree.bind('<Double-Button-1>', self._play_selected)
 

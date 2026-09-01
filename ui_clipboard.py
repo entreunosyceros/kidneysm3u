@@ -151,13 +151,16 @@ def ask_string(parent, title, prompt, initialvalue='', width=64):
     window = tk.Toplevel(parent)
     window.title(title)
     window.transient(parent)
-    window.resizable(True, False)
+    window.resizable(True, True)
     style_window(window)
     set_window_icon(window)
 
     shell = ttk.Frame(window, padding=16)
     shell.pack(fill=tk.BOTH, expand=True)
-    ttk.Label(shell, text=prompt, wraplength=480).pack(anchor=tk.W, pady=(0, 8))
+    prompt_label = ttk.Label(shell, text=prompt, wraplength=480)
+    prompt_label.pack(anchor=tk.W, pady=(0, 8))
+    from ui_layout import bind_wraplength
+    bind_wraplength(shell, padding=32)
     entry = ttk.Entry(shell, width=width)
     entry.pack(fill=tk.X)
     bind_entry_clipboard(entry)

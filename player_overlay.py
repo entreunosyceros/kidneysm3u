@@ -6,6 +6,170 @@ import tkinter as tk
 from display_text import plain_display_text
 from ui_theme import get_colors, get_font
 
+YOUTUBE_TITLE_HIDE_MS = 2500
+YOUTUBE_TITLE_BAR_H = 44
+
+
+class YoutubeTitleOverlayMixin:
+    def _youtube_title_text(self):
+        if not getattr(self, '_playing_youtube', False):
+            return ''
+        handler = getattr(self, 'youtube_handler', None)
+        title = ''
+        if handler:
+            title = (getattr(handler, '_loading_title_text', None) or '').strip()
+        if (not title or title == 'YouTube') and self.current_channel is not None:
+            try:
+                title = self.channels[self.current_channel][0]
+            except (IndexError, TypeError):
+                title = ''
+        return plain_display_text(title, '')
+
+    def _cancel_youtube_title_hide_job(self):
+        job = getattr(self, '_yt_title_hide_job', None)
+        self._yt_title_hide_job = None
+        if not job or not self._widget_exists(getattr(self, 'window', None)):
+            return
+        try:
+            self.window.after_cancel(job)
+        except tk.TclError:
+            pass
+
+    def _hide_youtube_title_overlay(self):
+        self._cancel_youtube_title_hide_job()
+        top = getattr(self, '_yt_title_top', None)
+        self._yt_title_top = None
+        if top is not None:
+            try:
+                top.destroy()
+            except tk.TclError:
+                pass
+
+    def _youtube_title_target_frame(self):
+        if callable(getattr(self, '_video_target_frame', None)):
+            target = self._video_target_frame()
+            if self._widget_exists(target):
+                return target
+        video = getattr(self, 'video_frame', None)
+        if self._widget_exists(video):
+            return video
+        return None
+
+    def _position_youtube_title_overlay(self, event=None):
+        top = getattr(self, '_yt_title_top', None)
+        if not self._widget_exists(top):
+            return
+        area = self._youtube_title_target_frame()
+        if not self._widget_exists(area):
+            return
+        try:
+            area.update_idletasks()
+            x = area.winfo_rootx()
+            y = area.winfo_rooty()
+            width = max(160, area.winfo_width())
+            top.geometry(f'{int(width)}x{YOUTUBE_TITLE_BAR_H}+{int(x)}+{int(y)}')
+            label = getattr(self, '_yt_title_label', None)
+            if self._widget_exists(label):
+                from ui_layout import wraplength_for
+                label.configure(wraplength=wraplength_for(width, padding=28, min_wrap=80))
+            top.lift()
+            try:
+                top.attributes('-topmost', True)
+            except tk.TclError:
+                pass
+        except tk.TclError:
+            pass
+
+    def _show_youtube_title_overlay(self):
+        title = self._youtube_title_text()
+        if not title or not self._widget_exists(self.window):
+            self._hide_youtube_title_overlay()
+            return
+        area = self._youtube_title_target_frame()
+        if not self._widget_exists(area):
+            return
+        label = getattr(self, '_yt_title_label', None)
+        top = getattr(self, '_yt_title_top', None)
+        if self._widget_exists(top) and self._widget_exists(label):
+            try:
+                label.configure(text=title)
+                self._position_youtube_title_overlay()
+                top.deiconify()
+                top.lift()
+            except tk.TclError:
+                pass
+            return
+        self._hide_youtube_title_overlay()
+        colors = get_colors()
+        top = tk.Toplevel(self.window)
+        top.withdraw()
+        try:
+            top.overrideredirect(True)
+        except tk.TclError:
+            pass
+        try:
+            top.attributes('-topmost', True)
+        except tk.TclError:
+            pass
+        try:
+            top.wm_attributes('-type', 'splash')
+        except tk.TclError:
+            pass
+        top.configure(bg=colors['surface'])
+        bar = tk.Frame(top, bg=colors['surface'], highlightthickness=0, padx=14, pady=10)
+        bar.pack(fill=tk.BOTH, expand=True)
+        label = tk.Label(
+            bar,
+            text=title,
+            font=get_font(12, 'bold'),
+            bg=colors['surface'],
+            fg=colors['text'],
+            anchor='w',
+            justify='left',
+            wraplength=720,
+        )
+        label.pack(fill=tk.BOTH, expand=True)
+        self._yt_title_top = top
+        self._yt_title_label = label
+        self._position_youtube_title_overlay()
+        try:
+            top.deiconify()
+            top.lift()
+        except tk.TclError:
+            pass
+        try:
+            self.window.bind('<Configure>', self._position_youtube_title_overlay, add='+')
+            area.bind('<Configure>', self._position_youtube_title_overlay, add='+')
+        except tk.TclError:
+            pass
+
+    def _schedule_youtube_title_hide(self):
+        if not self._widget_exists(getattr(self, 'window', None)):
+            return
+        self._cancel_youtube_title_hide_job()
+        self._yt_title_hide_job = self.window.after(
+            YOUTUBE_TITLE_HIDE_MS,
+            self._hide_youtube_title_overlay,
+        )
+
+    def _on_youtube_video_motion(self, event=None):
+        if not getattr(self, '_playing_youtube', False):
+            return
+        if getattr(self, '_iptv_failed', False):
+            return
+        if self._widget_exists(getattr(self, '_yt_replay_frame', None)):
+            return
+        self._show_youtube_title_overlay()
+        self._schedule_youtube_title_hide()
+
+    def _bind_youtube_title_motion(self, widget):
+        if not self._widget_exists(widget):
+            return
+        try:
+            widget.bind('<Motion>', self._on_youtube_video_motion, add='+')
+        except tk.TclError:
+            pass
+
 
 class ChannelNoticeMixin:
     def _pack_video_frame(self):
@@ -64,7 +228,18 @@ class ChannelNoticeMixin:
             controls = getattr(self, 'controls_frame', None)
             if self._widget_exists(controls) and controls.winfo_ismapped():
                 height = max(80, height - controls.winfo_height() - 8)
+            panel = getattr(self, '_iptv_status_frame', None)
             top.geometry(f'{int(width)}x{int(height)}+{int(x)}+{int(y)}')
+            from ui_layout import wraplength_for
+            wrap = wraplength_for(width, padding=56, min_wrap=120, max_wrap=560)
+            for host in (top, panel):
+                if not self._widget_exists(host):
+                    continue
+                for label in getattr(host, '_notice_labels', ()) or ():
+                    try:
+                        label.configure(wraplength=wrap)
+                    except tk.TclError:
+                        pass
             top.lift()
             try:
                 top.attributes('-topmost', True)
@@ -80,6 +255,7 @@ class ChannelNoticeMixin:
                 pass
 
     def _hide_channel_status(self):
+        self._hide_youtube_title_overlay()
         hide_replay = getattr(self, '_hide_youtube_replay_prompt', None)
         if hide_replay:
             hide_replay()
@@ -119,7 +295,7 @@ class ChannelNoticeMixin:
         )
         card.place(relx=0.5, rely=0.5, anchor='center')
         title = plain_display_text(name, 'Este canal')
-        tk.Label(
+        name_label = tk.Label(
             card,
             text=title,
             font=get_font(16, 'bold'),
@@ -127,8 +303,9 @@ class ChannelNoticeMixin:
             fg=colors['text'],
             wraplength=460,
             justify='center',
-        ).pack()
-        tk.Label(
+        )
+        name_label.pack()
+        msg_label = tk.Label(
             card,
             text='Este canal por el momento no funciona',
             font=get_font(12),
@@ -136,7 +313,10 @@ class ChannelNoticeMixin:
             fg=colors['text_muted'],
             wraplength=460,
             justify='center',
-        ).pack(pady=(12, 0))
+        )
+        msg_label.pack(pady=(12, 0))
+        parent._notice_labels = (name_label, msg_label)
+        parent._notice_card = card
 
     def _show_controls_banner(self, text, colors):
         old = getattr(self, '_iptv_banner', None)
@@ -168,6 +348,8 @@ class ChannelNoticeMixin:
         except tk.TclError:
             banner.pack(side=tk.TOP, fill=tk.X)
         self._iptv_banner = banner
+        from ui_layout import bind_wraplength
+        bind_wraplength(controls, padding=24, min_wrap=120)
 
     def _show_channel_unavailable(self, name):
         """Aviso encima del vídeo. En Linux VLC tapa los widgets del frame embebido."""

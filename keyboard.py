@@ -4,16 +4,16 @@ from tkinter import ttk
 from PIL import Image, ImageTk
 from app_paths import resource_dir
 from ui_theme import style_window, set_window_icon, center_window, get_font
+from ui_layout import setup_resizable_dialog
 
 def show_keyboard_shortcuts(root):
     shortcuts_window = tk.Toplevel(root)
     shortcuts_window.title('Atajos de Teclado')
-    shortcuts_window.geometry('540x640')
+    setup_resizable_dialog(shortcuts_window, 540, 640, 420, 400)
     shortcuts_window.transient(root)
     shortcuts_window.grab_set()
     style_window(shortcuts_window)
     set_window_icon(shortcuts_window)
-    center_window(shortcuts_window, 540, 640)
 
     main_frame = ttk.Frame(shortcuts_window, padding=24)
     main_frame.pack(fill=tk.BOTH, expand=True)
@@ -68,8 +68,16 @@ def show_keyboard_shortcuts(root):
     # Frame para la lista de atajos
     shortcuts_frame = ttk.Frame(main_frame)
     shortcuts_frame.pack(fill=tk.BOTH, expand=True)
+    shortcuts_frame.columnconfigure(0, weight=1)
+    shortcuts_frame.rowconfigure(0, weight=1)
 
-    # Lista de atajos
+    tree = ttk.Treeview(shortcuts_frame, show='tree')
+    tree.grid(row=0, column=0, sticky='nsew')
+
+    scrollbar = ttk.Scrollbar(shortcuts_frame, orient='vertical', command=tree.yview)
+    scrollbar.grid(row=0, column=1, sticky='ns')
+    tree.configure(yscrollcommand=scrollbar.set)
+
     shortcuts = [
         ("Reproducción", [
             ("Espacio", "Reproducir/Pausar"),
@@ -125,15 +133,6 @@ def show_keyboard_shortcuts(root):
             ("Barra de progreso", "Ver y cambiar posición (YouTube y VOD)")
         ])
     ]
-
-    # Crear la lista usando un Treeview
-    tree = ttk.Treeview(shortcuts_frame, show='tree')
-    tree.pack(fill=tk.BOTH, expand=True, padx=(0, 10))  # Añadir padding derecho para la scrollbar
-
-    # Añadir scrollbar superpuesta
-    scrollbar = ttk.Scrollbar(shortcuts_frame, orient="vertical", command=tree.yview)
-    scrollbar.place(relx=1, rely=0, relheight=1, anchor='ne')
-    tree.configure(yscrollcommand=scrollbar.set)
 
     for category, items in shortcuts:
         category_id = tree.insert("", "end", text=category, open=True)

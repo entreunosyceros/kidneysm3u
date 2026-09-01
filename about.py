@@ -5,21 +5,21 @@ import webbrowser
 from PIL import Image, ImageTk
 from app_paths import resource_dir
 from ui_theme import style_window, set_window_icon, center_window, get_colors, get_font
+from ui_layout import bind_wraplength, setup_resizable_dialog
 from app_version import __version__ as APP_VERSION
 
 def show_about(root):
     about_window = tk.Toplevel(root)
     about_window.title('Acerca de')
-    about_window.geometry('520x580')
-    about_window.resizable(False, False)
+    setup_resizable_dialog(about_window, 520, 580, 400, 420)
     about_window.transient(root)
     about_window.grab_set()
     style_window(about_window)
     set_window_icon(about_window)
-    center_window(about_window, 520, 580)
 
     main_frame = ttk.Frame(about_window, padding=28)
     main_frame.pack(fill=tk.BOTH, expand=True)
+    bind_wraplength(main_frame, padding=40)
 
     ttk.Label(main_frame, text='Kidneys M3U/M3U8', style='PageTitle.TLabel').pack(pady=(0, 4))
     ttk.Label(

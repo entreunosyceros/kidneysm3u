@@ -424,12 +424,11 @@ def render_markdown(widget, source, on_link):
 def show_documentation(root):
     window = tk.Toplevel(root)
     window.title('Documentación')
-    window.geometry('920x640')
-    window.minsize(720, 480)
+    from ui_layout import setup_resizable_dialog
+    setup_resizable_dialog(window, 920, 640, 720, 480)
     window.transient(root)
     style_window(window)
     set_window_icon(window)
-    center_window(window, 920, 640)
 
     colors = get_colors()
     current = {'path': 'docs/README.md'}
@@ -444,10 +443,11 @@ def show_documentation(root):
     )
 
     side = ttk.Frame(main)
-    side.grid(row=1, column=0, sticky='nsw', padx=(0, 12))
-    ttk.Label(side, text='Temas', style='Muted.TLabel').pack(anchor=tk.W, pady=(0, 6))
-    topics = tk.Listbox(side, width=22, height=22, exportselection=False)
-    topics.pack(fill=tk.Y, expand=True)
+    side.grid(row=1, column=0, sticky='nsew', padx=(0, 12))
+    side.rowconfigure(1, weight=1)
+    ttk.Label(side, text='Temas', style='Muted.TLabel').grid(row=0, column=0, sticky=tk.W, pady=(0, 6))
+    topics = tk.Listbox(side, exportselection=False)
+    topics.grid(row=1, column=0, sticky='nsew')
     style_listbox(topics)
     for title, _path, _summary in DOC_PAGES:
         topics.insert(tk.END, title)

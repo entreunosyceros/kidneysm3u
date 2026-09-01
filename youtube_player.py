@@ -26,6 +26,7 @@ from youtube_subs import (
     collect_youtube_subs,
     ensure_caption_tlang,
     filename_matches_sub_lang,
+    pick_preferred_youtube_sub,
     prepare_subtitle_for_vlc,
 )
 
@@ -199,7 +200,7 @@ def youtube_ydl_opts(**extra):
     silent = extra.pop('silent', False)
     opts = {
         'quiet': True,
-        'no_warnings': False,
+        'no_warnings': bool(silent),
         'nocheckcertificate': True,
         'noplaylist': True,
         'geo_bypass_country': 'ES',
@@ -230,10 +231,7 @@ def youtube_ydl_opts(**extra):
         opts['cookiefile'] = cookies_path
 
     opts.update(extra)
-    opts['extractor_args'] = _merge_extractor_args(
-        {'youtube': {'lang': ['es']}},
-        extra_extractor,
-    )
+    opts['extractor_args'] = _merge_extractor_args(None, extra_extractor)
     return opts
 
 
@@ -729,6 +727,7 @@ class YouTubeHandler:
         self._loading_title_text = ''
         self._loading_video_id = None
         self._thumb_photos = {}
+        self._thumb_pil = {}
         self._session_override = None
         self._session_override_reason = ''
         self._session_listeners = []
@@ -876,6 +875,30 @@ class YouTubeHandler:
 
         threading.Thread(target=work, daemon=True).start()
 
+    def _initial_youtube_subtitle_path(self, subs):
+        if not app_config.get_youtube_auto_subtitles() or not subs:
+            return None
+        preferred = pick_preferred_youtube_sub(subs)
+        if not preferred:
+            return None
+        path = preferred.get('path')
+        if path and os.path.isfile(path):
+            return path
+        return None
+
+    def _apply_youtube_subtitles_to_player(self, subs, subtitle_loaded=False):
+        player = self.video_player
+        player.set_youtube_subtitles(subs)
+        if not app_config.get_youtube_auto_subtitles() or not subs:
+            return
+        preferred = pick_preferred_youtube_sub(subs)
+        if not preferred:
+            return
+        if subtitle_loaded:
+            player._mark_active_youtube_subtitle(preferred.get('kind'), preferred.get('lang'))
+            return
+        player._schedule_youtube_auto_subtitle(preferred)
+
     def _begin_playback(self, url, stream, force_pulse, show_progress, is_sequential):
         video_id = self.extract_youtube_id(url)
         duration = (stream or {}).get('duration')
@@ -888,6 +911,7 @@ class YouTubeHandler:
             if app_config._yt_resume_near_end(resume_s, duration):
                 resume_s = 0
         subs = (stream or {}).get('subtitles') or []
+        subtitle_path = self._initial_youtube_subtitle_path(subs)
         if stream:
             self._direct_url = stream.get('url') or ''
             self._direct_headers = stream.get('headers') or {}
@@ -930,8 +954,9 @@ class YouTubeHandler:
                 fail_after_s=20,
                 on_fail=fallback,
                 start_s=resume_s,
+                subtitle_path=subtitle_path,
             )
-            self.video_player.set_youtube_subtitles(subs)
+            self._apply_youtube_subtitles_to_player(subs, subtitle_loaded=bool(subtitle_path))
             return
 
         if stream:
@@ -942,7 +967,7 @@ class YouTubeHandler:
             duration=duration,
             start_s=resume_s,
         ):
-            self.video_player.set_youtube_subtitles(subs)
+            self._apply_youtube_subtitles_to_player(subs)
             return
         if self._play_via_pipe(
             url, force_pulse, show_progress, is_sequential,
@@ -951,7 +976,7 @@ class YouTubeHandler:
             http_headers=(stream or {}).get('headers'),
             start_s=resume_s,
         ):
-            self.video_player.set_youtube_subtitles(subs)
+            self._apply_youtube_subtitles_to_player(subs)
             return
 
         self._show_playback_error(url)
@@ -1072,6 +1097,8 @@ class YouTubeHandler:
         thumb_wrap = tk.Frame(card, bg=colors['surface_alt'], width=440, height=248)
         thumb_wrap.pack()
         thumb_wrap.pack_propagate(False)
+        self._loading_thumb_wrap = thumb_wrap
+        self._loading_card = card
         thumb = tk.Label(
             thumb_wrap,
             text='▶',
@@ -1116,6 +1143,14 @@ class YouTubeHandler:
         bar.pack()
         bar.start(12)
         self._loading_bar = bar
+
+        from ui_layout import bind_loading_card
+        overlay._thumb_rescale_cb = lambda: self._rescale_loading_thumb()
+        bind_loading_card(
+            overlay, card,
+            [title_label, status_label],
+            thumb_wrap=thumb_wrap,
+        )
 
         gen = self._play_gen
         have_title = bool(title) or (
@@ -1221,14 +1256,29 @@ class YouTubeHandler:
             top = (height - target_h) // 2
             img = img.crop((0, top, width, top + target_h))
         img = img.resize((440, 248), Image.Resampling.LANCZOS)
+        self._thumb_pil[video_id] = img.copy()
         photo = ImageTk.PhotoImage(img)
         self._thumb_photos[video_id] = photo
+        self._rescale_loading_thumb()
+
+    def _rescale_loading_thumb(self):
+        video_id = getattr(self, '_loading_video_id', None)
+        img = getattr(self, '_thumb_pil', {}).get(video_id)
+        wrap = getattr(self, '_loading_thumb_wrap', None)
         label = getattr(self, '_loading_thumb_label', None)
+        if img is None or not wrap or not label:
+            return
         try:
-            if label and label.winfo_exists():
-                label.configure(image=photo, text='')
-                label.image = photo
-        except tk.TclError:
+            from PIL import Image, ImageTk
+            tw = max(80, int(wrap.winfo_width() or 440))
+            th = max(45, int(wrap.winfo_height() or 248))
+            if tw < 20 or th < 20:
+                return
+            scaled = img.resize((tw, th), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(scaled)
+            label.configure(image=photo, text='')
+            label.image = photo
+        except Exception:
             pass
 
     def _sync_sidebar_title(self, url, title):
@@ -1574,7 +1624,6 @@ class YouTubeHandler:
             '--sleep-interval', '0',
             '--max-sleep-interval', '0',
             '--sleep-requests', '0',
-            '--extractor-args', 'youtube:lang=es',
             '--geo-bypass-country', 'ES',
             '--remote-components', 'ejs:github',
         ]
@@ -1861,21 +1910,68 @@ class YouTubeHandler:
             return self._dl_sub_url(vtt_url, lang, 'vtt')
         return None
 
+    def _extract_subtitle_info(self, youtube_url):
+        """Segunda extracción si android/ios no devolvió subtítulos."""
+        client_sets = (
+            {'youtube': {'player_client': ['android', 'ios']}},
+            {'youtube': {'player_client': ['tv', 'web']}},
+            {'youtube': {'player_client': ['web']}},
+        )
+        attempts = []
+        browser = preferred_youtube_browser()
+        if browser:
+            for clients in client_sets[1:]:
+                attempts.append(youtube_ydl_opts(
+                    cookie_browser=browser,
+                    use_cookiefile=False,
+                    skip_download=True,
+                    extractor_args=clients,
+                    silent=True,
+                ))
+        for clients in client_sets:
+            attempts.append(youtube_ydl_opts(
+                skip_download=True,
+                extractor_args=clients,
+                silent=True,
+            ))
+        for ydl_opts in attempts:
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(youtube_url, download=False)
+                    subs = collect_youtube_subs(info)
+                    if subs:
+                        self._write_subs_from_info(ydl, info, subs)
+                        print(f"[YouTube] Subtítulos obtenidos en segunda extracción ({len(subs)})")
+                        return subs
+            except Exception as exc:
+                print(f"[YouTube] Extracción de subtítulos: {exc}")
+        return []
+
+    def _populate_stream_subtitles(self, youtube_url, stream, info, ydl):
+        subs = collect_youtube_subs(info)
+        if subs:
+            self._write_subs_from_info(ydl, info, subs)
+        else:
+            subs = self._extract_subtitle_info(youtube_url)
+        stream['subtitles'] = subs
+        return subs
+
     def get_best_vlc_url(self, youtube_url):
         """Obtiene una URL de stream que VLC pueda reproducir dentro de la ventana."""
         max_height = app_config.effective_youtube_quality()
         format_sel = youtube_format_selector(max_height)
         attempts = [
-            # Sin cookies: permite clientes android/ios, cuyas URLs VLC suele abrir
+            # Sin cookies: android/ios suelen dar URLs que VLC abre sin PO Token
             youtube_ydl_opts(
                 use_cookiefile=False,
                 skip_download=True,
-                extractor_args={'youtube': {'player_client': ['android', 'ios', 'web']}},
+                extractor_args={'youtube': {'player_client': ['android', 'ios']}},
                 format=format_sel,
+                silent=True,
             ),
         ]
         browser = preferred_youtube_browser()
-        cookie_clients = {'youtube': {'player_client': ['tv', 'web', 'mweb']}}
+        cookie_clients = {'youtube': {'player_client': ['tv', 'web']}}
         if browser:
             attempts.append(youtube_ydl_opts(
                 cookie_browser=browser,
@@ -1883,11 +1979,13 @@ class YouTubeHandler:
                 skip_download=True,
                 extractor_args=cookie_clients,
                 format=format_sel,
+                silent=True,
             ))
         attempts.append(youtube_ydl_opts(
             skip_download=True,
             extractor_args=cookie_clients,
             format=format_sel,
+            silent=True,
         ))
 
         last_error = None
@@ -1900,8 +1998,7 @@ class YouTubeHandler:
                         stream['headers'] = self._headers_for_vlc(stream.get('headers'))
                         stream['duration'] = info.get('duration')
                         stream['title'] = info.get('title') or ''
-                        stream['subtitles'] = collect_youtube_subs(info)
-                        self._write_subs_from_info(ydl, info, stream['subtitles'])
+                        self._populate_stream_subtitles(youtube_url, stream, info, ydl)
                         self._last_extract_error = None
                         self._session_override = None
                         self._session_override_reason = ''
