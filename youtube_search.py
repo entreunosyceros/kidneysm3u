@@ -13,8 +13,8 @@ from urllib.parse import quote, quote_plus
 from youtube_player import (
     youtube_ydl_opts, youtube_auth_blocked, youtube_auth_help, slim_youtube_cookies_file,
 )
-from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window, get_colors
-from ui_layout import setup_resizable_dialog, walk_wraplength
+from ui_theme import style_window, style_listbox, style_menu_tree, set_window_icon, center_window
+from ui_layout import setup_resizable_dialog, bind_wraplength
 import app_config
 from display_text import plain_display_text, plain_ui_line
 
@@ -548,34 +548,21 @@ class YouTubeSearchDialog:
         self.window.protocol('WM_DELETE_WINDOW', self._on_close)
 
     def create_widgets(self):
-        colors = get_colors()
         shell = ttk.Frame(self.window, padding=(16, 16, 12, 12))
         shell.pack(fill=tk.BOTH, expand=True)
 
-        body = ttk.Frame(shell)
-        body.pack(fill=tk.X)
-        body.columnconfigure(0, weight=1)
+        header = ttk.Frame(shell)
+        header.pack(fill=tk.X)
 
-        canvas = tk.Canvas(body, bg=colors['bg'], highlightthickness=0, bd=0)
-        scroll = ttk.Scrollbar(body, orient=tk.VERTICAL, command=canvas.yview)
-        canvas.configure(yscrollcommand=scroll.set)
-        canvas.grid(row=0, column=0, sticky='nsew')
-        scroll.grid(row=0, column=1, sticky='ns', padx=(4, 0))
-        self._search_canvas = canvas
-
-        main_frame = ttk.Frame(canvas, padding=(0, 0, 8, 4))
-        self._search_main_id = canvas.create_window((0, 0), window=main_frame, anchor='nw')
-        self._search_scroll_syncing = False
-
-        ttk.Label(main_frame, text='Buscar en YouTube', style='PageTitle.TLabel').pack(anchor=tk.W)
+        ttk.Label(header, text='Buscar en YouTube', style='PageTitle.TLabel').pack(anchor=tk.W)
         ttk.Label(
-            main_frame,
-            text='Vídeos, Shorts, listas y canales. Las 5 últimas búsquedas están debajo: un clic las vuelve a lanzar. Pulsa ☆ junto al nombre para guardarlo en favoritos.',
+            header,
+            text='Vídeos, Shorts, listas y canales. Las 5 últimas búsquedas están debajo de los filtros: un clic las vuelve a lanzar. Pulsa ☆ junto al nombre para guardarlo en favoritos.',
             style='Muted.TLabel',
             wraplength=500,
         ).pack(anchor=tk.W, pady=(0, 8))
 
-        session_frame = ttk.Frame(main_frame)
+        session_frame = ttk.Frame(header)
         session_frame.pack(fill=tk.X, pady=(0, 12))
         self._yt_session_label = ttk.Label(
             session_frame,
@@ -588,8 +575,8 @@ class YouTubeSearchDialog:
             text="Reexportar cookies",
             command=self.reexport_youtube_cookies,
         ).pack(side=tk.LEFT, padx=(10, 0))
-        
-        search_frame = ttk.Frame(main_frame)
+
+        search_frame = ttk.Frame(header)
         search_frame.pack(fill=tk.X, pady=(0, 10))
 
         self.search_var = tk.StringVar()
@@ -599,31 +586,11 @@ class YouTubeSearchDialog:
         self.search_combo.bind('<<ComboboxSelected>>', self._on_recent_search)
         self.search_combo.focus_set()
 
-        ttk.Button(search_frame, text="Buscar", style='Accent.TButton', command=self.search).pack(side=tk.LEFT, padx=(8, 0))
-
-        recent_frame = ttk.LabelFrame(main_frame, text=" ÚLTIMAS BÚSQUEDAS ", padding=8)
-        recent_frame.pack(fill=tk.X, pady=(0, 10))
-        self._recent_empty = ttk.Label(
-            recent_frame,
-            text='Aún no hay búsquedas. Las 5 últimas se pueden repetir desde aquí.',
-            style='Muted.TLabel',
+        ttk.Button(search_frame, text="Buscar", style='Accent.TButton', command=self.search).pack(
+            side=tk.LEFT, padx=(8, 0),
         )
-        list_row = ttk.Frame(recent_frame, style='Card.TFrame')
-        self._recent_list_row = list_row
-        self.recent_list = tk.Listbox(
-            list_row,
-            height=5,
-            activestyle='dotbox',
-            exportselection=False,
-        )
-        self.recent_list.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        style_listbox(self.recent_list)
-        self.recent_list.bind('<ButtonRelease-1>', self._on_recent_list_click)
-        self.recent_list.bind('<Return>', self._on_recent_list_select)
-        self._refresh_search_history()
 
-        # Frame de filtros
-        filter_frame = ttk.Frame(main_frame)
+        filter_frame = ttk.Frame(header)
         filter_frame.pack(fill=tk.X, pady=(0, 10))
         for col in (1, 3):
             filter_frame.columnconfigure(col, weight=1)
@@ -665,19 +632,38 @@ class YouTubeSearchDialog:
         )
         sort_combobox.grid(row=1, column=3, sticky='ew')
 
-        results_frame = ttk.Frame(main_frame)
+        results_frame = ttk.Frame(header)
         results_frame.pack(fill=tk.X, pady=(0, 10))
 
         ttk.Label(results_frame, text="Número de resultados:").pack(side=tk.LEFT, padx=(0, 2))
         self.results_count = tk.IntVar(value=10)
         results_spinbox = ttk.Spinbox(
-            results_frame, from_=1, to=100, textvariable=self.results_count, width=4
+            results_frame, from_=1, to=100, textvariable=self.results_count, width=4,
         )
         results_spinbox.pack(side=tk.LEFT)
 
-        self._search_main_frame = main_frame
-        main_frame.bind('<Configure>', self._sync_search_scroll)
-        canvas.bind('<Configure>', self._sync_search_scroll)
+        recent_frame = ttk.LabelFrame(shell, text=" ÚLTIMAS BÚSQUEDAS ", padding=8)
+        recent_frame.pack(fill=tk.X, pady=(0, 8))
+        self._recent_empty = ttk.Label(
+            recent_frame,
+            text='Aún no hay búsquedas. Las 5 últimas se pueden repetir desde aquí.',
+            style='Muted.TLabel',
+        )
+        list_row = ttk.Frame(recent_frame, style='Card.TFrame')
+        self._recent_list_row = list_row
+        self.recent_list = tk.Listbox(
+            list_row,
+            height=3,
+            activestyle='dotbox',
+            exportselection=False,
+        )
+        self.recent_list.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        style_listbox(self.recent_list)
+        self.recent_list.bind('<ButtonRelease-1>', self._on_recent_list_click)
+        self.recent_list.bind('<Return>', self._on_recent_list_select)
+        self._refresh_search_history()
+
+        bind_wraplength(shell, padding=36)
 
         results_list_frame = ttk.Frame(shell)
         results_list_frame.pack(fill=tk.BOTH, expand=True, pady=(8, 4))
@@ -702,6 +688,8 @@ class YouTubeSearchDialog:
         self.results_listbox.bind('<Button-3>', self.show_context_menu)
         self.results_listbox.bind('<Control-Return>', lambda e: self.enqueue_selected() or 'break')
         self.results_listbox.bind('<Control-s>', lambda e: self.add_selected_to_favorites() or 'break')
+        self._bind_search_wheel(self.results_listbox)
+        self._bind_search_wheel(self.recent_list)
         self.window.bind_all('<ButtonPress-1>', self._on_press_dismiss_menu, add='+')
         self.window.bind_all('<Escape>', self._on_escape_dismiss_menu, add='+')
 
@@ -744,33 +732,9 @@ class YouTubeSearchDialog:
         self.result_types = []
         self.result_details = []
 
-        self._bind_search_wheel(self.window)
-        self.window.after_idle(self._sync_search_scroll)
-
-    def _sync_search_scroll(self, event=None):
-        canvas = getattr(self, '_search_canvas', None)
-        main_id = getattr(self, '_search_main_id', None)
-        if canvas is None or main_id is None:
-            return
-        if getattr(self, '_search_scroll_syncing', False):
-            return
-        self._search_scroll_syncing = True
-        try:
-            width = max(1, int(canvas.winfo_width()))
-            canvas.itemconfigure(main_id, width=width)
-            wrap = max(240, width - 36)
-            main_frame = getattr(self, '_search_main_frame', None)
-            if main_frame is not None:
-                walk_wraplength(main_frame, wrap)
-            canvas.configure(scrollregion=canvas.bbox('all') or (0, 0, 0, 0))
-        except tk.TclError:
-            pass
-        finally:
-            self._search_scroll_syncing = False
-
     def _on_search_wheel(self, event):
-        canvas = getattr(self, '_search_canvas', None)
-        if canvas is None:
+        widget = getattr(event, 'widget', None)
+        if not isinstance(widget, tk.Listbox):
             return
         if getattr(event, 'num', None) == 5:
             steps = 1
@@ -781,17 +745,13 @@ class YouTubeSearchDialog:
             if not delta:
                 return
             steps = int(-delta / 120) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
-        widget = getattr(event, 'widget', None)
-        if isinstance(widget, tk.Listbox):
-            widget.yview_scroll(steps, 'units')
-            return 'break'
-        canvas.yview_scroll(steps, 'units')
+        widget.yview_scroll(steps, 'units')
         return 'break'
 
     def _bind_search_wheel(self, widget):
-        widget.bind('<MouseWheel>', self._on_search_wheel)
-        widget.bind('<Button-4>', self._on_search_wheel)
-        widget.bind('<Button-5>', self._on_search_wheel)
+        widget.bind('<MouseWheel>', self._on_search_wheel, add='+')
+        widget.bind('<Button-4>', self._on_search_wheel, add='+')
+        widget.bind('<Button-5>', self._on_search_wheel, add='+')
         try:
             children = widget.winfo_children()
         except tk.TclError:
@@ -866,7 +826,6 @@ class YouTubeSearchDialog:
                 row.pack_forget()
             if empty is not None:
                 empty.pack(anchor=tk.W)
-        self.window.after_idle(self._sync_search_scroll)
 
     def _reuse_search_at(self, index):
         history = getattr(self, '_search_history', None) or []
