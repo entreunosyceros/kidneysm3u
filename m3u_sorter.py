@@ -1,3 +1,5 @@
+"""Módulo de m3u sorter."""
+
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import re
@@ -5,7 +7,9 @@ from ui_theme import style_window, style_listbox, style_text, set_window_icon
 from ui_layout import bind_wraplength, setup_resizable_dialog
 
 class M3USorter:
+    """Clase que representa m3usorter."""
     def __init__(self, root, input_file):
+        """Inicializa M3USorter."""
         self.window = tk.Toplevel(root)
         self.window.title('Ordenar Lista M3U')
         setup_resizable_dialog(self.window, 860, 640, 640, 420)
@@ -22,6 +26,7 @@ class M3USorter:
         self.load_channels()
         
     def create_widgets(self):
+        """Crea widgets."""
         main_frame = ttk.Frame(self.window, padding=16)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -94,16 +99,19 @@ class M3USorter:
         self.window.bind('<Control-a>', lambda e: self.select_all())
 
     def select_all(self, event=None):
+        """Select all."""
         self.channels_listbox.select_set(0, tk.END)
         return 'break'
 
     def copy_channels(self, event=None):
+        """Copia canales."""
         selected_indices = self.channels_listbox.curselection()
         if not selected_indices:
             return
         self.clipboard = [(self.channels[i], self.channels_listbox.get(i)) for i in selected_indices]
 
     def paste_channels(self):
+        """Paste canales."""
         if not self.clipboard:
             return
             
@@ -120,6 +128,7 @@ class M3USorter:
                 insert_index += 1
 
     def delete_channels(self, event=None):
+        """Elimina canales."""
         selected_indices = self.channels_listbox.curselection()
         if not selected_indices:
             return
@@ -129,6 +138,7 @@ class M3USorter:
             self.channels_listbox.delete(i)
 
     def load_channels(self):
+        """Carga canales."""
         try:
             with open(self.input_file, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
@@ -149,12 +159,14 @@ class M3USorter:
             messagebox.showerror('Error', f'Error al cargar el archivo: {str(e)}')
     
     def get_channel_name(self, extinf_line):
+        """Obtiene canal name."""
         try:
             return extinf_line.split(',')[-1].strip()
         except:
             return 'Canal sin nombre'
 
     def edit_channel(self):
+        """Edit canal."""
         selection = self.channels_listbox.curselection()
         if not selection:
             return
@@ -191,6 +203,7 @@ class M3USorter:
         style_text(url_text)
         
         def save_changes():
+            """Guarda changes."""
             new_extinf = info_text.get('1.0', 'end-1c')
             new_url = url_text.get('1.0', 'end-1c')
             self.channels[index] = (new_extinf + '\n', new_url + '\n')
@@ -204,6 +217,7 @@ class M3USorter:
         bind_wraplength(edit_window, padding=32)
 
     def save_channels(self):
+        """Guarda canales."""
         output_file = filedialog.asksaveasfilename(
             defaultextension='.m3u',
             filetypes=[('Archivos M3U', '*.m3u')],
@@ -223,6 +237,7 @@ class M3USorter:
                 messagebox.showerror('Error', f'Error al guardar el archivo: {str(e)}')
 
     def toggle_drag_drop(self):
+        """Alterna drag drop."""
         if self.drag_enabled.get():
             self.channels_listbox.bind('<Button-1>', self.on_click)
             self.channels_listbox.bind('<B1-Motion>', self.on_drag)
@@ -233,18 +248,22 @@ class M3USorter:
             self.channels_listbox.unbind('<ButtonRelease-1>')
             
     def on_click(self, event):
+        """Responde al evento click."""
         self.drag_start_index = self.channels_listbox.nearest(event.y)
         
     def on_drag(self, event):
+        """Responde al evento drag."""
         drag_index = self.channels_listbox.nearest(event.y)
         if drag_index != self.drag_start_index:
             self.move_channels(self.drag_start_index, drag_index)
             self.drag_start_index = drag_index
 
     def on_drop(self, event):
+        """Responde al evento drop."""
         pass  
 
     def move_channels(self, from_index, to_index):
+        """Mueve canales."""
         selected_indices = self.channels_listbox.curselection()
         if not selected_indices:
             selected_indices = [from_index]
@@ -263,10 +282,12 @@ class M3USorter:
             self.channels_listbox.selection_set(insert_pos + i)
 
     def cut_channels(self):
+        """Cut canales."""
         self.copy_channels()
         self.delete_channels()
 
     def change_group(self):
+        """Change group."""
         selected_indices = self.channels_listbox.curselection()
         if not selected_indices:
             return
@@ -289,6 +310,7 @@ class M3USorter:
                 self.channels_listbox.insert(i, self.get_channel_name(updated_line))
 
     def filter_channels(self, *args):
+        """Filtra canales."""
         search_term = self.search_var.get().lower()
         self.channels_listbox.delete(0, tk.END)
         

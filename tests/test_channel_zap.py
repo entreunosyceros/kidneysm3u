@@ -1,3 +1,5 @@
+"""Módulo de test channel zap."""
+
 from channel_zap import (
     zap_buffer_append,
     zap_buffer_backspace,
@@ -9,12 +11,15 @@ from channel_zap import (
 
 
 class _Event:
+    """Clase que representa event."""
     def __init__(self, keysym='', char=''):
+        """Inicializa _Event."""
         self.keysym = keysym
         self.char = char
 
 
 def test_zap_maps_one_based_visible_list():
+    """Prueba zap maps one based visible list."""
     assert zap_visible_index(1, 10) == 0
     assert zap_visible_index(10, 10) == 9
     assert zap_visible_index(0, 10) is None
@@ -25,6 +30,7 @@ def test_zap_maps_one_based_visible_list():
 
 
 def test_zap_buffer_timeout_digits_and_numpad():
+    """Prueba zap buffer timeout digits and numpad."""
     assert zap_max_digits(9) == 1
     assert zap_max_digits(10) == 2
     assert zap_max_digits(5000) == 4

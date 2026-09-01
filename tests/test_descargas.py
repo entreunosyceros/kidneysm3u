@@ -1,3 +1,5 @@
+"""Módulo de test descargas."""
+
 from pathlib import Path
 
 import app_config
@@ -5,6 +7,7 @@ from descargas import download_history_label, resolve_downloaded_path
 
 
 def _isolate_config(tmp_path, monkeypatch):
+    """Uso interno: isolate configuración."""
     previous = app_config._cache
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(tmp_path / 'config.json'))
     app_config._cache = None
@@ -12,6 +15,7 @@ def _isolate_config(tmp_path, monkeypatch):
 
 
 def test_open_folder_after_download_pref(tmp_path, monkeypatch):
+    """Prueba open folder after download pref."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         assert app_config.get_open_folder_after_download() is True
@@ -24,6 +28,7 @@ def test_open_folder_after_download_pref(tmp_path, monkeypatch):
 
 
 def test_download_url_history_unique_and_capped(tmp_path, monkeypatch):
+    """Prueba download URL historial unique and capped."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         assert app_config.download_url_history() == []
@@ -50,6 +55,7 @@ def test_download_url_history_unique_and_capped(tmp_path, monkeypatch):
 
 
 def test_resolve_downloaded_path_finds_extension(tmp_path):
+    """Prueba resolve downloaded path finds extension."""
     planned = tmp_path / 'canal'
     saved = tmp_path / 'canal.mp4'
     saved.write_bytes(b'data')
@@ -58,6 +64,7 @@ def test_resolve_downloaded_path_finds_extension(tmp_path):
 
 
 def test_reveal_in_file_manager_linux_selects_file(tmp_path, monkeypatch):
+    """Prueba reveal in file manager linux selects file."""
     from descargas import reveal_in_file_manager
 
     saved = tmp_path / 'video.mp4'
@@ -65,9 +72,11 @@ def test_reveal_in_file_manager_linux_selects_file(tmp_path, monkeypatch):
     calls = []
 
     def fake_run(cmd, **kwargs):
+        """Fake run."""
         calls.append(('run', list(cmd)))
 
         class Result:
+            """Clase que representa result."""
             returncode = 0
 
         return Result()

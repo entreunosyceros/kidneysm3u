@@ -1,3 +1,5 @@
+"""Módulo de test iptv buffer."""
+
 import app_config
 from iptv_buffer import (
     CACHE_MS_MAX,
@@ -18,6 +20,7 @@ from player_iptv import IptvPlaybackMixin
 
 
 def _isolate_config(tmp_path, monkeypatch):
+    """Uso interno: isolate configuración."""
     previous = app_config._cache
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(tmp_path / 'config.json'))
     app_config._cache = None
@@ -25,6 +28,7 @@ def _isolate_config(tmp_path, monkeypatch):
 
 
 def test_vlc_aout_linux_vs_windows(monkeypatch):
+    """Prueba VLC aout linux vs windows."""
     import iptv_buffer
 
     monkeypatch.setattr(iptv_buffer.sys, 'platform', 'linux')
@@ -41,6 +45,7 @@ def test_vlc_aout_linux_vs_windows(monkeypatch):
 
 
 def test_normalize_iptv_buffer_profile():
+    """Prueba normalize IPTV buffer profile."""
     assert normalize_iptv_buffer_profile('fast') == 'fast'
     assert normalize_iptv_buffer_profile('Rápido') == 'fast'
     assert normalize_iptv_buffer_profile('estable') == 'stable'
@@ -48,6 +53,7 @@ def test_normalize_iptv_buffer_profile():
 
 
 def test_iptv_cache_ms_by_kind_and_profile():
+    """Prueba IPTV cache ms by kind and profile."""
     assert iptv_cache_ms('mpegts', profile='balanced') == 5000
     assert iptv_cache_ms('hls', profile='balanced') == 8000
     assert iptv_cache_ms('container', profile='balanced') == 4000
@@ -63,6 +69,7 @@ def test_iptv_cache_ms_by_kind_and_profile():
 
 
 def test_iptv_live_options_relax_clock_vod_keeps_sync():
+    """Prueba IPTV live options relax clock vod keeps sync."""
     live = iptv_vlc_buffer_options('mpegts', profile='balanced')
     assert ':network-caching=5000' in live
     assert ':clock-synchro=0' in live
@@ -83,6 +90,7 @@ def test_iptv_live_options_relax_clock_vod_keeps_sync():
 
 
 def test_iptv_startup_waits_while_bytes_grow():
+    """Prueba IPTV startup waits while bytes grow."""
     assert iptv_startup_decision(
         state='Buffering', decoded=False, bytes_now=0, bytes_prev=0, ticks=2,
     ) == 'wait'
@@ -112,6 +120,7 @@ def test_iptv_startup_waits_while_bytes_grow():
 
 
 def test_iptv_hls_gets_more_time_without_bytes():
+    """Prueba IPTV hls gets more time without bytes."""
     assert iptv_startup_decision(
         state='Opening', decoded=False, bytes_now=0, bytes_prev=0, ticks=5,
         kind='hls',
@@ -123,6 +132,7 @@ def test_iptv_hls_gets_more_time_without_bytes():
 
 
 def test_iptv_deadman_extends_if_data_arrives():
+    """Prueba IPTV deadman extends if data arrives."""
     assert iptv_deadman_should_fail(
         decoded=True, bytes_now=1, bytes_prev=0, elapsed_s=12,
     ) is False
@@ -138,6 +148,7 @@ def test_iptv_deadman_extends_if_data_arrives():
 
 
 def test_iptv_rebuffer_reconnects_once_then_fails():
+    """Prueba IPTV rebuffer reconnects once then fails."""
     assert iptv_rebuffer_decision(
         started=True, state='Playing', stall_ticks=0,
         bytes_now=10, bytes_prev=5, reconnects=0,
@@ -165,16 +176,19 @@ def test_iptv_rebuffer_reconnects_once_then_fails():
 
 
 def test_vlc_state_name_from_string_or_attr():
+    """Prueba VLC state name from string or attr."""
     assert vlc_state_name('State.Buffering') == 'Buffering'
     assert vlc_state_name(type('S', (), {'name': 'Playing'})()) == 'Playing'
 
 
 def test_remote_options_use_profile_cache(tmp_path, monkeypatch):
+    """Prueba remote options use profile cache."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         app_config.set_iptv_buffer('stable')
 
         class Dummy(IptvPlaybackMixin):
+            """Clase que representa dummy."""
             _iptv_source_url = 'http://panel.example/live/1.ts'
 
         dummy = Dummy()
@@ -193,6 +207,7 @@ def test_remote_options_use_profile_cache(tmp_path, monkeypatch):
 
 
 def test_iptv_soft_rebuffer_bump_once_in_window():
+    """Prueba IPTV soft rebuffer bump once in ventana."""
     assert iptv_soft_rebuffer_should_bump(2, False) is False
     assert iptv_soft_rebuffer_should_bump(3, False) is True
     assert iptv_soft_rebuffer_should_bump(5, True) is False
@@ -208,6 +223,7 @@ def test_iptv_soft_rebuffer_bump_once_in_window():
 
 
 def test_iptv_buffer_pref_roundtrip(tmp_path, monkeypatch):
+    """Prueba IPTV buffer pref roundtrip."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         assert app_config.get_iptv_buffer() == 'balanced'

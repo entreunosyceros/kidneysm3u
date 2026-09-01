@@ -11,22 +11,26 @@ MAX_FAVORITES_FILE_BYTES = 20 * 1024 * 1024
 
 
 def favorite_name(item):
+    """Favorito name."""
     if isinstance(item, (list, tuple)) and item:
         return str(item[0] or '').strip()
     return ''
 
 
 def favorite_url(item):
+    """Favorito url."""
     if isinstance(item, (list, tuple)) and len(item) >= 2:
         return str(item[1] or '').strip()
     return ''
 
 
 def favorite_entry(name, url):
+    """Favorito entry."""
     return [str(name or '').strip() or 'Canal', str(url or '').strip()]
 
 
 def favorites_contain(favorites, name, url):
+    """Favoritos contain."""
     wanted = str(url or '').strip()
     if not wanted:
         return False
@@ -34,6 +38,7 @@ def favorites_contain(favorites, name, url):
 
 
 def normalize_favorites(items):
+    """Normaliza favoritos."""
     out = []
     seen = set()
     for item in items or ():
@@ -59,6 +64,7 @@ def add_favorite(favorites, name, url):
 
 
 def remove_favorite(favorites, name, url):
+    """Quita favorito."""
     wanted = str(url or '').strip()
     current = normalize_favorites(favorites)
     if not wanted:
@@ -85,6 +91,7 @@ def merge_favorites(current, incoming):
 
 
 def favorites_payload(items):
+    """Favoritos payload."""
     return {
         'kind': FAVORITES_KIND,
         'format': FAVORITES_FORMAT,
@@ -93,6 +100,7 @@ def favorites_payload(items):
 
 
 def parse_favorites_payload(data):
+    """Interpreta favoritos payload."""
     if isinstance(data, list):
         return normalize_favorites(data)
     if not isinstance(data, dict):
@@ -108,6 +116,7 @@ def parse_favorites_payload(data):
 
 
 def favorites_to_m3u(items):
+    """Favoritos to lista m3u."""
     lines = ['#EXTM3U']
     for name, url in normalize_favorites(items):
         title = ' '.join(str(name or 'Canal').split())
@@ -162,7 +171,9 @@ def write_favorites_file(path, items):
 
 
 class FavoritesManager:
+    """Clase que representa favoritesmanager."""
     def __init__(self, video_player):
+        """Inicializa FavoritesManager."""
         self.video_player = video_player
         self.favorites = []
         self.load_favorites()

@@ -60,6 +60,7 @@ _DEFAULTS = {
 
 
 def normalize_hex_color(value, fallback='#FFFFFF'):
+    """Normaliza hex color."""
     text = str(value or '').strip()
     if text.startswith('#'):
         text = text[1:]
@@ -71,6 +72,7 @@ def normalize_hex_color(value, fallback='#FFFFFF'):
 
 
 def hex_to_vlc_color(value, fallback='#FFFFFF'):
+    """Hex to vlc color."""
     hex_color = normalize_hex_color(value, fallback)[1:]
     return int(hex_color, 16)
 
@@ -95,6 +97,7 @@ def nearest_vlc_palette_color(value, fallback='#FFFFFF'):
 
 
 def vlc_rel_fontsize(size):
+    """Vlc rel fontsize."""
     allowed = tuple(item[0] for item in SUBTITLE_SIZES)
     value = _clamp_int(size, 0, 64, 0)
     if value not in allowed:
@@ -103,11 +106,13 @@ def vlc_rel_fontsize(size):
 
 
 def vlc_outline_thickness(outline):
+    """Vlc outline thickness."""
     value = _clamp_int(outline, 0, 2, 1)
     return _VLC_OUTLINE_THICKNESS.get(value, 2)
 
 
 def _clamp_int(value, minimum, maximum, default):
+    """Uso interno: clamp int."""
     try:
         number = int(value)
     except (TypeError, ValueError):
@@ -116,6 +121,7 @@ def _clamp_int(value, minimum, maximum, default):
 
 
 def normalize_subtitle_style(data=None):
+    """Normaliza subtitle style."""
     raw = data if isinstance(data, dict) else {}
     allowed_sizes = tuple(item[0] for item in SUBTITLE_SIZES)
     size = _clamp_int(raw.get('subtitle_size', _DEFAULTS['subtitle_size']), 0, 64, 0)
@@ -135,11 +141,13 @@ def normalize_subtitle_style(data=None):
 
 
 def get_subtitle_style():
+    """Obtiene subtitle style."""
     import app_config
     return normalize_subtitle_style(app_config.load())
 
 
 def delay_label(tenths):
+    """Delay label."""
     value = _clamp_int(tenths, -50, 50, 0)
     seconds = value / 10.0
     if seconds == 0:
@@ -150,19 +158,23 @@ def delay_label(tenths):
 
 
 def opacity_percent(value):
+    """Opacity percent."""
     return int(round(_clamp_int(value, 0, 255, 0) * 100 / 255.0))
 
 
 def percent_to_opacity(percent):
+    """Percent to opacity."""
     return int(round(_clamp_int(percent, 0, 100, 0) * 255 / 100.0))
 
 
 def fingerprint(style=None):
+    """Fingerprint."""
     cfg = normalize_subtitle_style(style if style is not None else get_subtitle_style())
     return tuple(sorted(cfg.items()))
 
 
 def vlc_option_pairs(style=None):
+    """Vlc option pairs."""
     cfg = normalize_subtitle_style(style if style is not None else get_subtitle_style())
     pairs = [
         ('freetype-rel-fontsize', str(vlc_rel_fontsize(cfg['subtitle_size']))),
@@ -183,15 +195,18 @@ def vlc_option_pairs(style=None):
 
 
 def vlc_instance_args(style=None):
+    """Vlc instance args."""
     return [f'--{name}={value}' for name, value in vlc_option_pairs(style)]
 
 
 def vlc_media_options(style=None, prefix=':'):
+    """Vlc media options."""
     prefix = prefix or ''
     return [f'{prefix}{name}={value}' for name, value in vlc_option_pairs(style)]
 
 
 def apply_spu_delay(player, style=None):
+    """Aplica spu delay."""
     if player is None:
         return
     cfg = normalize_subtitle_style(style if style is not None else get_subtitle_style())

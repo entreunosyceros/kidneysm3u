@@ -1,3 +1,5 @@
+"""Módulo de about."""
+
 import os
 import tkinter as tk
 from tkinter import ttk
@@ -9,6 +11,7 @@ from ui_layout import bind_wraplength, setup_resizable_dialog
 from app_version import __version__ as APP_VERSION
 
 def show_about(root):
+    """Muestra about."""
     about_window = tk.Toplevel(root)
     about_window.title('Acerca de')
     setup_resizable_dialog(about_window, 520, 580, 400, 420)

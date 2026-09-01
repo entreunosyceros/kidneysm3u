@@ -43,10 +43,12 @@ _HTML_TAGS = re.compile(r'<[^>]+>')
 
 
 def _is_orig(code):
+    """Uso interno: is orig."""
     return str(code or '').endswith('-orig')
 
 
 def _lang_base(code):
+    """Uso interno: lang base."""
     text = str(code or '')
     if text.endswith('-orig'):
         text = text[:-5]
@@ -54,6 +56,7 @@ def _lang_base(code):
 
 
 def _lang_label(code, kind):
+    """Uso interno: lang label."""
     raw = str(code or '')
     base = raw[:-5] if raw.endswith('-orig') else raw
     name = _YT_LANG_NAMES.get(base) or _YT_LANG_NAMES.get(_lang_base(raw)) or base or raw
@@ -131,6 +134,7 @@ def collect_youtube_subs(info):
     seen = set()
 
     def add(code, entries, kind):
+        """Add."""
         key = (kind, str(code))
         if key in seen:
             return False
@@ -202,6 +206,7 @@ def pick_preferred_youtube_sub(items):
 
 
 def _stamp_to_ms(stamp):
+    """Uso interno: stamp to ms."""
     parts = stamp.split(':')
     if len(parts) == 3:
         hours, minutes, rest = parts
@@ -223,6 +228,7 @@ def _stamp_to_ms(stamp):
 
 
 def _ms_to_stamp(ms):
+    """Uso interno: ms to stamp."""
     ms = max(0, int(ms))
     hours, rem = divmod(ms, 3600000)
     minutes, rem = divmod(rem, 60000)
@@ -231,10 +237,12 @@ def _ms_to_stamp(ms):
 
 
 def _cue_lines(text):
+    """Uso interno: cue lines."""
     return [line for line in (text or '').split('\n') if line.strip()]
 
 
 def _clean_cue_text(text):
+    """Uso interno: clean cue text."""
     text = _CUE_TAGS.sub('', text or '')
     text = _HTML_TAGS.sub('', text)
     text = text.replace('\u200b', '')
@@ -254,6 +262,7 @@ def _drop_rollup_prefix(text, previous_lines):
 
 
 def _dedupe_and_deoverlap(cues):
+    """Uso interno: dedupe and deoverlap."""
     grouped = {}
     order = []
     for start, end, text in cues:
@@ -299,6 +308,7 @@ def _dedupe_and_deoverlap(cues):
 
 
 def _cues_to_vtt(cues):
+    """Uso interno: cues to vtt."""
     lines = ['WEBVTT', '']
     for index, (start, end, text) in enumerate(cues, start=1):
         lines.append(str(index))
@@ -309,6 +319,7 @@ def _cues_to_vtt(cues):
 
 
 def _ms_to_srt_stamp(ms):
+    """Uso interno: ms to srt stamp."""
     ms = max(0, int(ms))
     hours, rest = divmod(ms, 3600000)
     minutes, rest = divmod(rest, 60000)
@@ -380,6 +391,7 @@ def sanitize_youtube_vtt(raw):
 
 
 def json3_to_vtt(raw):
+    """Json3 to vtt."""
     if isinstance(raw, bytes):
         raw = raw.decode('utf-8', errors='replace')
     try:
@@ -411,11 +423,13 @@ def json3_to_vtt(raw):
 
 
 def _looks_like_json(raw):
+    """Uso interno: looks like json."""
     sample = raw.lstrip()[:1]
     return sample in '{['
 
 
 def subtitle_bytes_to_vtt(raw, ext=None):
+    """Subtitle bytes to vtt."""
     ext = (ext or '').lower().lstrip('.')
     if isinstance(raw, bytes):
         text = raw.decode('utf-8', errors='replace')

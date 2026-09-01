@@ -1,3 +1,5 @@
+"""Módulo de test twitch player."""
+
 import app_config
 from twitch_player import (
     _jar_has_live_twitch_login,
@@ -25,6 +27,7 @@ from twitch_player import (
 
 
 def test_is_twitch_url_accepts_common_links():
+    """Prueba is twitch URL accepts common links."""
     assert is_twitch_url('https://www.twitch.tv/somechannel')
     assert is_twitch_url('https://m.twitch.tv/other')
     assert is_twitch_url('https://www.twitch.tv/videos/1234567890')
@@ -33,6 +36,7 @@ def test_is_twitch_url_accepts_common_links():
 
 
 def test_is_twitch_url_rejects_other_sites():
+    """Prueba is twitch URL rejects other sites."""
     assert not is_twitch_url('https://youtube.com/watch?v=abc')
     assert not is_twitch_url('https://example.com/twitch.tv/fake')
     assert not is_twitch_url('')
@@ -40,6 +44,7 @@ def test_is_twitch_url_rejects_other_sites():
 
 
 def test_is_twitch_channel_url():
+    """Prueba is twitch canal URL."""
     assert is_twitch_channel_url('https://www.twitch.tv/shroud')
     assert is_twitch_channel_url('https://m.twitch.tv/ninja')
     assert not is_twitch_channel_url('https://www.twitch.tv/videos/1234567890')
@@ -49,11 +54,13 @@ def test_is_twitch_channel_url():
 
 
 def test_is_twitch_offline_error():
+    """Prueba is twitch offline error."""
     assert is_twitch_offline_error(Exception('shroud: The channel is not currently live'))
     assert not is_twitch_offline_error(Exception('network timeout'))
 
 
 def test_normalize_twitch_channel_input():
+    """Prueba normalize twitch canal input."""
     assert normalize_twitch_channel_input('shroud') == 'shroud'
     assert normalize_twitch_channel_input('@ninja') == 'ninja'
     assert normalize_twitch_channel_input('https://www.twitch.tv/shroud') == 'shroud'
@@ -61,6 +68,7 @@ def test_normalize_twitch_channel_input():
 
 
 def test_fetch_twitch_latest_vod(monkeypatch):
+    """Prueba fetch twitch latest vod."""
     monkeypatch.setattr(
         'twitch_player.fetch_twitch_channel_vods',
         lambda channel, limit=1: (
@@ -75,17 +83,23 @@ def test_fetch_twitch_latest_vod(monkeypatch):
 
 
 def test_fetch_twitch_channel_vods(monkeypatch):
+    """Prueba fetch twitch canal vods."""
     class _FakeYDL:
+        """Clase que representa fakeydl."""
         def __init__(self, opts):
+            """Inicializa _FakeYDL."""
             self.opts = opts
 
         def __enter__(self):
+            """Entra en el contexto de _FakeYDL."""
             return self
 
         def __exit__(self, *args):
+            """Sale del contexto de _FakeYDL."""
             return False
 
         def extract_info(self, url, download=False):
+            """Extrae info."""
             assert '/videos' in url
             assert self.opts.get('playlistend') == 30
             return {
@@ -113,17 +127,23 @@ def test_fetch_twitch_channel_vods(monkeypatch):
 
 
 def test_probe_twitch_channel_live(monkeypatch):
+    """Prueba probe twitch canal live."""
     class _LiveYDL:
+        """Clase que representa liveydl."""
         def __init__(self, opts):
+            """Inicializa _LiveYDL."""
             self.opts = opts
 
         def __enter__(self):
+            """Entra en el contexto de _LiveYDL."""
             return self
 
         def __exit__(self, *args):
+            """Sale del contexto de _LiveYDL."""
             return False
 
         def extract_info(self, url, download=False):
+            """Extrae info."""
             return {'is_live': True, 'title': 'Ranked grind'}
 
     monkeypatch.setattr('yt_dlp.YoutubeDL', _LiveYDL)
@@ -134,17 +154,23 @@ def test_probe_twitch_channel_live(monkeypatch):
 
 
 def test_probe_twitch_channel_offline(monkeypatch):
+    """Prueba probe twitch canal offline."""
     class _OfflineYDL:
+        """Clase que representa offlineydl."""
         def __init__(self, opts):
+            """Inicializa _OfflineYDL."""
             pass
 
         def __enter__(self):
+            """Entra en el contexto de _OfflineYDL."""
             return self
 
         def __exit__(self, *args):
+            """Sale del contexto de _OfflineYDL."""
             return False
 
         def extract_info(self, url, download=False):
+            """Extrae info."""
             raise Exception('The channel is not currently live')
 
     monkeypatch.setattr('yt_dlp.YoutubeDL', _OfflineYDL)
@@ -153,12 +179,14 @@ def test_probe_twitch_channel_offline(monkeypatch):
 
 
 def test_normalize_and_history_id():
+    """Prueba normalize and historial id."""
     url = 'https://WWW.Twitch.tv/Channel/?referrer=home'
     assert normalize_twitch_url(url) == url
     assert twitch_history_id(url).endswith('/channel')
 
 
 def test_twitch_display_name_from_url():
+    """Prueba twitch display name from URL."""
     assert twitch_display_name_from_url('https://www.twitch.tv/shroud') == 'shroud'
     assert twitch_display_name_from_url('https://m.twitch.tv/ninja') == 'ninja'
     assert twitch_display_name_from_url('https://www.twitch.tv/videos/1234567890') == 'VOD 1234567890'
@@ -167,6 +195,7 @@ def test_twitch_display_name_from_url():
 
 
 def test_twitch_default_title_prefers_real_title():
+    """Prueba twitch default title prefers real title."""
     url = 'https://www.twitch.tv/shroud'
     assert twitch_default_title(url) == 'shroud'
     assert twitch_default_title(url, 'Shroud en directo') == 'Shroud en directo'
@@ -174,6 +203,7 @@ def test_twitch_default_title_prefers_real_title():
 
 
 def test_pick_twitch_stream_prefers_hls():
+    """Prueba pick twitch stream prefers hls."""
     info = {
         'title': 'Directo de prueba',
         'is_live': True,
@@ -202,6 +232,7 @@ def test_pick_twitch_stream_prefers_hls():
 
 
 def test_twitch_history(tmp_path, monkeypatch):
+    """Prueba twitch historial."""
     previous = app_config._cache
     cfg = tmp_path / 'config.json'
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(cfg))
@@ -221,6 +252,7 @@ def test_twitch_history(tmp_path, monkeypatch):
 
 
 def test_twitch_vod_resume(tmp_path, monkeypatch):
+    """Prueba twitch vod resume."""
     previous = app_config._cache
     cfg = tmp_path / 'config.json'
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(cfg))
@@ -244,13 +276,16 @@ def test_twitch_vod_resume(tmp_path, monkeypatch):
 
 
 def test_is_twitch_vod_url():
+    """Prueba is twitch vod URL."""
     assert is_twitch_vod_url('https://www.twitch.tv/videos/1234567890')
     assert not is_twitch_vod_url('https://www.twitch.tv/shroud')
     assert not is_twitch_vod_url('https://clips.twitch.tv/FancyClip')
 
 
 class _FakeCookie:
+    """Clase que representa fakecookie."""
     def __init__(self, name, value, domain='.twitch.tv', expires=None):
+        """Inicializa _FakeCookie."""
         self.name = name
         self.value = value
         self.domain = domain
@@ -258,12 +293,14 @@ class _FakeCookie:
 
 
 def test_jar_has_live_twitch_login():
+    """Prueba jar has live twitch login."""
     assert _jar_has_live_twitch_login([_FakeCookie('auth-token', 'abc123')])
     assert not _jar_has_live_twitch_login([_FakeCookie('auth-token', 'abc123', expires=1)])
     assert not _jar_has_live_twitch_login([_FakeCookie('session', 'x')])
 
 
 def test_twitch_cookie_keep():
+    """Prueba twitch cookie keep."""
     now = 2_000_000_000
     assert _twitch_cookie_keep(_FakeCookie('auth-token', 'x'), now=now)
     assert not _twitch_cookie_keep(_FakeCookie('auth-token', 'x', expires=now - 10), now=now)
@@ -271,6 +308,7 @@ def test_twitch_cookie_keep():
 
 
 def test_inspect_twitch_session(tmp_path):
+    """Prueba inspect twitch session."""
     path = tmp_path / 'twitch_cookies.txt'
     assert inspect_twitch_session(str(path))['ok'] is False
     path.write_text(
@@ -284,6 +322,7 @@ def test_inspect_twitch_session(tmp_path):
 
 
 def test_twitch_ydl_opts_uses_cookiefile(tmp_path, monkeypatch):
+    """Prueba twitch ydl opts uses cookiefile."""
     cookie_path = tmp_path / 'twitch_cookies.txt'
     cookie_path.write_text('# empty\n', encoding='utf-8')
     monkeypatch.setattr('twitch_player.twitch_cookies_file_path', lambda: str(cookie_path))
@@ -292,11 +331,13 @@ def test_twitch_ydl_opts_uses_cookiefile(tmp_path, monkeypatch):
 
 
 def test_twitch_auth_blocked():
+    """Prueba twitch auth blocked."""
     assert twitch_auth_blocked(Exception('This video is subscribers-only'))
     assert not twitch_auth_blocked(Exception('network timeout'))
 
 
 def test_twitch_favorite_url():
+    """Prueba twitch favorito URL."""
     assert twitch_favorite_url('https://www.twitch.tv/shroud') == 'https://www.twitch.tv/shroud'
     assert twitch_favorite_url('https://www.twitch.tv/videos/1234567890') == (
         'https://www.twitch.tv/videos/1234567890'
@@ -307,6 +348,7 @@ def test_twitch_favorite_url():
 
 
 def test_twitch_loading_detail():
+    """Prueba twitch loading detail."""
     stream = {
         'channel': 'shroud',
         'title': 'Ranked all day',
@@ -323,6 +365,7 @@ def test_twitch_loading_detail():
 
 
 def test_effective_twitch_quality_independent(tmp_path, monkeypatch):
+    """Prueba effective twitch quality independent."""
     previous = app_config._cache
     cfg = tmp_path / 'config.json'
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(cfg))

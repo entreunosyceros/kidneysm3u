@@ -38,7 +38,9 @@ from youtube_player import _GrowingTSHandler
 
 
 class IptvPlaybackMixin:
+    """Clase que representa iptvplaybackmixin."""
     def _play_iptv_url(self, name, url):
+        """Uso interno: play IPTV URL."""
         url = (url or '').strip()
         if not url:
             self._show_channel_unavailable(name)
@@ -76,9 +78,11 @@ class IptvPlaybackMixin:
         self.window.after(2500, lambda: self._check_iptv_stream(check_gen))
 
     def _sanitize_iptv_log(self, text):
+        """Uso interno: sanitize IPTV log."""
         return re.sub(r'https?://\S+', '[url]', text or '')
 
     def _iptv_media_stats(self):
+        """Uso interno: IPTV media stats."""
         if not self.player:
             return None
         try:
@@ -109,12 +113,14 @@ class IptvPlaybackMixin:
         return False
 
     def _iptv_cache_extra(self):
+        """Uso interno: IPTV cache extra."""
         try:
             return max(0, int(getattr(self, '_iptv_cache_extra_ms', 0) or 0))
         except (TypeError, ValueError):
             return 0
 
     def _iptv_remote_options(self, kind, force_ts=False):
+        """Uso interno: IPTV remote options."""
         url = getattr(self, '_iptv_source_url', '') or ''
         vod = is_iptv_vod(url) or kind == 'container'
         profile = app_config.get_iptv_buffer()
@@ -145,6 +151,7 @@ class IptvPlaybackMixin:
         return options
 
     def _start_vlc_remote(self, name, url, kind, force_ts=False):
+        """Uso interno: start VLC remote."""
         if not self.instance:
             return
         if self.player is None:
@@ -179,6 +186,7 @@ class IptvPlaybackMixin:
         self._iptv_retry_name = name
 
     def _iptv_deadman(self, check_gen, name, elapsed=12):
+        """Uso interno: IPTV deadman."""
         if check_gen != getattr(self, '_iptv_check_gen', 0):
             return
         if getattr(self, '_iptv_failed', False) or getattr(self, '_playing_youtube', False):
@@ -207,6 +215,7 @@ class IptvPlaybackMixin:
         self._iptv_report_unavailable(name)
 
     def _watch_iptv_start(self, check_gen, name, url, kind, ticks=0):
+        """Uso interno: watch IPTV start."""
         if check_gen != getattr(self, '_iptv_check_gen', 0):
             return
         if getattr(self, '_iptv_failed', False):
@@ -270,6 +279,7 @@ class IptvPlaybackMixin:
         self.window.after(2000, lambda: self._watch_iptv_start(check_gen, name, url, kind, ticks + 1))
 
     def _iptv_local_options(self):
+        """Uso interno: IPTV local options."""
         profile = app_config.get_iptv_buffer()
         options = iptv_vlc_buffer_options(
             'mpegts',
@@ -319,6 +329,7 @@ class IptvPlaybackMixin:
         self._iptv_retry_name = name
 
     def _check_iptv_stream(self, check_gen=None, waited=0):
+        """Uso interno: check IPTV stream."""
         if check_gen is not None and check_gen != getattr(self, '_iptv_check_gen', 0):
             return
         if getattr(self, '_iptv_failed', False) or getattr(self, '_playing_youtube', False):
@@ -402,6 +413,7 @@ class IptvPlaybackMixin:
             self.window.after(2000, lambda: self._check_iptv_stream(check_gen))
 
     def _stop_iptv_relay(self):
+        """Uso interno: stop IPTV relay."""
         server = getattr(self, '_iptv_relay_server', None)
         self._iptv_relay_server = None
         if server:
@@ -433,6 +445,7 @@ class IptvPlaybackMixin:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def _ffmpeg_pull_cmd(self, ffmpeg, source, ts_path):
+        """Uso interno: ffmpeg pull cmd."""
         return [
             ffmpeg, '-hide_banner', '-loglevel', 'error',
             '-user_agent', IPTV_USER_AGENT,
@@ -443,6 +456,7 @@ class IptvPlaybackMixin:
         ]
 
     def _start_iptv_ffmpeg_relay(self, name, url):
+        """Uso interno: start IPTV ffmpeg relay."""
         ffmpeg = shutil.which('ffmpeg')
         if not ffmpeg:
             print("[IPTV] ffmpeg no está instalado")
@@ -463,6 +477,7 @@ class IptvPlaybackMixin:
         local_url = f'http://127.0.0.1:{server.server_address[1]}/stream.ts'
 
         def producer():
+            """Producer."""
             try:
                 sources = iptv_upstream_candidates(url)
             except Exception as err:
@@ -538,6 +553,7 @@ class IptvPlaybackMixin:
                 self.window.after(0, lambda: self._iptv_report_unavailable(name))
 
         def wait_and_play():
+            """Wait and play."""
             deadline = time.time() + 45
             while time.time() < deadline:
                 if getattr(self, '_iptv_check_gen', 0) != check_gen:

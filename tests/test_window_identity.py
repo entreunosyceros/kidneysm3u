@@ -1,3 +1,5 @@
+"""Módulo de test window identity."""
+
 from ui_theme import APP_WM_CLASS
 
 

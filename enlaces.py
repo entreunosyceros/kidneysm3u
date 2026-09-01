@@ -1,3 +1,5 @@
+"""Módulo de enlaces."""
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 import json
@@ -7,7 +9,9 @@ from ui_theme import style_window, style_listbox, set_window_icon
 from ui_layout import setup_resizable_dialog
 
 class EnlacesManager:
+    """Clase que representa enlacesmanager."""
     def __init__(self, root):
+        """Inicializa EnlacesManager."""
         self.window = tk.Toplevel(root)
         self.window.title('Gestionar Enlaces')
         setup_resizable_dialog(self.window, 520, 380, 420, 300)
@@ -18,6 +22,7 @@ class EnlacesManager:
         self.create_widgets()
         
     def create_widgets(self):
+        """Crea widgets."""
         main_frame = ttk.Frame(self.window, padding=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -53,6 +58,7 @@ class EnlacesManager:
         self.actualizar_lista()
         
     def cargar_enlaces(self):
+        """Cargar enlaces."""
         try:
             if os.path.exists('enlaces.json'):
                 with open('enlaces.json', 'r', encoding='utf-8') as f:
@@ -63,15 +69,18 @@ class EnlacesManager:
         return {}
             
     def guardar_enlaces(self):
+        """Guardar enlaces."""
         with open('enlaces.json', 'w', encoding='utf-8') as f:
             json.dump(self.enlaces, f, ensure_ascii=False, indent=4)
             
     def actualizar_lista(self):
+        """Actualizar lista."""
         self.enlaces_listbox.delete(0, tk.END)
         for nombre in self.enlaces.keys():
             self.enlaces_listbox.insert(tk.END, nombre)
             
     def añadir_enlace(self):
+        """Añadir enlace."""
         nombre = self.nombre_entry.get().strip()
         url = self.url_entry.get().strip()
         
@@ -88,6 +97,7 @@ class EnlacesManager:
         self.url_entry.delete(0, tk.END)
         
     def eliminar_enlace(self):
+        """Eliminar enlace."""
         seleccion = self.enlaces_listbox.curselection()
         if not seleccion:
             return
@@ -99,6 +109,7 @@ class EnlacesManager:
             self.actualizar_lista()
             
     def abrir_enlace(self, event=None):
+        """Abrir enlace."""
         seleccion = self.enlaces_listbox.curselection()
         if not seleccion:
             return

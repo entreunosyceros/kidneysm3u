@@ -11,6 +11,7 @@ from ui_layout import bind_wraplength, bind_tree_stretch, setup_resizable_dialog
 
 
 def show_youtube_queue(player):
+    """Muestra youtube cola."""
     if not getattr(player, 'window', None):
         return None
     existing = getattr(player, '_youtube_queue_win', None)
@@ -27,7 +28,9 @@ def show_youtube_queue(player):
 
 
 class YoutubeQueueWindow:
+    """Clase que representa youtubequeuewindow."""
     def __init__(self, player):
+        """Inicializa YoutubeQueueWindow."""
         self.player = player
         player._youtube_queue_win = self
         colors = get_colors()
@@ -88,6 +91,7 @@ class YoutubeQueueWindow:
         self.refresh()
 
     def close(self):
+        """Close."""
         if getattr(self.player, '_youtube_queue_win', None) is self:
             self.player._youtube_queue_win = None
         try:
@@ -96,6 +100,7 @@ class YoutubeQueueWindow:
             pass
 
     def refresh(self):
+        """Refresh."""
         if not self.player._widget_exists(self.window):
             return
         try:
@@ -116,6 +121,7 @@ class YoutubeQueueWindow:
             self.tree.see(selected_iid)
 
     def _selected_index(self):
+        """Uso interno: selected index."""
         try:
             selection = self.tree.selection()
         except tk.TclError:
@@ -128,11 +134,13 @@ class YoutubeQueueWindow:
             return None
 
     def _play_next(self):
+        """Uso interno: play next."""
         play = getattr(self.player, 'play_youtube_queue_next', None)
         if play:
             play()
 
     def _play_selected(self, event=None):
+        """Uso interno: play selected."""
         index = self._selected_index()
         if index is None:
             return
@@ -141,6 +149,7 @@ class YoutubeQueueWindow:
             play(index)
 
     def _remove_selected(self):
+        """Uso interno: remove selected."""
         index = self._selected_index()
         if index is None:
             return
@@ -148,6 +157,7 @@ class YoutubeQueueWindow:
         self.refresh()
 
     def _move(self, delta):
+        """Uso interno: move."""
         index = self._selected_index()
         if index is None:
             return
@@ -160,6 +170,7 @@ class YoutubeQueueWindow:
             self.tree.see(str(dest))
 
     def _clear(self):
+        """Uso interno: clear."""
         if not app_config.youtube_queue():
             return
         if not messagebox.askyesno(

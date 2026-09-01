@@ -1,3 +1,5 @@
+"""Módulo de test subtitle style."""
+
 from subtitle_style import (
     delay_label,
     hex_to_vlc_color,
@@ -14,17 +16,20 @@ from subtitle_style import (
 
 
 def test_normalize_hex_color_short_and_invalid():
+    """Prueba normalize hex color short and invalid."""
     assert normalize_hex_color('#abc') == '#AABBCC'
     assert normalize_hex_color('fff') == '#FFFFFF'
     assert normalize_hex_color('nope', '#123456') == '#123456'
 
 
 def test_hex_to_vlc_white_and_red():
+    """Prueba hex to VLC white and red."""
     assert hex_to_vlc_color('#FFFFFF') == 16777215
     assert hex_to_vlc_color('#FF0000') == 16711680
 
 
 def test_normalize_snaps_size_and_clamps_delay():
+    """Prueba normalize snaps size and clamps delay."""
     style = normalize_subtitle_style({
         'subtitle_size': 20,
         'subtitle_delay_ds': 99,
@@ -38,6 +43,7 @@ def test_normalize_snaps_size_and_clamps_delay():
 
 
 def test_vlc_media_options_use_vlc3_freetype_names():
+    """Prueba VLC media options use vlc3 freetype names."""
     style = normalize_subtitle_style({
         'subtitle_size': 32,
         'subtitle_color': '#FFFF00',
@@ -59,6 +65,7 @@ def test_vlc_media_options_use_vlc3_freetype_names():
 
 
 def test_vlc_rel_fontsize_and_outline_mapping():
+    """Prueba VLC rel fontsize and outline mapping."""
     assert vlc_rel_fontsize(0) == 0
     assert vlc_rel_fontsize(18) == 18
     assert vlc_rel_fontsize(24) == 16
@@ -70,12 +77,14 @@ def test_vlc_rel_fontsize_and_outline_mapping():
 
 
 def test_nearest_vlc_palette_color():
+    """Prueba nearest VLC palette color."""
     assert nearest_vlc_palette_color('#FFFFFF') == 16777215
     assert nearest_vlc_palette_color('#FF0000') == 16711680
     assert nearest_vlc_palette_color('#00FF00') == 65280
 
 
 def test_fingerprint_changes_with_size():
+    """Prueba fingerprint changes with size."""
     from subtitle_style import fingerprint, normalize_subtitle_style
     a = fingerprint(normalize_subtitle_style({'subtitle_size': 0}))
     b = fingerprint(normalize_subtitle_style({'subtitle_size': 32}))

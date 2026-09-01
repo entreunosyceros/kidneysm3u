@@ -5,6 +5,7 @@ from tkinter import ttk
 
 
 def clipboard_text(widget):
+    """Clipboard text."""
     try:
         return widget.clipboard_get()
     except tk.TclError:
@@ -35,15 +36,18 @@ def insert_clipboard_text(widget, text):
 
 
 def paste_clipboard(widget):
+    """Paste clipboard."""
     insert_clipboard_text(widget, clipboard_text(widget))
 
 
 def _on_paste(event):
+    """Callback interno para paste."""
     paste_clipboard(event.widget)
     return 'break'
 
 
 def _on_cut(event):
+    """Callback interno para cut."""
     widget = event.widget
     try:
         selected = widget.selection_get()
@@ -59,6 +63,7 @@ def _on_cut(event):
 
 
 def _on_copy(event):
+    """Callback interno para copy."""
     widget = event.widget
     try:
         selected = widget.selection_get()
@@ -73,6 +78,7 @@ def _on_copy(event):
 
 
 def _on_select_all(event):
+    """Callback interno para select all."""
     widget = event.widget
     try:
         widget.selection_range(0, tk.END)
@@ -83,6 +89,7 @@ def _on_select_all(event):
 
 
 def _show_entry_menu(event):
+    """Uso interno: show entry menu."""
     widget = event.widget
     from ui_theme import style_menu_tree
 
@@ -173,10 +180,12 @@ def ask_string(parent, title, prompt, initialvalue='', width=64):
     buttons.pack(fill=tk.X, pady=(14, 0))
 
     def accept(_event=None):
+        """Accept."""
         result['value'] = entry.get()
         window.destroy()
 
     def cancel(_event=None):
+        """Cancel."""
         result['value'] = None
         window.destroy()
 

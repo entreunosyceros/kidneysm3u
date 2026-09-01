@@ -55,6 +55,7 @@ TWITCH_LIVE_MAX_RECONNECTS = 12
 
 
 def is_twitch_url(url):
+    """Indica si twitch URL."""
     text = (url or '').strip()
     if not text.lower().startswith(('http://', 'https://')):
         return False
@@ -65,6 +66,7 @@ def is_twitch_url(url):
 
 
 def normalize_twitch_url(url):
+    """Normaliza twitch URL."""
     return (url or '').strip()
 
 
@@ -96,6 +98,7 @@ def twitch_display_name_from_url(url):
 
 
 def twitch_default_title(url, title=None):
+    """Twitch default title."""
     text = plain_display_text(title, '')
     if text and text not in ('Twitch', normalize_twitch_url(url)):
         return text
@@ -130,6 +133,7 @@ def is_twitch_vod_url(url):
 
 
 def is_twitch_offline_error(exc):
+    """Indica si twitch offline error."""
     text = str(exc or '').lower()
     return 'not currently live' in text or 'channel is offline' in text or 'is offline' in text
 
@@ -150,6 +154,7 @@ def normalize_twitch_channel_input(text):
 
 
 def _twitch_videos_ydl_attempts(playlistend):
+    """Uso interno: twitch videos ydl attempts."""
     browser = preferred_twitch_browser()
     attempts = []
     if os.path.exists(twitch_cookies_file_path()):
@@ -179,6 +184,7 @@ def _twitch_videos_ydl_attempts(playlistend):
 
 
 def _parse_twitch_vod_entry(entry):
+    """Uso interno: parse twitch vod entry."""
     if not entry:
         return None
     vod_url = entry.get('url') or entry.get('webpage_url') or entry.get('id')
@@ -295,6 +301,7 @@ def fetch_twitch_latest_vod(channel):
 
 
 def twitch_history_id(url):
+    """Twitch historial id."""
     text = normalize_twitch_url(url).lower()
     if not text:
         return ''
@@ -303,25 +310,30 @@ def twitch_history_id(url):
 
 
 def twitch_cookies_file_path():
+    """Twitch cookies file path."""
     return TWITCH_COOKIES_PATH
 
 
 def _twitch_cookie_load_hint(exc):
+    """Uso interno: twitch cookie load hint."""
     return _cookie_load_hint(exc).replace('YouTube', 'Twitch')
 
 
 def _twitch_cookie_domain_ok(domain):
+    """Uso interno: twitch cookie domain ok."""
     host = (domain or '').lstrip('.').lower()
     return any(host == item or host.endswith('.' + item) for item in _TWITCH_COOKIE_DOMAINS)
 
 
 def _jar_from_browser_cookie3_twitch(name, loader, cookie_file=None):
+    """Uso interno: jar from browser cookie3 twitch."""
     if cookie_file:
         return loader(cookie_file=cookie_file, domain_name='twitch.tv')
     return loader(domain_name='twitch.tv')
 
 
 def _jar_has_live_twitch_login(cookies):
+    """Uso interno: jar has live twitch login."""
     now = int(time.time())
     for cookie in cookies or []:
         name = getattr(cookie, 'name', '') or ''
@@ -338,6 +350,7 @@ def _jar_has_live_twitch_login(cookies):
 
 
 def _twitch_cookie_keep(cookie, now=None):
+    """Uso interno: twitch cookie keep."""
     name = getattr(cookie, 'name', '') or ''
     value = getattr(cookie, 'value', '') or ''
     domain = getattr(cookie, 'domain', '') or ''
@@ -418,6 +431,7 @@ def load_twitch_login_jar():
 
 
 def preferred_twitch_browser():
+    """Preferred twitch browser."""
     _jar, source, _notes = load_twitch_login_jar()
     if source:
         return source
@@ -426,6 +440,7 @@ def preferred_twitch_browser():
 
 
 def inspect_twitch_session(path=None):
+    """Inspect twitch session."""
     path = path or twitch_cookies_file_path()
     now = int(time.time())
     if not os.path.isfile(path) or os.path.getsize(path) < 20:
@@ -459,11 +474,13 @@ def inspect_twitch_session(path=None):
 
 
 def twitch_auth_blocked(exc):
+    """Twitch auth blocked."""
     text = str(exc or '').lower()
     return any(marker in text for marker in _TWITCH_AUTH_ERROR_MARKERS)
 
 
 def twitch_auth_help():
+    """Twitch auth help."""
     return (
         'Twitch pide iniciar sesión o la emisión es solo para suscriptores.\n'
         'Inicia sesión en twitch.tv (Firefox en Windows) y pulsa «Reexportar cookies».'
@@ -471,6 +488,7 @@ def twitch_auth_help():
 
 
 def _cookie_header_from_twitch_file():
+    """Uso interno: cookie header from twitch file."""
     path = twitch_cookies_file_path()
     if not os.path.exists(path):
         return None
@@ -526,10 +544,12 @@ def twitch_favorite_url(url):
 
 
 def twitch_format_selector(max_height=None):
+    """Twitch format selector."""
     return youtube_format_selector(app_config.effective_twitch_quality(max_height))
 
 
 def _info_subscriber_only(info):
+    """Uso interno: info subscriber only."""
     if not info:
         return False
     avail = str(info.get('availability') or '').lower()
@@ -537,6 +557,7 @@ def _info_subscriber_only(info):
 
 
 def _ydl_used_cookies(ydl_opts):
+    """Uso interno: ydl used cookies."""
     if not ydl_opts:
         return False
     if ydl_opts.get('cookiefile') or ydl_opts.get('cookiesfrombrowser'):
@@ -545,6 +566,7 @@ def _ydl_used_cookies(ydl_opts):
 
 
 def twitch_loading_detail(stream, url=''):
+    """Twitch loading detail."""
     stream = stream or {}
     parts = []
     channel = plain_display_text(stream.get('channel') or twitch_display_name_from_url(url), '')
@@ -576,6 +598,7 @@ def twitch_loading_detail(stream, url=''):
 
 
 def _enrich_twitch_stream(stream, info, url, used_cookies=False):
+    """Uso interno: enrich twitch stream."""
     if not stream:
         return stream
     stream['channel'] = plain_display_text(
@@ -588,6 +611,7 @@ def _enrich_twitch_stream(stream, info, url, used_cookies=False):
 
 
 def _protocol_of(fmt):
+    """Uso interno: protocol of."""
     return (fmt.get('protocol') or '').lower()
 
 
@@ -613,6 +637,7 @@ def pick_twitch_stream(info, max_height=None):
         preferred = 10000
 
     def is_playable(fmt):
+        """Indica si playable."""
         if not fmt.get('url'):
             return False
         if fmt.get('vcodec', 'none') in ('none', '', None):
@@ -623,16 +648,19 @@ def pick_twitch_stream(info, max_height=None):
         return True
 
     def is_hls(fmt):
+        """Indica si hls."""
         proto = _protocol_of(fmt)
         target = fmt.get('url') or ''
         return 'm3u8' in proto or '.m3u8' in target
 
     def is_progressive(fmt):
+        """Indica si progressive."""
         acodec = fmt.get('acodec') or 'none'
         vcodec = fmt.get('vcodec') or 'none'
         return acodec not in ('none', '') and vcodec not in ('none', '')
 
     def height_score(fmt):
+        """Height score."""
         height = int(fmt.get('height') or 0)
         if height <= 0:
             return 1
@@ -710,6 +738,7 @@ def extract_twitch_stream(url, max_height=None):
 
 
 def _headers_for_vlc(headers, page_url):
+    """Uso interno: headers for VLC."""
     merged = dict(headers or {})
     merged.setdefault(
         'User-Agent',
@@ -724,7 +753,9 @@ def _headers_for_vlc(headers, page_url):
 
 
 class TwitchHandler:
+    """Clase que representa twitchhandler."""
     def __init__(self, video_player):
+        """Inicializa TwitchHandler."""
         self.video_player = video_player
         self._play_gen = 0
         self._loading_frame = None
@@ -744,6 +775,7 @@ class TwitchHandler:
         self._chat = TwitchChatPanel(self)
 
     def session_view(self):
+        """Session view."""
         info = inspect_twitch_session()
         if self._session_override == 'caducada':
             info = {
@@ -754,9 +786,11 @@ class TwitchHandler:
         return info
 
     def notify_session(self):
+        """Notify session."""
         info = self.session_view()
 
         def apply():
+            """Apply."""
             player = self.video_player
             refresh = getattr(player, 'update_twitch_session_ui', None)
             if refresh:
@@ -765,7 +799,9 @@ class TwitchHandler:
         self._ui_after(apply)
 
     def notify_chat_ui(self):
+        """Notify chat interfaz."""
         def apply():
+            """Apply."""
             player = self.video_player
             refresh = getattr(player, 'update_twitch_chat_ui', None)
             if refresh:
@@ -774,21 +810,25 @@ class TwitchHandler:
         self._ui_after(apply)
 
     def toggle_chat(self):
+        """Alterna chat."""
         chat = getattr(self, '_chat', None)
         if chat:
             chat.toggle()
 
     def open_chat(self):
+        """Abre chat."""
         chat = getattr(self, '_chat', None)
         if chat:
             chat.open()
 
     def close_chat(self, notify_ui=True):
+        """Cierra chat."""
         chat = getattr(self, '_chat', None)
         if chat:
             chat.close(notify_ui=notify_ui)
 
     def mark_session_from_error(self, exc):
+        """Mark session from error."""
         if not twitch_auth_blocked(exc):
             self.notify_session()
             return
@@ -798,6 +838,7 @@ class TwitchHandler:
         self.notify_session()
 
     def reexport_twitch_cookies(self):
+        """Reexport twitch cookies."""
         path = self.export_cookies_from_browser(silent=False)
         if path:
             self._session_override = None
@@ -818,13 +859,16 @@ class TwitchHandler:
         return path
 
     def export_cookies_from_browser(self, output_path=None, silent=False):
+        """Export cookies from browser."""
         def _error(message):
+            """Uso interno: error."""
             if silent:
                 print(f"[Twitch] {message}")
             else:
                 messagebox.showerror('Error', message)
 
         def _warn(message):
+            """Uso interno: warn."""
             if silent:
                 print(f"[Twitch] {message}")
             else:
@@ -885,6 +929,7 @@ class TwitchHandler:
             return None
 
     def prompt_twitch_url(self, url=None):
+        """Prompt twitch url."""
         if url is None:
             ensure = getattr(self.video_player, 'ensure_window', None)
             if ensure:
@@ -904,6 +949,7 @@ class TwitchHandler:
             self.play_twitch_url(url)
 
     def play_twitch_url(self, url, title=None, show_progress=None):
+        """Reproduce twitch URL."""
         url = normalize_twitch_url(url)
         if not is_twitch_url(url):
             messagebox.showerror('Twitch', 'La URL no parece ser de Twitch.')
@@ -947,6 +993,7 @@ class TwitchHandler:
         self._show_loading(loading_status, title=display_title)
 
         def work():
+            """Work."""
             err = None
             stream = None
             offline = False
@@ -966,6 +1013,7 @@ class TwitchHandler:
                     offline = True
 
             def cont():
+                """Cont."""
                 if gen != self._play_gen:
                     return
                 if offline:
@@ -998,6 +1046,7 @@ class TwitchHandler:
         threading.Thread(target=work, daemon=True).start()
 
     def _offer_offline_channel(self, url, channel, latest=None):
+        """Uso interno: offer offline canal."""
         name = plain_display_text(channel, 'Canal') or 'Canal'
         lines = [f'«{name}» no está en directo ahora.']
         latest = latest or {}
@@ -1026,6 +1075,7 @@ class TwitchHandler:
             webbrowser.open(url)
 
     def _sync_sidebar_title(self, url, title):
+        """Uso interno: sync barra lateral title."""
         title = plain_display_text(title, '')
         if not title or not url or title in ('Twitch', url):
             return
@@ -1041,6 +1091,7 @@ class TwitchHandler:
             add(title, url)
 
     def _begin_playback(self, url, stream, show_progress=None):
+        """Uso interno: begin playback."""
         player = self.video_player
         self._current_stream = stream
         title = plain_display_text(stream.get('title'), '')
@@ -1077,6 +1128,7 @@ class TwitchHandler:
             prepare()
 
         def on_fail():
+            """Responde al evento fail."""
             if is_live:
                 self._schedule_live_check(getattr(self, '_live_watch_gen', 0))
             else:
@@ -1111,6 +1163,7 @@ class TwitchHandler:
             self.notify_chat_ui()
 
     def add_current_to_favorites(self):
+        """Añade current to favoritos."""
         url = self._current_url
         if not url or not is_twitch_url(url):
             messagebox.showinfo('Twitch', 'Reproduce un canal o VOD de Twitch primero.')
@@ -1131,6 +1184,7 @@ class TwitchHandler:
         return False
 
     def _stop_live_watch(self):
+        """Uso interno: stop live watch."""
         self._live_watch_gen = getattr(self, '_live_watch_gen', 0) + 1
         job = getattr(self, '_live_watch_job', None)
         self._live_watch_job = None
@@ -1148,6 +1202,7 @@ class TwitchHandler:
         self._live_media_started = False
 
     def _start_live_watch(self, url):
+        """Uso interno: start live watch."""
         self._stop_live_watch()
         self._live_source_url = url
         self._live_reconnects = 0
@@ -1160,6 +1215,7 @@ class TwitchHandler:
         self._schedule_live_check(gen)
 
     def _schedule_live_check(self, watch_gen, delay_ms=None):
+        """Uso interno: schedule live check."""
         if delay_ms is None:
             delay_ms = TWITCH_LIVE_CHECK_MS
         window = getattr(self.video_player, 'window', None)
@@ -1167,6 +1223,7 @@ class TwitchHandler:
             return
 
         def tick():
+            """Tick."""
             if watch_gen != self._live_watch_gen:
                 return
             self._check_live_stream(watch_gen)
@@ -1177,6 +1234,7 @@ class TwitchHandler:
             pass
 
     def _media_stats(self):
+        """Uso interno: media stats."""
         player = getattr(self.video_player, 'player', None)
         if not player:
             return None
@@ -1196,6 +1254,7 @@ class TwitchHandler:
             return None
 
     def _check_live_stream(self, watch_gen):
+        """Uso interno: check live stream."""
         if watch_gen != self._live_watch_gen:
             return
         player = self.video_player
@@ -1272,9 +1331,11 @@ class TwitchHandler:
         self._schedule_live_check(watch_gen)
 
     def _reconnect_live(self, url, watch_gen):
+        """Uso interno: reconnect live."""
         play_gen = self._play_gen
 
         def work():
+            """Work."""
             err = None
             stream = None
             try:
@@ -1283,6 +1344,7 @@ class TwitchHandler:
                 err = exc
 
             def cont():
+                """Cont."""
                 if watch_gen != self._live_watch_gen or play_gen != self._play_gen:
                     return
                 if err or not stream:
@@ -1317,6 +1379,7 @@ class TwitchHandler:
         threading.Thread(target=work, daemon=True).start()
 
     def cancel_pending_play(self):
+        """Cancela pending play."""
         self._stop_live_watch()
         self._new_play_gen()
         self._current_stream = None
@@ -1324,10 +1387,12 @@ class TwitchHandler:
         self.hide_loading()
 
     def _new_play_gen(self):
+        """Uso interno: new play gen."""
         self._play_gen = getattr(self, '_play_gen', 0) + 1
         return self._play_gen
 
     def _ui_after(self, fn, delay_ms=0):
+        """Uso interno: interfaz after."""
         window = getattr(self.video_player, 'window', None)
         if not window:
             return
@@ -1337,6 +1402,7 @@ class TwitchHandler:
             pass
 
     def hide_loading(self):
+        """Hide loading."""
         frame = getattr(self, '_loading_frame', None)
         self._loading_frame = None
         self._loading_status_label = None
@@ -1349,6 +1415,7 @@ class TwitchHandler:
                 pass
 
     def _loading_alive(self):
+        """Uso interno: loading alive."""
         frame = getattr(self, '_loading_frame', None)
         try:
             return bool(frame and frame.winfo_exists())
@@ -1356,6 +1423,7 @@ class TwitchHandler:
             return False
 
     def _show_loading(self, status, title=None):
+        """Uso interno: show loading."""
         player = self.video_player
         parent = getattr(player, 'player_frame', None) or getattr(player, 'video_frame', None)
         video_frame = getattr(player, 'video_frame', None)
@@ -1427,6 +1495,7 @@ class TwitchHandler:
         bind_loading_card(overlay, card, [title_label, status_label, detail_label])
 
     def _set_loading_detail(self, text):
+        """Uso interno: set loading detail."""
         label = getattr(self, '_loading_detail_label', None)
         if not label:
             return
@@ -1436,6 +1505,7 @@ class TwitchHandler:
             pass
 
     def _set_loading_status(self, text):
+        """Uso interno: set loading status."""
         label = getattr(self, '_loading_status_label', None)
         if not label:
             return
@@ -1445,6 +1515,7 @@ class TwitchHandler:
             pass
 
     def _set_loading_title(self, text):
+        """Uso interno: set loading title."""
         label = getattr(self, '_loading_title_label', None)
         if not label:
             return

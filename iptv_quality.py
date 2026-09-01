@@ -35,6 +35,7 @@ def detect_iptv_quality(name, group=''):
 
 
 def strip_quality_tokens(name):
+    """Strip quality tokens."""
     text = unicodedata.normalize('NFKC', name or '')
     text = _STRIP_RE.sub(' ', text)
     text = _JUNK_RE.sub(' ', text)
@@ -42,6 +43,7 @@ def strip_quality_tokens(name):
 
 
 def channel_match_key(name, tvg_id=''):
+    """Canal match key."""
     tvg_id = str(tvg_id or '').strip().lower()
     if tvg_id:
         return ('id', tvg_id)
@@ -50,6 +52,7 @@ def channel_match_key(name, tvg_id=''):
 
 
 def names_are_same_channel(left, right):
+    """Names are same canal."""
     if not left or not right:
         return False
     if left == right:
@@ -127,6 +130,7 @@ def variants_for_channel(entries, name, url='', tvg_id=''):
 
 
 def pick_iptv_variant(variants, preferred=0, current_url=''):
+    """Elige IPTV variant."""
     if not variants:
         return None
     unique = []
@@ -155,6 +159,7 @@ def fallback_urls(entries, name, url, group='', backup_entries=None):
     seen = {url} if url else set()
 
     def consider(item_name, item_url, item_group, source, exact):
+        """Consider."""
         item_url = (item_url or '').strip()
         if not item_url or item_url in seen:
             return
@@ -187,6 +192,7 @@ def fallback_urls(entries, name, url, group='', backup_entries=None):
 
 
 def iptv_quality_label(height):
+    """Iptv quality label."""
     try:
         height = int(height)
     except (TypeError, ValueError):

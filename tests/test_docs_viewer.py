@@ -1,3 +1,5 @@
+"""Módulo de test docs viewer."""
+
 from pathlib import Path
 
 from docs_viewer import (
@@ -10,12 +12,14 @@ from docs_viewer import (
 
 
 def test_html_wrapper_lines_are_skipped():
+    """Prueba html wrapper lines are skipped."""
     assert is_html_wrapper_line('<p align="center">')
     assert is_html_wrapper_line('</p>')
     assert not is_html_wrapper_line('![interfaz-kidneys](https://example.com/a.png)')
 
 
 def test_image_markdown_from_html_line():
+    """Prueba image markdown from html line."""
     line = (
         '<img width="899" height="684" alt="interfaz-kidneys" '
         'src="https://github.com/user-attachments/assets/88366f48-e059-46d8-9169-a94aec31a738" />'
@@ -25,6 +29,7 @@ def test_image_markdown_from_html_line():
 
 
 def test_html_img_to_markdown():
+    """Prueba html img to markdown."""
     tag = (
         '<img width="899" height="684" alt="interfaz-kidneys" '
         'src="https://github.com/user-attachments/assets/88366f48-e059-46d8-9169-a94aec31a738" />'
@@ -35,6 +40,7 @@ def test_html_img_to_markdown():
 
 
 def test_normalize_doc_markup_strips_center_and_converts_img():
+    """Prueba normalize doc markup strips center and converts img."""
     source = (
         '<p align="center">\n'
         '<img width="1916" alt="cargando-video-youtube" '
@@ -48,17 +54,20 @@ def test_normalize_doc_markup_strips_center_and_converts_img():
 
 
 def test_normalize_keeps_markdown_images():
+    """Prueba normalize keeps markdown images."""
     source = '![reproduccion-m3u](https://github.com/user-attachments/assets/fa30375b-b0bf-4468-857c-07bd939968dd)\n'
     assert normalize_doc_markup(source) == source
 
 
 def test_local_doc_image_bytes_logo():
+    """Prueba local doc image bytes logo."""
     raw = local_doc_image_bytes('img/logo.png')
     assert raw
     assert raw[:8] == b'\x89PNG\r\n\x1a\n'
 
 
 def test_local_doc_image_bytes_rejects_outside_root(tmp_path):
+    """Prueba local doc image bytes rejects outside root."""
     outsider = tmp_path / 'secret.png'
     outsider.write_bytes(b'not-from-project')
     assert local_doc_image_bytes(str(outsider)) is None
@@ -66,6 +75,7 @@ def test_local_doc_image_bytes_rejects_outside_root(tmp_path):
 
 
 def test_render_markdown_does_not_show_html_img():
+    """Prueba render markdown does not show html img."""
     import tkinter as tk
     from docs_viewer import render_markdown
 

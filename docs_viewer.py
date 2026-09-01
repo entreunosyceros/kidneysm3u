@@ -48,10 +48,12 @@ _DOC_IMG_MAX_H = 420
 
 
 def _project_root():
+    """Uso interno: project root."""
     return Path(resource_dir())
 
 
 def html_img_to_markdown(tag):
+    """Html img to markdown."""
     src_match = _SRC_RE.search(tag or '')
     if not src_match:
         return ''
@@ -61,10 +63,12 @@ def html_img_to_markdown(tag):
 
 
 def is_html_wrapper_line(stripped):
+    """Indica si html wrapper line."""
     return bool(re.match(r'^</?(p|div|span|center)\b[^>]*>$', stripped or '', re.I))
 
 
 def image_markdown_from_line(stripped):
+    """Image markdown from line."""
     match = _IMG_HTML_RE.search(stripped or '')
     if not match:
         return None
@@ -80,6 +84,7 @@ def normalize_doc_markup(source):
 
 
 def _doc_image_cache_dir():
+    """Uso interno: doc image cache dir."""
     path = os.path.join(tempfile.gettempdir(), 'kidneysm3u_docs_img')
     try:
         os.makedirs(path, exist_ok=True)
@@ -89,11 +94,13 @@ def _doc_image_cache_dir():
 
 
 def _doc_cache_path(url):
+    """Uso interno: doc cache path."""
     digest = hashlib.sha1((url or '').encode('utf-8', errors='replace')).hexdigest()
     return os.path.join(_doc_image_cache_dir(), digest)
 
 
 def fetch_doc_image_bytes(url):
+    """Obtiene doc image bytes desde la red o el disco."""
     url = (url or '').strip()
     if not url.startswith(('http://', 'https://')):
         return None
@@ -127,6 +134,7 @@ def fetch_doc_image_bytes(url):
 
 
 def local_doc_image_bytes(url):
+    """Local doc image bytes."""
     url = (url or '').strip()
     if not url or url.startswith(('http://', 'https://', 'mailto:')):
         return None
@@ -150,6 +158,7 @@ def local_doc_image_bytes(url):
 
 
 def photo_from_image_bytes(raw, max_width=_DOC_IMG_MAX_W, max_height=_DOC_IMG_MAX_H, master=None):
+    """Photo from image bytes."""
     if not raw:
         return None
     try:
@@ -181,11 +190,13 @@ def photo_from_image_bytes(raw, max_width=_DOC_IMG_MAX_W, max_height=_DOC_IMG_MA
 
 
 def load_doc_photo(url, master=None):
+    """Carga doc photo."""
     raw = fetch_doc_image_bytes(url) if (url or '').startswith(('http://', 'https://')) else local_doc_image_bytes(url)
     return photo_from_image_bytes(raw, master=master)
 
 
 def _apply_doc_image(widget, gen, mark, label, raw):
+    """Uso interno: apply doc image."""
     if getattr(widget, '_doc_gen', None) != gen:
         return
     photo = photo_from_image_bytes(raw, master=widget)
@@ -204,6 +215,7 @@ def _apply_doc_image(widget, gen, mark, label, raw):
 
 
 def _pump_doc_images(widget, gen):
+    """Uso interno: pump doc images."""
     if getattr(widget, '_doc_gen', None) != gen:
         return
     ready = getattr(widget, '_doc_ready', None)
@@ -221,6 +233,7 @@ def _pump_doc_images(widget, gen):
 
 
 def _schedule_doc_image(widget, url, alt, gen):
+    """Uso interno: schedule doc image."""
     mark = f'docimg{getattr(widget, "_doc_img_n", 0)}'
     widget._doc_img_n = getattr(widget, '_doc_img_n', 0) + 1
     widget.mark_set(mark, tk.END)
@@ -230,6 +243,7 @@ def _schedule_doc_image(widget, url, alt, gen):
     widget._doc_pending = getattr(widget, '_doc_pending', 0) + 1
 
     def work():
+        """Work."""
         try:
             if (url or '').startswith(('http://', 'https://')):
                 raw = fetch_doc_image_bytes(url)
@@ -243,6 +257,7 @@ def _schedule_doc_image(widget, url, alt, gen):
 
 
 def _normalize_doc_path(relative):
+    """Uso interno: normalize doc path."""
     path = os.path.normpath(relative or '').replace('\\', '/')
     if path.startswith('./'):
         path = path[2:]
@@ -250,6 +265,7 @@ def _normalize_doc_path(relative):
 
 
 def resolve_doc_href(current_rel, href):
+    """Resolve doc href."""
     href = (href or '').strip()
     if href.startswith(('http://', 'https://', 'mailto:')):
         return ('url', href)
@@ -262,6 +278,7 @@ def resolve_doc_href(current_rel, href):
 
 
 def _configure_tags(widget, colors):
+    """Uso interno: configure tags."""
     widget.configure(
         bg=colors['list_bg'],
         fg=colors['list_fg'],
@@ -302,6 +319,7 @@ def _configure_tags(widget, colors):
 
 
 def _insert_inline(widget, text, on_link, base_tags=('body',), schedule_image=None):
+    """Uso interno: insert inline."""
     pos = 0
     for match in _INLINE_RE.finditer(text):
         if match.start() > pos:
@@ -330,6 +348,7 @@ def _insert_inline(widget, text, on_link, base_tags=('body',), schedule_image=No
 
 
 def render_markdown(widget, source, on_link):
+    """Renderiza markdown."""
     widget.configure(state=tk.NORMAL)
     widget.delete('1.0', tk.END)
     widget._doc_gen = getattr(widget, '_doc_gen', 0) + 1
@@ -345,9 +364,11 @@ def render_markdown(widget, source, on_link):
     code_lines = []
 
     def schedule_image(url, alt):
+        """Programa image."""
         _schedule_doc_image(widget, url, alt, gen)
 
     def flush_code():
+        """Flush code."""
         block = '\n'.join(code_lines).rstrip() + '\n'
         widget.insert(tk.END, block + '\n', ('codeblock',))
         code_lines.clear()
@@ -422,6 +443,7 @@ def render_markdown(widget, source, on_link):
 
 
 def show_documentation(root):
+    """Muestra documentation."""
     window = tk.Toplevel(root)
     window.title('Documentación')
     from ui_layout import setup_resizable_dialog
@@ -465,6 +487,7 @@ def show_documentation(root):
     _configure_tags(viewer, colors)
 
     def load_page(relative_path):
+        """Carga page."""
         relative_path = _normalize_doc_path(relative_path)
         path = _project_root() / relative_path
         current['path'] = relative_path
@@ -486,6 +509,7 @@ def show_documentation(root):
         render_markdown(viewer, source, on_link)
 
     def on_link(href):
+        """Responde al evento link."""
         kind, target = resolve_doc_href(current['path'], href)
         if kind == 'url':
             webbrowser.open(target)
@@ -493,6 +517,7 @@ def show_documentation(root):
         load_page(target)
 
     def on_topic(_event=None):
+        """Responde al evento topic."""
         selection = topics.curselection()
         if selection:
             load_page(DOC_PAGES[selection[0]][1])

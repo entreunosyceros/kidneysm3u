@@ -1,3 +1,5 @@
+"""Módulo de test ui layout."""
+
 import tkinter as tk
 from tkinter import ttk
 
@@ -5,6 +7,7 @@ from ui_layout import bind_wraplength, make_vertical_scroll, walk_wraplength
 
 
 def test_walk_wraplength_updates_descendants():
+    """Prueba walk wraplength updates descendants."""
     root = tk.Tk()
     root.withdraw()
     frame = ttk.Frame(root)
@@ -16,6 +19,7 @@ def test_walk_wraplength_updates_descendants():
 
 
 def test_bind_wraplength_on_configure():
+    """Prueba bind wraplength on configure."""
     root = tk.Tk()
     root.withdraw()
     root.geometry('420x120')
@@ -30,6 +34,7 @@ def test_bind_wraplength_on_configure():
 
 
 def test_make_vertical_scroll_syncs_inner_width():
+    """Prueba make vertical scroll syncs inner width."""
     root = tk.Tk()
     root.withdraw()
     shell = ttk.Frame(root)

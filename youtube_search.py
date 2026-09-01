@@ -1,3 +1,5 @@
+"""Módulo de youtube search."""
+
 import tkinter as tk
 from tkinter import ttk, simpledialog, messagebox, filedialog, font as tkfont
 import yt_dlp
@@ -52,6 +54,7 @@ _UI_DURATION = {
 
 
 def _pb_varint(value):
+    """Uso interno: pb varint."""
     value = int(value)
     chunks = []
     while value > 0x7F:
@@ -62,6 +65,7 @@ def _pb_varint(value):
 
 
 def _pb_key(field, wire=0):
+    """Uso interno: pb key."""
     return _pb_varint((field << 3) | wire)
 
 
@@ -151,6 +155,7 @@ def _ensure_spanish_relative_time():
 
     @classmethod
     def extract_relative_time(cls, relative_time_text):
+        """Extrae relative time."""
         parsed = original(relative_time_text)
         if parsed is not None:
             return parsed
@@ -172,6 +177,7 @@ def _search_ydl_opts(**extra):
 
 
 def youtube_search_sp_from_ui(tipo, sort_label, date_label=None, duration_label=None):
+    """Youtube search sp from interfaz."""
     result_type = _UI_TYPE.get(tipo, 'video')
     duration = None if result_type == 'shorts' else _UI_DURATION.get(duration_label)
     return youtube_search_sp(
@@ -183,6 +189,7 @@ def youtube_search_sp_from_ui(tipo, sort_label, date_label=None, duration_label=
 
 
 def _entry_recency(entry):
+    """Uso interno: entry recency."""
     if not isinstance(entry, dict):
         return 0
     for key in ('timestamp', 'release_timestamp'):
@@ -245,16 +252,19 @@ def youtube_star_hit(x, star_width=16):
 
 
 def _hashtag_slug(query):
+    """Uso interno: hashtag slug."""
     text = (query or '').strip().lstrip('#')
     return re.sub(r'[^\w]+', '', text, flags=re.UNICODE)
 
 
 def _fill_short_titles(entries):
+    """Uso interno: fill short titles."""
     missing = [entry for entry in entries if not (entry.get('title') or '').strip()]
     if not missing:
         return
 
     def fetch(entry):
+        """Fetch."""
         video_id = entry.get('id')
         try:
             response = requests.get(
@@ -356,6 +366,7 @@ _YT_HANDLE_RE = re.compile(r'^@[\w.-]{2,32}$', re.I)
 
 
 def youtube_channel_tab_url(url, tab='videos'):
+    """Youtube canal tab url."""
     text = (url or '').strip().rstrip('/')
     if not text:
         return text
@@ -386,6 +397,7 @@ def channel_url_from_query(query):
 
 
 def channel_name_matches_query(query, *names):
+    """Canal name matches query."""
     key = re.sub(r'[^a-z0-9]+', '', (query or '').strip().lower().lstrip('@'))
     if len(key) < 3:
         return False
@@ -452,11 +464,13 @@ _YT_CHANNEL_RE = re.compile(
 
 
 def youtube_video_id(url):
+    """Youtube video id."""
     match = _YT_VIDEO_ID_RE.search(url or '')
     return match.group(1) if match else None
 
 
 def is_youtube_playlist_url(url):
+    """Indica si youtube lista de reproducción URL."""
     lower = (url or '').lower()
     if 'list=' not in lower:
         return False
@@ -464,6 +478,7 @@ def is_youtube_playlist_url(url):
 
 
 def is_youtube_channel_url(url):
+    """Indica si youtube canal URL."""
     text = url or ''
     if youtube_video_id(text) or is_youtube_playlist_url(text):
         return False
@@ -516,6 +531,7 @@ def fetch_youtube_channel_videos(channel_url, limit=30):
 
 
 class YouTubeSearchDialog:
+    """Diálogo para buscar vídeos, Shorts, listas y canales en YouTube."""
     def __init__(
         self,
         parent,
@@ -527,6 +543,7 @@ class YouTubeSearchDialog:
         unfavorite_callback=None,
         is_favorite_callback=None,
     ):
+        """Inicializa el diálogo de búsqueda y construye la interfaz."""
         self.parent = parent
         self.play_callback = play_callback
         self.load_playlist_callback = load_playlist_callback
@@ -548,6 +565,7 @@ class YouTubeSearchDialog:
         self.window.protocol('WM_DELETE_WINDOW', self._on_close)
 
     def create_widgets(self):
+        """Crea widgets."""
         shell = ttk.Frame(self.window, padding=(16, 16, 12, 12))
         shell.pack(fill=tk.BOTH, expand=True)
 
@@ -733,6 +751,7 @@ class YouTubeSearchDialog:
         self.result_details = []
 
     def _on_search_wheel(self, event):
+        """Callback interno para search wheel."""
         widget = getattr(event, 'widget', None)
         if not isinstance(widget, tk.Listbox):
             return
@@ -749,6 +768,7 @@ class YouTubeSearchDialog:
         return 'break'
 
     def _bind_search_wheel(self, widget):
+        """Uso interno: bind search wheel."""
         widget.bind('<MouseWheel>', self._on_search_wheel, add='+')
         widget.bind('<Button-4>', self._on_search_wheel, add='+')
         widget.bind('<Button-5>', self._on_search_wheel, add='+')
@@ -760,12 +780,14 @@ class YouTubeSearchDialog:
             self._bind_search_wheel(child)
 
     def _on_close(self):
+        """Callback interno para close."""
         self._dismiss_context_menu()
         if self.youtube_handler:
             self.youtube_handler.remove_session_listener(self.update_youtube_session_ui)
         self.window.destroy()
 
     def update_youtube_session_ui(self, info=None):
+        """Actualiza youtube session interfaz."""
         if not getattr(self, '_yt_session_label', None):
             return
         if info is None and self.youtube_handler:
@@ -780,6 +802,7 @@ class YouTubeSearchDialog:
             pass
 
     def reexport_youtube_cookies(self):
+        """Reexport youtube cookies."""
         if self.youtube_handler:
             self.youtube_handler.reexport_youtube_cookies()
             return
@@ -789,12 +812,14 @@ class YouTubeSearchDialog:
         )
 
     def _on_type_change(self, event=None):
+        """Callback interno para type change."""
         shorts = self.type_var.get() == "Shorts"
         self.duration_combobox.configure(state='disabled' if shorts else 'readonly')
         if shorts:
             self.duration_var.set("Cualquier duración")
 
     def _refresh_search_history(self):
+        """Uso interno: refresh search historial."""
         self._search_history = app_config.youtube_search_history()
         labels = [app_config.youtube_search_label(item) for item in self._search_history]
         combo = getattr(self, 'search_combo', None)
@@ -828,6 +853,7 @@ class YouTubeSearchDialog:
                 empty.pack(anchor=tk.W)
 
     def _reuse_search_at(self, index):
+        """Uso interno: reuse search at."""
         history = getattr(self, '_search_history', None) or []
         if not (0 <= index < len(history)):
             return
@@ -845,6 +871,7 @@ class YouTubeSearchDialog:
         self.search()
 
     def _on_recent_list_click(self, event=None):
+        """Callback interno para recent list click."""
         if getattr(self, '_applying_recent', False):
             return
         listing = getattr(self, 'recent_list', None)
@@ -857,6 +884,7 @@ class YouTubeSearchDialog:
         self._reuse_search_at(index)
 
     def _on_recent_list_select(self, event=None):
+        """Callback interno para recent list select."""
         if getattr(self, '_applying_recent', False):
             return
         listing = getattr(self, 'recent_list', None)
@@ -868,6 +896,7 @@ class YouTubeSearchDialog:
         self._reuse_search_at(selection[0])
 
     def _on_recent_search(self, event=None):
+        """Callback interno para recent search."""
         if getattr(self, '_applying_recent', False):
             return
         combo = getattr(self, 'search_combo', None)
@@ -914,6 +943,7 @@ class YouTubeSearchDialog:
             return False
 
     def search(self):
+        """Search."""
         query = self.search_var.get().strip()
         if not query:
             messagebox.showinfo("Info", "Introduce un término de búsqueda.")
@@ -947,6 +977,7 @@ class YouTubeSearchDialog:
         search_query = query
 
         def perform_search():
+            """Perform search."""
             try:
                 try:
                     max_results = int(self.results_count.get())
@@ -967,6 +998,7 @@ class YouTubeSearchDialog:
                         shorts = sort_search_entries(shorts, sort_label)
 
                     def update_shorts_ui():
+                        """Actualiza shorts interfaz."""
                         if not shorts:
                             messagebox.showinfo("Info", "No se encontraron Shorts con esa búsqueda.")
                             self.progress_bar.stop()
@@ -1034,6 +1066,7 @@ class YouTubeSearchDialog:
                     )
 
                     def extract_search(opts):
+                        """Extrae search."""
                         with yt_dlp.YoutubeDL(opts) as ydl:
                             return ydl.extract_info(search_url, download=False)
 
@@ -1072,6 +1105,7 @@ class YouTubeSearchDialog:
                     ordered_entries = sort_search_entries(ordered_entries, sort_label)
 
                 def update_ui():
+                    """Actualiza interfaz."""
                     nonlocal results_count, found_playlist
                     for entry in ordered_entries:
                         if not entry or results_count >= max_results:
@@ -1156,6 +1190,7 @@ class YouTubeSearchDialog:
                 err = e
 
                 def show_error(exc=err):
+                    """Muestra error."""
                     if self.youtube_handler:
                         self.youtube_handler.mark_session_from_error(exc)
                     if youtube_auth_blocked(exc):
@@ -1176,6 +1211,7 @@ class YouTubeSearchDialog:
         threading.Thread(target=perform_search, daemon=True).start()
 
     def _window_alive(self):
+        """Uso interno: ventana alive."""
         window = getattr(self, 'window', None)
         if window is None:
             return False
@@ -1185,6 +1221,7 @@ class YouTubeSearchDialog:
             return False
 
     def _url_is_favorite(self, url):
+        """Uso interno: URL is favorito."""
         checker = self.is_favorite_callback
         if not checker or not url:
             return False
@@ -1194,6 +1231,7 @@ class YouTubeSearchDialog:
             return False
 
     def _star_hit_width(self):
+        """Uso interno: star hit width."""
         try:
             face = tkfont.nametofont(self.results_listbox.cget('font'))
             return face.measure(f'{STAR_ON} ')
@@ -1201,12 +1239,14 @@ class YouTubeSearchDialog:
             return 16
 
     def _set_list_cursor(self, name):
+        """Uso interno: set list cursor."""
         try:
             self.results_listbox.configure(cursor=name)
         except tk.TclError:
             pass
 
     def _on_result_motion(self, event):
+        """Callback interno para result motion."""
         if not self.favorite_callback:
             return
         index = self.results_listbox.nearest(event.y)
@@ -1216,6 +1256,7 @@ class YouTubeSearchDialog:
             self._set_list_cursor('')
 
     def _on_result_click(self, event):
+        """Callback interno para result click."""
         self._dismiss_context_menu()
         if not self.favorite_callback:
             return
@@ -1231,6 +1272,7 @@ class YouTubeSearchDialog:
         return 'break'
 
     def _result_kind_label(self, index):
+        """Uso interno: result kind label."""
         tipo = self.result_types[index] if index < len(self.result_types) else 'video'
         url = self.results[index] if index < len(self.results) else ''
         if tipo == 'channel':
@@ -1242,6 +1284,7 @@ class YouTubeSearchDialog:
         return 'video'
 
     def _refresh_result_row(self, index, keep_select=True):
+        """Uso interno: refresh result row."""
         if not (0 <= index < len(self.results)):
             return
         duration = ''
@@ -1262,6 +1305,7 @@ class YouTubeSearchDialog:
             pass
 
     def _toggle_favorite_at(self, index):
+        """Uso interno: toggle favorito at."""
         if not (0 <= index < len(self.results)):
             return
         url = self.results[index]
@@ -1291,12 +1335,14 @@ class YouTubeSearchDialog:
         self._refresh_result_row(index)
 
     def _menu_is_mapped(self, menu):
+        """Uso interno: menu is mapped."""
         try:
             return bool(menu) and menu.winfo_ismapped()
         except tk.TclError:
             return False
 
     def _event_on_menu(self, event, menu):
+        """Uso interno: event on menu."""
         if not self._menu_is_mapped(menu):
             return False
         try:
@@ -1307,6 +1353,7 @@ class YouTubeSearchDialog:
             return False
 
     def _dismiss_context_menu(self):
+        """Uso interno: dismiss context menu."""
         menu = getattr(self, '_posted_menu', None)
         self._posted_menu = None
         if menu is None:
@@ -1325,6 +1372,7 @@ class YouTubeSearchDialog:
             pass
 
     def _on_press_dismiss_menu(self, event):
+        """Callback interno para press dismiss menu."""
         if not self._window_alive():
             return
         menu = getattr(self, '_posted_menu', None)
@@ -1335,6 +1383,7 @@ class YouTubeSearchDialog:
         self._dismiss_context_menu()
 
     def _on_escape_dismiss_menu(self, event=None):
+        """Callback interno para escape dismiss menu."""
         if not self._window_alive():
             return
         if getattr(self, '_posted_menu', None):
@@ -1342,7 +1391,9 @@ class YouTubeSearchDialog:
             return 'break'
 
     def _choose_from_menu(self, action):
+        """Uso interno: choose from menu."""
         def run():
+            """Run."""
             self._dismiss_context_menu()
             action()
         if self._window_alive():
@@ -1440,6 +1491,7 @@ class YouTubeSearchDialog:
             self._posted_menu = None
 
     def play_selected(self, event=None):
+        """Reproduce selected."""
         selection = self.results_listbox.curselection()
         if selection:
             index = selection[0]
@@ -1455,6 +1507,7 @@ class YouTubeSearchDialog:
                 self.open_channel_videos(url, title=self._result_title(index))
 
     def _result_title(self, index):
+        """Uso interno: result title."""
         details = None
         if 0 <= index < len(self.result_details):
             details = self.result_details[index]
@@ -1469,6 +1522,7 @@ class YouTubeSearchDialog:
         return plain_display_text(text, 'YouTube')
 
     def add_selected_to_favorites(self, event=None):
+        """Añade selected to favoritos."""
         if not self.favorite_callback:
             self._set_queue_status('Abre la búsqueda desde el reproductor para guardar favoritos.')
             return
@@ -1509,6 +1563,7 @@ class YouTubeSearchDialog:
                 pass
 
     def _set_queue_status(self, text):
+        """Uso interno: set cola status."""
         label = getattr(self, 'queue_status', None)
         if label:
             try:
@@ -1517,6 +1572,7 @@ class YouTubeSearchDialog:
                 pass
 
     def enqueue_selected(self, event=None):
+        """Enqueue selected."""
         if not self.enqueue_callback:
             return
         selection = self.results_listbox.curselection()
@@ -1558,11 +1614,13 @@ class YouTubeSearchDialog:
             self._set_queue_status('Selecciona un vídeo, una lista o un canal.')
 
     def _enqueue_playlists(self, playlists, skipped=0):
+        """Uso interno: enqueue playlists."""
         self._set_queue_status('Añadiendo lista a la cola…')
         self.progress_bar.pack(fill=tk.X, expand=True)
         self.progress_bar.start(10)
 
         def work():
+            """Work."""
             collected = []
             errors = []
             for title, url in playlists:
@@ -1576,6 +1634,7 @@ class YouTubeSearchDialog:
                     errors.append(f'{title}: {exc}')
 
             def done():
+                """Done."""
                 self.progress_bar.stop()
                 self.progress_bar.pack_forget()
                 added = self.enqueue_callback(collected) if collected else 0
@@ -1699,6 +1758,7 @@ class YouTubeSearchDialog:
                     pass
 
     def load_playlist_videos(self, playlist_url, close_after=False):
+        """Carga lista de reproducción videos."""
         if getattr(self, '_loading_playlist', False):
             return
         self._loading_playlist = True
@@ -1708,6 +1768,7 @@ class YouTubeSearchDialog:
         window = self.window
 
         def work():
+            """Work."""
             err = None
             channels = None
             try:
@@ -1716,6 +1777,7 @@ class YouTubeSearchDialog:
                 err = exc
 
             def done():
+                """Done."""
                 self._loading_playlist = False
                 try:
                     self.progress_bar.stop()
@@ -1754,6 +1816,7 @@ class YouTubeSearchDialog:
         threading.Thread(target=work, daemon=True).start()
 
     def open_channel_videos(self, channel_url, title='', enqueue=False):
+        """Abre canal videos."""
         if getattr(self, '_loading_playlist', False):
             return
         self._loading_playlist = True
@@ -1771,6 +1834,7 @@ class YouTubeSearchDialog:
             limit = 20
 
         def work():
+            """Work."""
             err = None
             videos = []
             channel_name = label
@@ -1781,6 +1845,7 @@ class YouTubeSearchDialog:
                 err = exc
 
             def done():
+                """Done."""
                 self._loading_playlist = False
                 try:
                     self.progress_bar.stop()
@@ -1821,6 +1886,7 @@ class YouTubeSearchDialog:
         threading.Thread(target=work, daemon=True).start()
 
     def _replace_results_with_videos(self, videos, status=''):
+        """Uso interno: replace results with videos."""
         try:
             self.results_listbox.delete(0, tk.END)
         except tk.TclError:
@@ -1848,9 +1914,11 @@ class YouTubeSearchDialog:
         self._set_queue_status(status)
 
     def _fetch_channel_videos(self, channel_url, limit=30):
+        """Uso interno: fetch canal videos."""
         return fetch_youtube_channel_videos(channel_url, limit=limit)
 
     def _fetch_playlist_videos(self, playlist_url):
+        """Uso interno: fetch lista de reproducción videos."""
         ydl_opts = youtube_ydl_opts(
             extract_flat=True,
             skip_download=True,

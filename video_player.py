@@ -1,3 +1,5 @@
+"""Módulo de video player."""
+
 import os
 import pathlib
 import time
@@ -85,7 +87,9 @@ def popup_menu_origin(btn_x, btn_y, btn_h, menu_w, menu_h, area_x, area_y, area_
 
 # Clase Tooltip para mostrar información al pasar el ratón
 class Tooltip:
+    """Clase que representa tooltip."""
     def __init__(self, widget):
+        """Inicializa Tooltip."""
         self.widget = widget
         self.tipwindow = None
         self._text = None
@@ -129,6 +133,7 @@ class Tooltip:
         label.pack()
 
     def hidetip(self):
+        """Hidetip."""
         tw = self.tipwindow
         self.tipwindow = None
         self._text = None
@@ -192,7 +197,9 @@ class VideoPlayer(
     ChannelNoticeMixin,
     PlayerPipMixin,
 ):
+    """Ventana principal del reproductor IPTV/YouTube con barra lateral y controles VLC."""
     def __init__(self):
+        """Inicializa el reproductor, la instancia VLC y el estado de la sesión."""
         self.window = None
         self.instance = _make_vlc_instance()
         self.player = self.instance.media_player_new()
@@ -312,6 +319,7 @@ class VideoPlayer(
         self.current_playlist_index = None
 
     def create_window(self):
+        """Crea ventana."""
         self.window = tk.Toplevel(class_='Kidneysm3u')
         self.window._video_player = self
         self.window.title('Reproductor de vídeo')
@@ -519,6 +527,7 @@ class VideoPlayer(
             )
         
     def create_menu(self):
+        """Crea menu."""
         self.menubar = tk.Menu(self.window)
 
         reproducir_menu = tk.Menu(self.menubar, tearoff=0)
@@ -635,6 +644,7 @@ class VideoPlayer(
         self.window.bind_all('<Escape>', self._on_escape_dismiss_popup, add='+')
 
     def setup_keyboard_shortcuts(self):
+        """Configura keyboard shortcuts."""
         # Atajos generales
         self.window.bind('<space>', self._on_space_toggle_play)
         self.window.bind('<F1>', lambda e: self.toggle_fullscreen())
@@ -708,24 +718,28 @@ class VideoPlayer(
                 video.bind(sequence, handler, add='+')
 
     def _on_channel_prev_key(self, event=None):
+        """Callback interno para canal prev key."""
         if self._event_in_text_field(event):
             return
         self._play_relative_channel(-1)
         return 'break'
 
     def _on_channel_next_key(self, event=None):
+        """Callback interno para canal next key."""
         if self._event_in_text_field(event):
             return
         self._play_relative_channel(1)
         return 'break'
 
     def _on_last_channel_key(self, event=None):
+        """Callback interno para last canal key."""
         if self._event_in_text_field(event):
             return
         self._play_last_channel()
         return 'break'
 
     def _play_relative_channel(self, delta):
+        """Uso interno: play relative canal."""
         visible = self._zap_visible_indices()
         if not visible:
             return
@@ -744,6 +758,7 @@ class VideoPlayer(
         self.play_channel(index)
 
     def _play_last_channel(self):
+        """Uso interno: play last canal."""
         previous = getattr(self, '_previous_channel_index', None)
         current = self.current_channel
         if previous is None or previous == current:
@@ -757,6 +772,7 @@ class VideoPlayer(
         self.play_channel(previous)
 
     def _event_in_text_field(self, event):
+        """Uso interno: event in text field."""
         widget = getattr(event, 'widget', None) if event is not None else None
         try:
             if widget and widget.winfo_class() in ('Entry', 'TEntry', 'Text', 'TCombobox'):
@@ -766,6 +782,7 @@ class VideoPlayer(
         return False
 
     def _on_escape_key(self, event=None):
+        """Callback interno para escape key."""
         if self._zap_digits:
             self._clear_zap()
             return 'break'
@@ -773,6 +790,7 @@ class VideoPlayer(
         return 'break'
 
     def _zap_visible_indices(self):
+        """Uso interno: zap visible indices."""
         sidebar = getattr(self, 'sidebar', None)
         if sidebar:
             indices = sidebar.current_indices()
@@ -781,6 +799,7 @@ class VideoPlayer(
         return list(range(len(self.channels)))
 
     def _cancel_zap_timer(self):
+        """Uso interno: cancel zap timer."""
         job = getattr(self, '_zap_job', None)
         self._zap_job = None
         if job is None or not self._widget_exists(self.window):
@@ -791,6 +810,7 @@ class VideoPlayer(
             pass
 
     def _schedule_zap(self):
+        """Uso interno: schedule zap."""
         self._cancel_zap_timer()
         if not self._zap_digits or not self._widget_exists(self.window):
             return
@@ -800,6 +820,7 @@ class VideoPlayer(
             self._zap_job = None
 
     def _on_zap_digit(self, event=None):
+        """Callback interno para zap digit."""
         if self._event_in_text_field(event):
             return
         if event is not None and getattr(event, 'state', 0) & 0x4:
@@ -816,6 +837,7 @@ class VideoPlayer(
         return 'break'
 
     def _on_zap_backspace(self, event=None):
+        """Callback interno para zap backspace."""
         if self._event_in_text_field(event):
             return
         if not self._zap_digits:
@@ -829,6 +851,7 @@ class VideoPlayer(
         return 'break'
 
     def _on_zap_confirm(self, event=None):
+        """Callback interno para zap confirm."""
         if self._event_in_text_field(event):
             return
         if not self._zap_digits:
@@ -837,6 +860,7 @@ class VideoPlayer(
         return 'break'
 
     def _commit_zap(self):
+        """Uso interno: commit zap."""
         self._cancel_zap_timer()
         visible = self._zap_visible_indices()
         number = zap_number(self._zap_digits)
@@ -859,6 +883,7 @@ class VideoPlayer(
         self.play_channel(index)
 
     def _zap_preview_name(self):
+        """Uso interno: zap preview name."""
         visible = self._zap_visible_indices()
         position = zap_visible_index(zap_number(self._zap_digits), len(visible))
         if position is None:
@@ -869,6 +894,7 @@ class VideoPlayer(
         return ''
 
     def _show_zap_osd(self, miss=False):
+        """Uso interno: show zap osd."""
         colors = get_colors()
         number = self._zap_digits or '—'
         name = '' if miss else plain_display_text(self._zap_preview_name())
@@ -937,6 +963,7 @@ class VideoPlayer(
             pass
 
     def _position_zap_osd(self, event=None):
+        """Uso interno: position zap osd."""
         top = getattr(self, '_zap_top', None)
         if not self._widget_exists(top) or not self._widget_exists(self.window):
             return
@@ -957,6 +984,7 @@ class VideoPlayer(
             pass
 
     def _clear_zap(self):
+        """Uso interno: clear zap."""
         self._cancel_zap_timer()
         self._zap_digits = ''
         side = getattr(self, '_zap_side_label', None)
@@ -976,12 +1004,14 @@ class VideoPlayer(
                 pass
 
     def _menu_is_mapped(self, menu):
+        """Uso interno: menu is mapped."""
         try:
             return bool(menu) and menu.winfo_ismapped()
         except tk.TclError:
             return False
 
     def _any_track_menu_mapped(self):
+        """Uso interno: any track menu mapped."""
         if getattr(self, '_posted_popup', None):
             return True
         for attr in ('audio_menu', 'subs_menu', 'audio_popup', 'subs_popup'):
@@ -994,6 +1024,7 @@ class VideoPlayer(
         return False
 
     def _event_on_menu(self, event, menu):
+        """Uso interno: event on menu."""
         if not self._menu_is_mapped(menu):
             return False
         try:
@@ -1004,6 +1035,7 @@ class VideoPlayer(
             return False
 
     def _dismiss_track_menus(self):
+        """Uso interno: dismiss track menus."""
         posted = getattr(self, '_posted_popup', None)
         channel_menu = getattr(self, '_channel_menu', None)
         self._posted_popup = None
@@ -1033,6 +1065,7 @@ class VideoPlayer(
                 pass
 
     def _on_press_dismiss_popup(self, event):
+        """Callback interno para press dismiss popup."""
         if not self._widget_exists(getattr(self, 'window', None)):
             return
         if not self._posted_popup and not self._any_track_menu_mapped():
@@ -1049,6 +1082,7 @@ class VideoPlayer(
         self._dismiss_track_menus()
 
     def _on_escape_dismiss_popup(self, event=None):
+        """Callback interno para escape dismiss popup."""
         if not self._widget_exists(getattr(self, 'window', None)):
             return
         if self._posted_popup or self._any_track_menu_mapped():
@@ -1056,7 +1090,9 @@ class VideoPlayer(
             return 'break'
 
     def _choose_from_menu(self, action):
+        """Uso interno: choose from menu."""
         def run():
+            """Run."""
             self._dismiss_track_menus()
             action()
         if self._widget_exists(self.window):
@@ -1065,6 +1101,7 @@ class VideoPlayer(
             action()
 
     def _track_menu_size(self, menu):
+        """Uso interno: track menu size."""
         try:
             menu.update_idletasks()
             width = int(menu.winfo_reqwidth() or 0)
@@ -1083,6 +1120,7 @@ class VideoPlayer(
         return width, height
 
     def _popup_origin_for_button(self, button, menu):
+        """Uso interno: popup origin for button."""
         menu_w, menu_h = self._track_menu_size(menu)
         win = self.window
         return popup_menu_origin(
@@ -1098,6 +1136,7 @@ class VideoPlayer(
         )
 
     def _popup_track_menu(self, button, menu):
+        """Uso interno: popup track menu."""
         if not button or not self._widget_exists(button) or menu is None:
             return
         if self._posted_popup is menu and self._menu_is_mapped(menu):
@@ -1115,12 +1154,15 @@ class VideoPlayer(
             self.reset_hide_controls_timer()
 
     def _popup_audio_menu(self):
+        """Uso interno: popup audio menu."""
         self._popup_track_menu(self._audio_btn, self.audio_popup)
 
     def _popup_subs_menu(self):
+        """Uso interno: popup subtítulos menu."""
         self._popup_track_menu(self._subs_btn, self.subs_popup)
 
     def _clear_menu_items(self, menu):
+        """Uso interno: clear menu items."""
         if menu is None:
             return
         try:
@@ -1131,6 +1173,7 @@ class VideoPlayer(
             menu.delete(0, last)
 
     def _vlc_track_list(self, getter):
+        """Uso interno: VLC track list."""
         try:
             desc = getter() if self.player else None
         except Exception:
@@ -1158,6 +1201,7 @@ class VideoPlayer(
         return items
 
     def _read_vlc_tracks(self):
+        """Uso interno: read VLC tracks."""
         if not self.player:
             return
         self._audio_tracks = self._vlc_track_list(self.player.audio_get_track_description)
@@ -1176,6 +1220,7 @@ class VideoPlayer(
             pass
 
     def _reset_vlc_tracks(self):
+        """Uso interno: reset VLC tracks."""
         self._audio_tracks = []
         self._spu_tracks = []
         self._active_audio_id = None
@@ -1183,6 +1228,7 @@ class VideoPlayer(
         self._track_poll_gen = getattr(self, '_track_poll_gen', 0) + 1
 
     def clear_youtube_subtitles(self):
+        """Limpia youtube subtitles."""
         self._yt_subtitles = []
         self._active_yt_sub = None
         self._cancel_youtube_auto_sub_job()
@@ -1192,16 +1238,19 @@ class VideoPlayer(
         self._rebuild_track_menus()
 
     def set_youtube_subtitles(self, items):
+        """Establece youtube subtitles."""
         self._yt_subtitles = list(items or [])
         self._rebuild_track_menus()
 
     def _mark_active_youtube_subtitle(self, kind, lang):
+        """Uso interno: mark active youtube subtitle."""
         self._active_yt_sub = (kind, lang)
         if getattr(self, '_subs_choice', None) is not None and kind and lang:
             self._subs_choice.set(f'{kind}:{lang}')
         self._rebuild_track_menus()
 
     def _cancel_youtube_auto_sub_job(self):
+        """Uso interno: cancel youtube auto subtítulo job."""
         job = getattr(self, '_yt_auto_sub_job', None)
         self._yt_auto_sub_job = None
         if not job or not self._widget_exists(getattr(self, 'window', None)):
@@ -1212,6 +1261,7 @@ class VideoPlayer(
             pass
 
     def _schedule_youtube_auto_subtitle(self, item):
+        """Uso interno: schedule youtube auto subtitle."""
         if not item or self._active_yt_sub:
             return
         self._cancel_youtube_auto_sub_job()
@@ -1220,6 +1270,7 @@ class VideoPlayer(
         self._yt_auto_sub_job = self.window.after(1200, lambda it=item: self._try_youtube_auto_subtitle(it))
 
     def _try_youtube_auto_subtitle(self, item):
+        """Uso interno: try youtube auto subtitle."""
         self._yt_auto_sub_job = None
         if self._active_yt_sub or not getattr(self, '_playing_youtube', False):
             return
@@ -1228,6 +1279,7 @@ class VideoPlayer(
         self._apply_youtube_subtitle(item)
 
     def _attach_youtube_subtitle_file(self, path, item=None):
+        """Uso interno: attach youtube subtitle file."""
         if not path or not os.path.isfile(path) or not self.player:
             return False
         self._ensure_vlc_style_instance()
@@ -1243,18 +1295,21 @@ class VideoPlayer(
             return False
 
     def _clear_yt_sub_files(self):
+        """Uso interno: clear YouTube subtítulo files."""
         path = getattr(self, '_yt_sub_dir', None)
         self._yt_sub_dir = None
         if path and os.path.isdir(path):
             shutil.rmtree(path, ignore_errors=True)
 
     def _schedule_track_refresh(self):
+        """Uso interno: schedule track refresh."""
         self._track_poll_gen = getattr(self, '_track_poll_gen', 0) + 1
         gen = self._track_poll_gen
         if self._widget_exists(self.window):
             self.window.after(700, lambda g=gen: self._poll_vlc_tracks(g, 0))
 
     def _poll_vlc_tracks(self, gen, attempt):
+        """Uso interno: poll VLC tracks."""
         if gen != getattr(self, '_track_poll_gen', 0):
             return
         if not self.player or not self._widget_exists(self.window):
@@ -1269,6 +1324,7 @@ class VideoPlayer(
         self.window.after(900, lambda g=gen, a=attempt: self._poll_vlc_tracks(g, a + 1))
 
     def _rebuild_track_menus(self):
+        """Uso interno: rebuild track menus."""
         if self._any_track_menu_mapped() or getattr(self, '_posted_popup', None):
             if not getattr(self, '_menu_rebuild_job', None) and self._widget_exists(self.window):
                 self._menu_rebuild_job = self.window.after(200, self._rebuild_track_menus_later)
@@ -1276,6 +1332,7 @@ class VideoPlayer(
         self._rebuild_track_menus_now()
 
     def _rebuild_track_menus_later(self):
+        """Uso interno: rebuild track menus later."""
         self._menu_rebuild_job = None
         if self._any_track_menu_mapped() or getattr(self, '_posted_popup', None):
             if self._widget_exists(self.window):
@@ -1284,6 +1341,7 @@ class VideoPlayer(
         self._rebuild_track_menus_now()
 
     def _rebuild_track_menus_now(self):
+        """Uso interno: rebuild track menus now."""
         menus_audio = [getattr(self, 'audio_menu', None), getattr(self, 'audio_popup', None)]
         menus_subs = [getattr(self, 'subs_menu', None), getattr(self, 'subs_popup', None)]
         if not any(menus_audio) and not any(menus_subs):
@@ -1316,6 +1374,7 @@ class VideoPlayer(
         style_menu_tree(getattr(self, 'subs_popup', None))
 
     def _fill_audio_menu(self, menu):
+        """Uso interno: fill audio menu."""
         if menu is None:
             return
         self._clear_menu_items(menu)
@@ -1363,6 +1422,7 @@ class VideoPlayer(
             )
 
     def _apply_youtube_quality(self, height, force=False):
+        """Uso interno: apply youtube quality."""
         height = app_config.normalize_youtube_quality(height)
         previous = app_config.get_youtube_quality()
         app_config.set_youtube_quality(height)
@@ -1390,6 +1450,7 @@ class VideoPlayer(
         )
 
     def _fill_subs_menu(self, menu):
+        """Uso interno: fill subtítulos menu."""
         if menu is None:
             return
         self._clear_menu_items(menu)
@@ -1427,6 +1488,7 @@ class VideoPlayer(
                 )
 
     def _apply_audio_track(self, track_id):
+        """Uso interno: apply audio track."""
         if not self.player:
             return
         try:
@@ -1436,6 +1498,7 @@ class VideoPlayer(
             print(f"[VLC] No se pudo cambiar la pista de audio: {exc}")
 
     def _apply_spu_track(self, track_id):
+        """Uso interno: apply spu track."""
         if not self.player or getattr(self, '_yt_via_pipe', False):
             return
         self._active_yt_sub = None
@@ -1446,6 +1509,7 @@ class VideoPlayer(
             print(f"[VLC] No se pudo cambiar el subtítulo: {exc}")
 
     def _disable_subtitles(self):
+        """Uso interno: disable subtitles."""
         self._active_yt_sub = None
         if self.player:
             try:
@@ -1455,6 +1519,7 @@ class VideoPlayer(
         self._active_spu_id = -1
 
     def _apply_youtube_subtitle(self, item):
+        """Uso interno: apply youtube subtitle."""
         self._active_yt_sub = (item.get('kind'), item.get('lang'))
         threading.Thread(
             target=self._download_and_load_youtube_sub,
@@ -1463,6 +1528,7 @@ class VideoPlayer(
         ).start()
 
     def _download_and_load_youtube_sub(self, item):
+        """Uso interno: download and load youtube subtítulo."""
         try:
             path = self.youtube_handler.fetch_subtitle_file(
                 item.get('lang'),
@@ -1478,6 +1544,7 @@ class VideoPlayer(
             print(f"[YouTube] Subtítulo no disponible: {exc}")
             path = None
         def apply():
+            """Apply."""
             if not path or not os.path.isfile(path):
                 print('[YouTube] No hay archivo de subtítulos para cargar')
                 return
@@ -1509,6 +1576,7 @@ class VideoPlayer(
             self.window.after(0, apply)
 
     def _restore_after_subtitle(self, keep_ms):
+        """Uso interno: restore after subtitle."""
         if not self.player:
             return
         try:
@@ -1525,6 +1593,7 @@ class VideoPlayer(
             print(f"[VLC] No se pudo conservar la posición: {exc}")
 
     def _select_external_spu(self):
+        """Uso interno: select external spu."""
         if not self.player:
             return
         try:
@@ -1541,6 +1610,7 @@ class VideoPlayer(
             print(f"[VLC] No se pudo activar el subtítulo: {exc}")
 
     def setup_mouse_tracking(self):
+        """Configura mouse tracking."""
         # Eliminar eventos de hover para mostrar/ocultar controles
         # self.video_frame.bind('<Enter>', self.on_mouse_enter)
         # self.video_frame.bind('<Leave>', self.on_mouse_leave)
@@ -1560,12 +1630,15 @@ class VideoPlayer(
 
     # Eliminar la lógica de hover de controles
     def on_mouse_enter(self, event=None):
+        """Responde al evento mouse enter."""
         pass  # Ya no se usa para mostrar controles
 
     def on_mouse_leave(self, event=None):
+        """Responde al evento mouse leave."""
         pass  # Ya no se usa para ocultar controles
 
     def _on_space_toggle_play(self, event=None):
+        """Callback interno para space toggle play."""
         if self._event_in_text_field(event):
             return
         self.toggle_play()
@@ -1593,6 +1666,7 @@ class VideoPlayer(
         return 'break'
 
     def toggle_stream_recording(self):
+        """Alterna stream recording."""
         recorder = getattr(self, '_stream_recorder', None)
         if recorder and recorder.is_recording():
             self.stop_stream_recording(notify=True)
@@ -1600,6 +1674,7 @@ class VideoPlayer(
             self.start_stream_recording(ask_path=False)
 
     def start_stream_recording(self, ask_path=False):
+        """Inicia stream recording."""
         recorder = getattr(self, '_stream_recorder', None)
         if recorder is None:
             return
@@ -1644,6 +1719,7 @@ class VideoPlayer(
                 pass
 
     def stop_stream_recording(self, notify=False):
+        """Detiene stream recording."""
         self._cancel_record_watch()
         recorder = getattr(self, '_stream_recorder', None)
         if recorder is None:
@@ -1669,12 +1745,14 @@ class VideoPlayer(
             messagebox.showinfo("Grabar", f"Guardado:\n{path}", parent=self.window)
 
     def _record_tip_text(self):
+        """Uso interno: grabación tip text."""
         recorder = getattr(self, '_stream_recorder', None)
         if recorder and recorder.is_recording():
             return 'Detener grabación'
         return 'Grabar'
 
     def _refresh_record_button(self):
+        """Uso interno: refresh grabación button."""
         btn = getattr(self, '_record_btn', None)
         icons = getattr(self, '_control_icons', None) or {}
         if not btn:
@@ -1689,6 +1767,7 @@ class VideoPlayer(
             pass
 
     def _cancel_record_watch(self):
+        """Uso interno: cancel grabación watch."""
         job = getattr(self, '_record_watch_job', None)
         if job is None:
             return
@@ -1699,6 +1778,7 @@ class VideoPlayer(
         self._record_watch_job = None
 
     def _watch_recording(self):
+        """Uso interno: watch recording."""
         self._cancel_record_watch()
         recorder = getattr(self, '_stream_recorder', None)
         if recorder and recorder.proc is not None and recorder.proc.poll() is not None:
@@ -1856,6 +1936,7 @@ class VideoPlayer(
             print(f"Error en limpieza VLC: {e}")
 
     def _widget_exists(self, widget):
+        """Uso interno: widget exists."""
         if widget is None:
             return False
         try:
@@ -1864,6 +1945,7 @@ class VideoPlayer(
             return False
 
     def is_alive(self):
+        """Indica si alive."""
         return self._widget_exists(self.window) and self._widget_exists(self.channels_listbox)
 
     def ensure_window(self):
@@ -1884,6 +1966,7 @@ class VideoPlayer(
         self.create_window()
 
     def run(self):
+        """Run."""
         self.ensure_window()
         if self._widget_exists(self.window):
             try:
@@ -1896,6 +1979,7 @@ class VideoPlayer(
                 self.ensure_window()
 
     def _on_window_configure(self, event=None):
+        """Callback interno para ventana configure."""
         if event and event.widget is not self.window:
             return
         self._position_zap_osd()
@@ -1909,6 +1993,7 @@ class VideoPlayer(
         self._geometry_save_job = self.window.after(500, self._save_window_geometry)
 
     def _save_window_geometry(self):
+        """Uso interno: save ventana geometry."""
         self._geometry_save_job = None
         if not self._widget_exists(self.window) or self.is_fullscreen:
             return
@@ -1917,6 +2002,7 @@ class VideoPlayer(
             app_config.remember_window('player', geometry)
 
     def _schedule_volume_save(self):
+        """Uso interno: schedule volume save."""
         if not self._widget_exists(self.window):
             app_config.set_volume(self.volume)
             return
@@ -1973,6 +2059,7 @@ class VideoPlayer(
             self.restore_last_channel()
 
     def _apply_sidebar_items(self, items, groups=None, tvg_ids=None, logos=None):
+        """Uso interno: apply barra lateral items."""
         self.channels = list(items)
         self.all_channels = list(items)
         if groups is None or len(groups) != len(items):
@@ -1993,6 +2080,7 @@ class VideoPlayer(
         self._rebuild_sidebar()
 
     def _persist_sidebar(self):
+        """Uso interno: persist barra lateral."""
         if not app_config.get_remember_last_list():
             return
         items = list(self.all_channels)
@@ -2015,6 +2103,7 @@ class VideoPlayer(
         )
 
     def restore_last_channel(self):
+        """Restore last canal."""
         if not app_config.get_remember_last_list():
             return
         if not self.channels or not self._widget_exists(self.channels_listbox):
@@ -2046,6 +2135,7 @@ class VideoPlayer(
             pass
 
     def save_favorites(self):
+        """Guarda favoritos."""
         try:
             self.favorites = normalize_favorites(self.favorites)
             with open('favoritos.json', 'w', encoding='utf-8') as f:
@@ -2054,6 +2144,7 @@ class VideoPlayer(
             messagebox.showerror("Error", f"No se pudieron guardar los favoritos: {e}")
 
     def load_favorites(self):
+        """Carga favoritos."""
         try:
             with open('favoritos.json', 'r', encoding='utf-8') as f:
                 self.favorites = normalize_favorites(json.load(f))
@@ -2063,6 +2154,7 @@ class VideoPlayer(
             messagebox.showerror("Error", f"No se pudieron cargar los favoritos: {e}")
 
     def _favorite_rows(self):
+        """Uso interno: favorito rows."""
         rows = []
         groups = []
         tvg_ids = []
@@ -2076,17 +2168,20 @@ class VideoPlayer(
         return rows, groups, tvg_ids, logos
 
     def _refresh_favorite_marks(self):
+        """Uso interno: refresh favorito marks."""
         sidebar = getattr(self, 'sidebar', None)
         if sidebar:
             sidebar.refresh_rows()
 
     def _channel_is_favorite(self, index):
+        """Uso interno: canal is favorito."""
         if index is None or not (0 <= index < len(self.channels)):
             return False
         name, url = self.channels[index]
         return favorites_contain(self.favorites, name, url)
 
     def show_favorites(self):
+        """Muestra favoritos."""
         if not self.favorites:
             messagebox.showinfo("Favoritos", "Por el momento no hay favoritos añadidos.")
             return
@@ -2103,6 +2198,7 @@ class VideoPlayer(
         self._set_epg_label('')
 
     def restore_all_channels(self):
+        """Restore all canales."""
         self._showing_favorites = False
         self.channels = self.all_channels.copy()
         self._groups = list(self._groups_all)
@@ -2118,6 +2214,7 @@ class VideoPlayer(
         self._rebuild_sidebar()
 
     def prompt_url(self):
+        """Prompt url."""
         self.ensure_window()
         url = ask_string(
             self.window,
@@ -2136,6 +2233,7 @@ class VideoPlayer(
         self.load_m3u_url(url)
 
     def prompt_file(self):
+        """Prompt file."""
         filename = filedialog.askopenfilename(
             title="Selecciona un archivo M3U o M3U8",
             filetypes=[("Archivos M3U/M3U8", "*.m3u *.m3u8"), ("Todos los archivos", "*")],
@@ -2178,9 +2276,11 @@ class VideoPlayer(
             self._apply_manual_epg(filename)
 
     def clear_manual_epg(self):
+        """Limpia manual guía EPG."""
         self._apply_manual_epg('', notify=False)
 
     def _apply_manual_epg(self, value, notify=True):
+        """Uso interno: apply manual guía EPG."""
         text = epg.normalize_epg_source(value)
         if text and not text.lower().startswith(('http://', 'https://', 'file://')) and not os.path.isfile(text):
             messagebox.showerror(
@@ -2195,6 +2295,7 @@ class VideoPlayer(
         self._persist_sidebar()
 
     def _set_busy(self, text=None, percent=None):
+        """Uso interno: set busy."""
         if not self._widget_exists(self.window):
             return
         caption = busy_status_text(text, percent)
@@ -2206,6 +2307,7 @@ class VideoPlayer(
         self._show_busy_overlay(caption, percent)
 
     def _clear_busy(self):
+        """Uso interno: clear busy."""
         if not self._widget_exists(self.window):
             return
         try:
@@ -2216,6 +2318,7 @@ class VideoPlayer(
         self._hide_busy_overlay()
 
     def _hide_busy_overlay(self):
+        """Uso interno: hide busy superposición."""
         bar = getattr(self, '_busy_bar', None)
         if bar is not None:
             try:
@@ -2233,6 +2336,7 @@ class VideoPlayer(
                 pass
 
     def _show_busy_overlay(self, text, percent=None):
+        """Uso interno: show busy superposición."""
         if not self._widget_exists(self.window):
             return
         parent = getattr(self, 'player_frame', None) or getattr(self, 'video_frame', None)
@@ -2321,10 +2425,12 @@ class VideoPlayer(
             pass
 
     def _report_load_progress(self, window, gen, text, percent=None):
+        """Uso interno: report load progress."""
         if gen != getattr(self, '_load_gen', 0):
             return
 
         def apply():
+            """Apply."""
             if gen != getattr(self, '_load_gen', 0):
                 return
             self._set_busy(text, percent=percent)
@@ -2332,6 +2438,7 @@ class VideoPlayer(
         self._after_window(window, apply)
 
     def _after_window(self, window, callback):
+        """Uso interno: after ventana."""
         try:
             window.after(0, callback)
         except tk.TclError:
@@ -2346,6 +2453,7 @@ class VideoPlayer(
         window = self.window
 
         def work():
+            """Work."""
             err = None
             parsed = None
             epg_urls = []
@@ -2355,6 +2463,7 @@ class VideoPlayer(
                 self._report_load_progress(window, gen, 'Leyendo canales…', 8)
 
                 def on_progress(frac):
+                    """Responde al evento progress."""
                     self._report_load_progress(
                         window, gen, 'Leyendo canales…', 8 + frac * 82,
                     )
@@ -2365,6 +2474,7 @@ class VideoPlayer(
                 err = exc
 
             def apply():
+                """Apply."""
                 if gen != self._load_gen:
                     return
                 if err:
@@ -2394,6 +2504,7 @@ class VideoPlayer(
         window = self.window
 
         def work():
+            """Work."""
             err = None
             parsed = None
             epg_urls = []
@@ -2427,6 +2538,7 @@ class VideoPlayer(
                 self._report_load_progress(window, gen, 'Leyendo canales…', 42)
 
                 def on_progress(frac):
+                    """Responde al evento progress."""
                     self._report_load_progress(
                         window, gen, 'Leyendo canales…', 42 + frac * 48,
                     )
@@ -2437,6 +2549,7 @@ class VideoPlayer(
                 err = exc
 
             def apply():
+                """Apply."""
                 if gen != self._load_gen:
                     return
                 if err:
@@ -2458,6 +2571,7 @@ class VideoPlayer(
         threading.Thread(target=work, daemon=True).start()
 
     def update_sidebar_title(self, url, title):
+        """Actualiza barra lateral title."""
         updated = False
         for i, (name, item_url) in enumerate(self.channels):
             if item_url != url or name == title:
@@ -2474,6 +2588,7 @@ class VideoPlayer(
         return updated
 
     def _rebuild_sidebar(self):
+        """Uso interno: rebuild barra lateral."""
         sidebar = getattr(self, 'sidebar', None)
         if not sidebar or not self._widget_exists(self.channels_listbox):
             return
@@ -2482,6 +2597,7 @@ class VideoPlayer(
         sidebar.rebuild(self.channels, self._groups)
 
     def _fill_channel_listbox(self, names=None):
+        """Uso interno: fill canal lista."""
         self._rebuild_sidebar()
 
     def _process_m3u_content(self, content):
@@ -2495,6 +2611,7 @@ class VideoPlayer(
         )
 
     def _unpack_parsed_channels(self, parsed):
+        """Uso interno: unpack parsed canales."""
         channels = []
         groups = []
         tvg_ids = []
@@ -2512,6 +2629,7 @@ class VideoPlayer(
         return channels, groups, tvg_ids, logos
 
     def _apply_parsed_channels(self, parsed, source, kind, notify=True, epg_urls=None):
+        """Uso interno: apply parsed canales."""
         self.ensure_window()
         channels, groups, tvg_ids, logos = self._unpack_parsed_channels(parsed)
         self.channels = channels
@@ -2533,6 +2651,7 @@ class VideoPlayer(
             messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
 
     def _merged_epg_urls(self):
+        """Uso interno: merged guía EPG URLs."""
         urls = []
         seen = set()
         manual = (self._epg_url_manual or app_config.get_epg_url() or '').strip()
@@ -2546,6 +2665,7 @@ class VideoPlayer(
         return urls[:3]
 
     def _start_epg(self, urls=None, notify=False):
+        """Uso interno: start guía EPG."""
         if urls is not None:
             self._epg_urls_list = [item for item in urls if item]
         self._epg_urls = self._merged_epg_urls()
@@ -2585,12 +2705,14 @@ class VideoPlayer(
         self._set_epg_label(plain_ui_line('Cargando guía...'))
 
         def work():
+            """Work."""
             try:
                 guide = epg.load_guide(sources, wanted_ids, wanted_names=wanted_names)
             except Exception:
                 guide = epg.Guide()
 
             def apply():
+                """Apply."""
                 if gen != self._epg_gen:
                     return
                 self._epg = guide
@@ -2621,12 +2743,14 @@ class VideoPlayer(
         threading.Thread(target=work, daemon=True).start()
 
     def _epg_text_for_index(self, index):
+        """Uso interno: guía EPG text for index."""
         if not self._epg:
             return ''
         current, nxt = self._epg.now_next(self._epg_key(index))
         return epg.format_now_next(current, nxt)
 
     def _sync_sidebar_layout(self, event=None):
+        """Uso interno: sync barra lateral layout."""
         frame = getattr(self, 'channels_frame', None)
         label = getattr(self, '_epg_label', None)
         if not frame or not label:
@@ -2638,6 +2762,7 @@ class VideoPlayer(
             pass
 
     def _set_epg_label(self, text):
+        """Uso interno: set guía EPG label."""
         label = getattr(self, '_epg_label', None)
         if not self._widget_exists(label):
             return
@@ -2669,9 +2794,11 @@ class VideoPlayer(
                 pass
 
     def _refresh_epg_label(self, index):
+        """Uso interno: refresh guía EPG label."""
         self._set_epg_label(self._epg_text_for_index(index))
 
     def _on_sidebar_select_epg(self, event=None):
+        """Callback interno para barra lateral select guía EPG."""
         sidebar = getattr(self, 'sidebar', None)
         if sidebar and sidebar.ignore_play():
             return
@@ -2679,6 +2806,7 @@ class VideoPlayer(
         self._refresh_epg_label(index)
 
     def _tvg_id_for_url(self, url):
+        """Uso interno: tvg id for URL."""
         for i, (_name, item_url) in enumerate(self.all_channels):
             if item_url != url:
                 continue
@@ -2688,6 +2816,7 @@ class VideoPlayer(
         return ''
 
     def _logo_for_url(self, url):
+        """Uso interno: logo for URL."""
         for i, (_name, item_url) in enumerate(self.all_channels):
             if item_url != url:
                 continue
@@ -2697,6 +2826,7 @@ class VideoPlayer(
         return ''
 
     def _epg_key(self, index):
+        """Uso interno: guía EPG key."""
         if index is None:
             return ''
         if 0 <= index < len(getattr(self, '_tvg_ids', [])):
@@ -2708,12 +2838,14 @@ class VideoPlayer(
         return ''
 
     def _epg_now_title(self, index):
+        """Uso interno: guía EPG now title."""
         guide = getattr(self, '_epg', None)
         if not guide:
             return ''
         return guide.now_title(self._epg_key(index))
 
     def _logo_url(self, index):
+        """Uso interno: logo URL."""
         if index is None:
             return ''
         if 0 <= index < len(self._logos) and self._logos[index]:
@@ -2723,6 +2855,7 @@ class VideoPlayer(
         return ''
 
     def _logo_photo(self, index):
+        """Uso interno: logo photo."""
         if not self.channel_logos_enabled():
             return None
         url = self._logo_url(index)
@@ -2735,17 +2868,20 @@ class VideoPlayer(
         return logo_cache.load_photo(url, photos)
 
     def channel_logos_enabled(self):
+        """Canal logos enabled."""
         if app_config.get_light_mode():
             return False
         return bool(getattr(self, '_show_logos', True))
 
     def _on_logos_menu_toggle(self):
+        """Callback interno para logos menu toggle."""
         var = getattr(self, '_logos_var', None)
         enabled = bool(var.get()) if var is not None else True
         app_config.set_show_channel_logos(enabled)
         self._apply_logo_pref(enabled)
 
     def _apply_logo_pref(self, enabled=None):
+        """Uso interno: apply logo pref."""
         if enabled is None:
             enabled = app_config.effective_show_channel_logos()
         else:
@@ -2762,11 +2898,13 @@ class VideoPlayer(
         self._refresh_sidebar_now()
 
     def _on_sidebar_view_change(self):
+        """Callback interno para barra lateral view change."""
         self._prefetch_visible_logos()
         if app_config.get_light_mode() and self._epg_urls:
             self._start_epg(notify=False)
 
     def _prefetch_visible_logos(self):
+        """Uso interno: prefetch visible logos."""
         if not self.channel_logos_enabled():
             return
         sidebar = getattr(self, 'sidebar', None)
@@ -2781,6 +2919,7 @@ class VideoPlayer(
         window = self.window
 
         def done():
+            """Done."""
             if not self.channel_logos_enabled():
                 return
             if self._widget_exists(window):
@@ -2789,6 +2928,7 @@ class VideoPlayer(
         logo_cache.fetch_many(urls, on_done=done)
 
     def _schedule_logo_refresh(self):
+        """Uso interno: schedule logo refresh."""
         job = getattr(self, '_logo_refresh_job', None)
         if job and self._widget_exists(self.window):
             try:
@@ -2800,10 +2940,12 @@ class VideoPlayer(
         self._logo_refresh_job = self.window.after(120, self._flush_logo_refresh)
 
     def _flush_logo_refresh(self):
+        """Uso interno: flush logo refresh."""
         self._logo_refresh_job = None
         self._refresh_sidebar_now()
 
     def _refresh_sidebar_now(self):
+        """Uso interno: refresh barra lateral now."""
         sidebar = getattr(self, 'sidebar', None)
         if sidebar:
             sidebar.refresh_rows()
@@ -2815,6 +2957,7 @@ class VideoPlayer(
                 pass
 
     def _cancel_epg_jobs(self):
+        """Uso interno: cancel guía EPG jobs."""
         for attr in ('_epg_reload_job', '_epg_tick_job', '_logo_refresh_job'):
             job = getattr(self, attr, None)
             setattr(self, attr, None)
@@ -2825,6 +2968,7 @@ class VideoPlayer(
                     pass
 
     def _schedule_epg_reload(self):
+        """Uso interno: schedule guía EPG reload."""
         job = getattr(self, '_epg_reload_job', None)
         if job and self._widget_exists(self.window):
             try:
@@ -2840,6 +2984,7 @@ class VideoPlayer(
         self._epg_reload_job = self.window.after(interval, lambda: self._start_epg(notify=False))
 
     def _schedule_epg_tick(self):
+        """Uso interno: schedule guía EPG tick."""
         job = getattr(self, '_epg_tick_job', None)
         if job and self._widget_exists(self.window):
             try:
@@ -2854,6 +2999,7 @@ class VideoPlayer(
         )
 
     def _tick_epg(self):
+        """Uso interno: tick guía EPG."""
         self._epg_tick_job = None
         if not self._widget_exists(self.window):
             return
@@ -2866,13 +3012,16 @@ class VideoPlayer(
         self._schedule_epg_tick()
 
     def open_epg_grid(self):
+        """Abre guía EPG grid."""
         show_epg_grid(self)
         self._prefetch_visible_logos()
 
     def open_iptv_history(self):
+        """Abre IPTV historial."""
         show_iptv_history(self)
 
     def _refresh_history_ui(self):
+        """Uso interno: refresh historial interfaz."""
         win = getattr(self, '_iptv_history', None)
         if win is not None:
             try:
@@ -2882,6 +3031,7 @@ class VideoPlayer(
         self._fill_twitch_recent_menu()
 
     def _fill_twitch_recent_menu(self):
+        """Uso interno: fill twitch recent menu."""
         menu = getattr(self, '_twitch_recent_menu', None)
         if menu is None:
             return
@@ -2910,6 +3060,7 @@ class VideoPlayer(
         )
 
     def clear_twitch_history_prompt(self):
+        """Limpia twitch historial prompt."""
         if not app_config.twitch_history():
             return
         if not messagebox.askyesno(
@@ -2922,6 +3073,7 @@ class VideoPlayer(
         self._refresh_history_ui()
 
     def _fill_history_menu(self):
+        """Uso interno: fill historial menu."""
         menu = getattr(self, '_history_menu', None)
         if menu is None:
             return
@@ -3004,6 +3156,7 @@ class VideoPlayer(
         menu.add_command(label="Vaciar historial", command=self.clear_iptv_history_prompt)
 
     def clear_iptv_history_prompt(self):
+        """Limpia IPTV historial prompt."""
         if not app_config.iptv_history() and not app_config.youtube_history() and not app_config.twitch_history():
             return
         if not messagebox.askyesno(
@@ -3018,6 +3171,7 @@ class VideoPlayer(
         self._refresh_history_ui()
 
     def play_history_url(self, url):
+        """Reproduce historial URL."""
         url = (url or '').strip()
         if not url:
             return
@@ -3072,12 +3226,14 @@ class VideoPlayer(
         self._refresh_history_ui()
 
     def _on_epg_grid_key(self, event=None):
+        """Callback interno para guía EPG grid key."""
         if self._event_in_text_field(event):
             return
         self.open_epg_grid()
         return 'break'
 
     def _epg_grid_rows(self):
+        """Uso interno: guía EPG grid rows."""
         sidebar = getattr(self, 'sidebar', None)
         if sidebar and getattr(sidebar, 'mode', '') == 'catalog':
             return []
@@ -3112,6 +3268,7 @@ class VideoPlayer(
         window = self.window
 
         def work():
+            """Work."""
             err = None
             parsed = []
             try:
@@ -3133,6 +3290,7 @@ class VideoPlayer(
                 err = exc
 
             def apply():
+                """Apply."""
                 if gen != self._load_gen:
                     return
                 if err:
@@ -3191,6 +3349,7 @@ class VideoPlayer(
             self.play_channel(index)
             
     def play_channel(self, index):
+        """Reproduce canal."""
         if 0 <= index < len(self.channels):
             if (
                 self.current_channel is not None
@@ -3272,6 +3431,7 @@ class VideoPlayer(
                 self._show_channel_unavailable(name)
 
     def play_video_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, http_headers=None, on_fail=None, fail_after_s=8, local_file=False, duration_s=None, subtitle_path=None, start_s=0):
+        """Reproduce video URL."""
         try:
             self._hide_channel_status()
             self._media_started = False
@@ -3417,6 +3577,7 @@ class VideoPlayer(
         self.update_time()  # Llamada inicial
 
     def stop_update_time(self):
+        """Detiene update time."""
         if self.update_time_job:
             try:
                 self.window.after_cancel(self.update_time_job)
@@ -3425,6 +3586,7 @@ class VideoPlayer(
             self.update_time_job = None
 
     def _media_length_ms(self):
+        """Uso interno: media length ms."""
         vlc_len = 0
         try:
             if self.player:
@@ -3438,6 +3600,7 @@ class VideoPlayer(
         return vlc_len if vlc_len > 0 else known
 
     def _playback_elapsed_ms(self):
+        """Uso interno: playback elapsed ms."""
         raw = 0
         try:
             if self.player:
@@ -3449,6 +3612,7 @@ class VideoPlayer(
         return raw + int(getattr(self, '_yt_start_offset_ms', 0) or 0)
 
     def _current_youtube_id(self):
+        """Uso interno: current youtube id."""
         handler = getattr(self, 'youtube_handler', None)
         url = ''
         if handler:
@@ -3465,6 +3629,7 @@ class VideoPlayer(
         return handler.extract_youtube_id(url)
 
     def save_twitch_resume(self):
+        """Guarda twitch resume."""
         if not getattr(self, '_playing_twitch', False):
             return
         handler = getattr(self, 'twitch_handler', None)
@@ -3481,18 +3646,21 @@ class VideoPlayer(
         self._last_twitch_resume_save = time.time()
 
     def clear_twitch_resume(self):
+        """Limpia twitch resume."""
         handler = getattr(self, 'twitch_handler', None)
         url = getattr(handler, '_current_url', '') if handler else ''
         if url and is_twitch_vod_url(url):
             app_config.clear_twitch_position(url)
 
     def _on_twitch_vod_ended(self):
+        """Callback interno para twitch vod ended."""
         if getattr(self, '_tw_end_handled', False):
             return
         self._tw_end_handled = True
         self.clear_twitch_resume()
 
     def save_youtube_resume(self):
+        """Guarda youtube resume."""
         if not getattr(self, '_playing_youtube', False):
             return
         video_id = self._current_youtube_id()
@@ -3511,6 +3679,7 @@ class VideoPlayer(
         self._last_yt_resume_save = time.time()
 
     def save_iptv_resume(self):
+        """Guarda IPTV resume."""
         if getattr(self, '_playing_youtube', False):
             return
         url = (getattr(self, '_iptv_source_url', '') or '').strip()
@@ -3529,6 +3698,7 @@ class VideoPlayer(
         self._last_iptv_resume_save = time.time()
 
     def _apply_pending_iptv_resume(self, tries=0):
+        """Uso interno: apply pending IPTV resume."""
         pending = float(getattr(self, '_iptv_resume_s', 0) or 0)
         if pending < 0.5 or getattr(self, '_playing_youtube', False):
             return
@@ -3541,11 +3711,13 @@ class VideoPlayer(
         self._apply_seek(int(pending * 1000))
 
     def clear_youtube_resume(self):
+        """Limpia youtube resume."""
         video_id = self._current_youtube_id()
         if video_id:
             app_config.clear_youtube_position(video_id)
 
     def _apply_pending_youtube_resume(self):
+        """Uso interno: apply pending youtube resume."""
         pending = float(getattr(self, '_yt_resume_s', 0) or 0)
         self._yt_resume_s = 0
         if pending < 0.5:
@@ -3558,6 +3730,7 @@ class VideoPlayer(
             self._set_progress_ui(max(elapsed, target_ms))
 
     def _set_progress_ui(self, elapsed_ms, length_ms=None):
+        """Uso interno: set progress interfaz."""
         if length_ms is None:
             length_ms = self._media_length_ms()
         elapsed_ms = max(0, int(elapsed_ms or 0))
@@ -3574,6 +3747,7 @@ class VideoPlayer(
             self._progress_internal = False
 
     def _apply_seek(self, target_ms):
+        """Uso interno: apply seek."""
         length = self._media_length_ms()
         target_ms = max(0, int(target_ms))
         if length > 0:
@@ -3606,6 +3780,7 @@ class VideoPlayer(
         return target_ms
 
     def _format_clock(self, milliseconds):
+        """Uso interno: format clock."""
         total = max(0, int(milliseconds) // 1000)
         hours, remainder = divmod(total, 3600)
         minutes, seconds = divmod(remainder, 60)
@@ -3705,6 +3880,7 @@ class VideoPlayer(
             apply_spu_delay(self.player)
 
     def filter_channels(self, *args):
+        """Filtra canales."""
         if not self._widget_exists(getattr(self, 'channels_listbox', None)):
             return
         job = getattr(self, '_filter_job', None)
@@ -3716,6 +3892,7 @@ class VideoPlayer(
         self._filter_job = self.window.after(80, self._apply_channel_filter)
 
     def _apply_channel_filter(self):
+        """Uso interno: apply canal filter."""
         self._filter_job = None
         if not self._widget_exists(getattr(self, 'channels_listbox', None)):
             return
@@ -3746,6 +3923,7 @@ class VideoPlayer(
         logos_snap = logos_all
 
         def finish(filtered, filtered_groups, filtered_tvg, filtered_logos):
+            """Finish."""
             if gen != self._filter_gen:
                 return
             if not self._widget_exists(getattr(self, 'channels_listbox', None)):
@@ -3757,6 +3935,7 @@ class VideoPlayer(
             self._rebuild_sidebar()
 
         def scan():
+            """Scan."""
             filtered = []
             filtered_groups = []
             filtered_tvg = []
@@ -3776,6 +3955,7 @@ class VideoPlayer(
         window = self.window
 
         def work():
+            """Work."""
             result = scan()
             self._after_window(window, lambda: finish(*result))
 
@@ -3854,6 +4034,7 @@ class VideoPlayer(
         return self.enqueue_youtube_queue(items)
 
     def enqueue_youtube_queue(self, items):
+        """Enqueue youtube cola."""
         added = app_config.enqueue_youtube_queue(items)
         if not added:
             return added
@@ -3869,11 +4050,13 @@ class VideoPlayer(
         return added
 
     def open_youtube_queue(self):
+        """Abre youtube cola."""
         if not self.is_alive():
             self.ensure_window()
         show_youtube_queue(self)
 
     def _refresh_queue_ui(self):
+        """Uso interno: refresh cola interfaz."""
         win = getattr(self, '_youtube_queue_win', None)
         if win is not None:
             try:
@@ -3882,6 +4065,7 @@ class VideoPlayer(
                 pass
 
     def play_youtube_queue_index(self, index):
+        """Reproduce youtube cola index."""
         item = app_config.pop_youtube_queue(index)
         self._refresh_queue_ui()
         if not item:
@@ -3894,6 +4078,7 @@ class VideoPlayer(
         )
 
     def play_youtube_queue_next(self):
+        """Reproduce youtube cola next."""
         self.play_youtube_queue_index(0)
 
     def play_youtube_channel(self, url, title=None):
@@ -3907,6 +4092,7 @@ class VideoPlayer(
         window = self.window
 
         def work():
+            """Work."""
             err = None
             videos = []
             channel_name = label
@@ -3917,6 +4103,7 @@ class VideoPlayer(
                 err = exc
 
             def apply():
+                """Apply."""
                 self._loading_yt_channel = False
                 if err:
                     self._clear_busy()
@@ -3974,6 +4161,7 @@ class VideoPlayer(
         self._refresh_history_ui()
 
     def _prepare_web_stream_player(self):
+        """Uso interno: prepare web stream player."""
         self._ensure_vlc_style_instance()
         if self.instance is None:
             self.instance = _make_vlc_instance()
@@ -4007,16 +4195,19 @@ class VideoPlayer(
         self._refresh_history_ui()
 
     def add_twitch_to_favorites(self):
+        """Añade twitch to favoritos."""
         handler = getattr(self, 'twitch_handler', None)
         if handler:
             handler.add_current_to_favorites()
 
     def toggle_twitch_chat(self):
+        """Alterna twitch chat."""
         handler = getattr(self, 'twitch_handler', None)
         if handler:
             handler.toggle_chat()
 
     def update_twitch_chat_ui(self):
+        """Actualiza twitch chat interfaz."""
         from twitch_chat import can_show_twitch_chat
 
         menu = getattr(self, '_twitch_menu', None)
@@ -4037,6 +4228,7 @@ class VideoPlayer(
                 pass
 
     def _on_twitch_chat_key(self, event=None):
+        """Callback interno para twitch chat key."""
         if not getattr(self, '_playing_twitch', False):
             return 'break'
         handler = getattr(self, 'twitch_handler', None)
@@ -4047,11 +4239,13 @@ class VideoPlayer(
         return 'break'
 
     def open_twitch_channel_browser(self):
+        """Abre twitch canal browser."""
         from twitch_browse import open_twitch_channel_browser
         self.ensure_window()
         open_twitch_channel_browser(self)
 
     def open_twitch_search(self):
+        """Abre twitch search."""
         from twitch_search import open_twitch_search
         self.ensure_window()
         open_twitch_search(self)
@@ -4143,6 +4337,7 @@ class VideoPlayer(
                     pass # No hacer nada si no se puede borrar
 
     def update_youtube_session_ui(self, info=None):
+        """Actualiza youtube session interfaz."""
         info = info or self.youtube_handler.session_view()
         ok = bool(info.get('ok'))
         text = f"Sesión YouTube: {'OK' if ok else 'caducada'}"
@@ -4157,6 +4352,7 @@ class VideoPlayer(
         refresh_preferences_session_ui(youtube_info=info)
 
     def update_twitch_session_ui(self, info=None):
+        """Actualiza twitch session interfaz."""
         info = info or self.twitch_handler.session_view()
         ok = bool(info.get('ok'))
         text = f"Sesión Twitch: {'OK' if ok else 'caducada'}"
@@ -4171,11 +4367,13 @@ class VideoPlayer(
         refresh_preferences_session_ui(twitch_info=info)
 
     def open_preferences(self):
+        """Abre preferences."""
         from preferences import show_preferences
         callback = getattr(self, '_prefs_apply', self.apply_preferences)
         show_preferences(self.window, on_apply=callback, video_player=self)
 
     def apply_preferences(self):
+        """Aplica preferences."""
         if not self._widget_exists(self.window):
             return
         self.refresh_theme()
@@ -4239,6 +4437,7 @@ class VideoPlayer(
             pass
 
     def _apply_light_mode_runtime(self):
+        """Uso interno: apply light mode runtime."""
         if app_config.get_light_mode():
             self._set_epg_label('')
             job = getattr(self, '_epg_reload_job', None)
@@ -4318,6 +4517,7 @@ class VideoPlayer(
         )
 
     def refresh_theme(self):
+        """Refresca theme."""
         if not self._widget_exists(self.window):
             return
         style_window(self.window)
@@ -4353,12 +4553,15 @@ class VideoPlayer(
             twitch.notify_session()
 
     def reexport_youtube_cookies(self):
+        """Reexport youtube cookies."""
         self.youtube_handler.reexport_youtube_cookies()
 
     def reexport_twitch_cookies(self):
+        """Reexport twitch cookies."""
         self.twitch_handler.reexport_twitch_cookies()
 
     def update_yt_dlp(self):
+        """Actualiza YouTube dlp."""
         from preferences import start_yt_dlp_upgrade
         start_yt_dlp_upgrade(self.window)
 
@@ -4406,6 +4609,7 @@ class VideoPlayer(
         return sidebar.index_at(event)
 
     def _hide_listbox_tooltip(self, event=None):
+        """Uso interno: hide lista tooltip."""
         self._listbox_tip_index = None
         tip = getattr(self, 'listbox_tooltip', None)
         if tip:
@@ -4436,6 +4640,7 @@ class VideoPlayer(
         )
 
     def on_listbox_leave(self, event):
+        """Responde al evento lista leave."""
         box = self.channels_listbox
         try:
             px = box.winfo_pointerx() - box.winfo_rootx()
@@ -4447,6 +4652,7 @@ class VideoPlayer(
         self._hide_listbox_tooltip()
 
     def _progress_ms_from_x(self, x):
+        """Uso interno: progress ms from x."""
         width = max(1, self.progress_bar.winfo_width())
         percent = max(0.0, min(100.0, (float(x) / width) * 100.0))
         length = self._media_length_ms()
@@ -4466,16 +4672,19 @@ class VideoPlayer(
         return target
 
     def start_seek(self, event):
+        """Inicia seek."""
         self.is_seeking = True
         self._progress_ms_from_x(event.x)
         if self.is_fullscreen:
             self.reset_hide_controls_timer()
 
     def _drag_seek(self, event):
+        """Uso interno: drag seek."""
         if self.is_seeking:
             self._progress_ms_from_x(event.x)
 
     def end_seek(self, event):
+        """End seek."""
         if self.is_seeking:
             target = self._progress_ms_from_x(event.x)
             self._apply_seek(target)
@@ -4484,6 +4693,7 @@ class VideoPlayer(
             self.reset_hide_controls_timer()
 
     def _on_progress_scale(self, value):
+        """Callback interno para progress scale."""
         if getattr(self, '_progress_internal', False) or self.is_seeking or not self.player:
             return
         if getattr(self, '_yt_via_pipe', False) and not getattr(self, '_pipe_ready', False):
@@ -4497,6 +4707,7 @@ class VideoPlayer(
             print(f"Error en seek: {e}")
 
     def seek_to_position(self, value):
+        """Seek to position."""
         self._on_progress_scale(value)
 
     def handle_add_favorite(self, event=None):
@@ -4518,6 +4729,7 @@ class VideoPlayer(
         
         # Esperar un momento antes de iniciar la nueva reproducción
         def start_playback():
+            """Inicia playback."""
             print("Configurando reproducción secuencial")
             self.is_sequential_playback = True
             self.current_playlist_index = start_index
@@ -4557,6 +4769,7 @@ class VideoPlayer(
             print(traceback.format_exc())
 
     def _hide_youtube_replay_prompt(self):
+        """Uso interno: hide youtube replay prompt."""
         frame = getattr(self, '_yt_replay_frame', None)
         self._yt_replay_frame = None
         if self._widget_exists(frame):
@@ -4646,6 +4859,7 @@ class VideoPlayer(
         self._yt_replay_frame = panel
 
     def _replay_current_youtube(self):
+        """Uso interno: replay current youtube."""
         self._hide_youtube_replay_prompt()
         handler = getattr(self, 'youtube_handler', None)
         url = getattr(handler, '_current_url', '') or '' if handler else ''
@@ -4693,6 +4907,7 @@ class VideoPlayer(
 
             if getattr(self, '_playing_youtube', False) and app_config.youtube_queue():
                 def play_queue_next():
+                    """Reproduce cola next."""
                     try:
                         if self.player and self.player.is_playing():
                             self.player.stop()
@@ -4716,6 +4931,7 @@ class VideoPlayer(
                 next_index = current_index + 1
                 if next_index < len(self.channels):
                     def play_next():
+                        """Reproduce next."""
                         try:
                             if self.player and self.player.is_playing():
                                 self.player.stop()
@@ -4862,6 +5078,7 @@ class VideoPlayer(
             print(f"Error al limpiar la lista: {e}")
 
     def _selected_channel_index(self, event=None):
+        """Uso interno: selected canal index."""
         sidebar = getattr(self, 'sidebar', None)
         if event is not None and sidebar:
             index = sidebar.index_at(event)
@@ -4891,6 +5108,7 @@ class VideoPlayer(
         return added
 
     def remove_favorite_entry(self, name, url, notify=False):
+        """Quita favorito entry."""
         title = (name or '').strip() or 'Canal'
         self.favorites, removed = remove_favorite(self.favorites, title, url)
         if removed:
@@ -4924,9 +5142,11 @@ class VideoPlayer(
         self.remove_favorite_entry(name, url, notify=True)
 
     def _favorites_dialog_dir(self):
+        """Uso interno: favoritos dialog dir."""
         return app_config.get_download_dir() or app_config.suggested_download_dir()
 
     def _apply_imported_favorites(self, items, replace):
+        """Uso interno: apply imported favoritos."""
         incoming = normalize_favorites(items)
         if replace:
             self.favorites = incoming
@@ -4947,6 +5167,7 @@ class VideoPlayer(
         return added, skipped
 
     def export_favorites(self):
+        """Export favoritos."""
         items = normalize_favorites(self.favorites)
         if not items:
             messagebox.showinfo(
@@ -4988,6 +5209,7 @@ class VideoPlayer(
         )
 
     def import_favorites(self):
+        """Import favoritos."""
         path = filedialog.askopenfilename(
             parent=self.window,
             title='Importar favoritos',
@@ -5045,6 +5267,7 @@ class VideoPlayer(
         messagebox.showinfo("Favoritos", detail, parent=self.window)
 
     def show_channel_context_menu(self, event):
+        """Muestra canal context menu."""
         selection = self._selected_channel_index(event)
         self._hide_listbox_tooltip()
         if selection is None:
@@ -5107,10 +5330,12 @@ class VideoPlayer(
         self.window.update_idletasks()
 
     def start_resize(self, event):
+        """Inicia resize."""
         self.resize_active = True
         self.last_x = event.x_root
 
     def do_resize(self, event):
+        """Do resize."""
         if not self.resize_active:
             return
         delta = event.x_root - self.last_x
@@ -5122,5 +5347,6 @@ class VideoPlayer(
         self.last_x = event.x_root
 
     def stop_resize(self, event):
+        """Detiene resize."""
         self.resize_active = False
 

@@ -1,3 +1,5 @@
+"""Módulo de keyboard."""
+
 import os
 import tkinter as tk
 from tkinter import ttk
@@ -7,6 +9,7 @@ from ui_theme import style_window, set_window_icon, center_window, get_font
 from ui_layout import setup_resizable_dialog
 
 def show_keyboard_shortcuts(root):
+    """Muestra keyboard shortcuts."""
     shortcuts_window = tk.Toplevel(root)
     shortcuts_window.title('Atajos de Teclado')
     setup_resizable_dialog(shortcuts_window, 540, 640, 420, 400)

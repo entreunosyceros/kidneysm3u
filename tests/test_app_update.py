@@ -1,9 +1,12 @@
+"""Módulo de test app update."""
+
 import app_config
 import app_update
 import app_version
 
 
 def test_normalize_and_compare_versions():
+    """Prueba normalize and compare versions."""
     assert app_update.normalize_version('v1.2.3') == '1.2.3'
     assert app_update.normalize_version('Kidneysm3u 1.2.3') == '1.2.3'
     assert app_update.normalize_version('Versión1.2.3') == '1.2.3'
@@ -19,6 +22,7 @@ def test_normalize_and_compare_versions():
 
 
 def test_install_kind_windows_deb_and_source(tmp_path, monkeypatch):
+    """Prueba install kind windows paquete .deb and source."""
     assert app_update.install_kind(frozen=True, platform='win32') == 'windows'
     assert app_update.install_kind(frozen=False, platform='linux', here=str(tmp_path), share_version=False) == 'source'
     local = tmp_path / 'share' / 'kidneysm3u'
@@ -33,6 +37,7 @@ def test_install_kind_windows_deb_and_source(tmp_path, monkeypatch):
 
 
 def test_pick_release_asset_by_kind():
+    """Prueba pick release asset by kind."""
     assets = [
         {'name': 'kidneysm3u_1.2.3_all.deb', 'browser_download_url': 'https://github.com/x/a.deb', 'size': 10},
         {'name': 'Kidneysm3u-Setup-1.2.3.exe', 'browser_download_url': 'https://github.com/x/a.exe', 'size': 20},
@@ -49,6 +54,7 @@ def test_pick_release_asset_by_kind():
 
 
 def test_parse_latest_release_and_check(tmp_path, monkeypatch):
+    """Prueba parse latest release and check."""
     payload = {
         'tag_name': 'Versión1.9.9',
         'name': 'Versión 1.9.9',
@@ -82,6 +88,7 @@ def test_parse_latest_release_and_check(tmp_path, monkeypatch):
 
 
 def test_check_app_updates_preference(tmp_path, monkeypatch):
+    """Prueba check app updates preference."""
     previous = app_config._cache
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(tmp_path / 'config.json'))
     app_config._cache = None

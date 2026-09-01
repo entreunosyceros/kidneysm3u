@@ -1,3 +1,5 @@
+"""Módulo de main."""
+
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import os
@@ -26,7 +28,9 @@ from twitch_player import is_twitch_url
 import sys
 
 class M3UProcessor:
+    """Clase que representa m3uprocessor."""
     def __init__(self, root):
+        """Inicializa M3UProcessor."""
         self.root = root
         self.root._kidneys_app = self
         self.root.title('Kidneys M3U/M3U8')
@@ -68,6 +72,7 @@ class M3UProcessor:
         self.root.after(1800, self._schedule_app_update_check)
     
     def create_menu(self):
+        """Crea menu."""
         menubar = tk.Menu(self.root)
         
         # Menú Archivo
@@ -128,9 +133,11 @@ class M3UProcessor:
         self._refresh_recent_menu()
 
     def _schedule_app_update_check(self):
+        """Uso interno: schedule app update check."""
         start_startup_update_check(self.root, quit_app=self.quit_app)
 
     def check_app_updates_now(self):
+        """Check app updates now."""
         self.status_var.set(plain_ui_line('Buscando actualizaciones…'))
         start_manual_update_check(
             self.root,
@@ -139,12 +146,14 @@ class M3UProcessor:
         )
 
     def open_sorter(self):
+        """Abre sorter."""
         filename = filedialog.askopenfilename(filetypes=[("Archivos M3U", "*.m3u")])
         if filename:
             from m3u_sorter import M3USorter
             M3USorter(self.root, filename)
     
     def create_widgets(self):
+        """Crea widgets."""
         colors = get_colors()
 
         header = ttk.Frame(self.root, style='Header.TFrame', padding=(28, 20))
@@ -278,6 +287,7 @@ class M3UProcessor:
         self.play_button.pack(side=tk.LEFT)
     
     def edit_pattern(self):
+        """Edit pattern."""
         pattern_window = tk.Toplevel(self.root)
         pattern_window.title('Editar Patrón de Búsqueda')
         setup_resizable_dialog(pattern_window, 460, 340, 360, 280)
@@ -318,26 +328,31 @@ class M3UProcessor:
         bind_wraplength(pattern_window, padding=40)
     
     def set_pattern(self, pattern, window):
+        """Establece pattern."""
         self.search_pattern.set(pattern)
         window.destroy()
     
     def apply_custom_pattern(self, pattern, window):
+        """Aplica custom pattern."""
         self.search_pattern.set(pattern)
         window.destroy()
 
     def browse_input(self):
+        """Browse input."""
         filename = filedialog.askopenfilename(filetypes=[("Archivos M3U", "*.m3u")])
         if filename:
             self.input_file.set(filename)
             self.status_var.set(f'Archivo de entrada: {os.path.basename(filename)}')
     
     def browse_output(self):
+        """Browse output."""
         filename = filedialog.asksaveasfilename(defaultextension=".m3u", filetypes=[("Archivos M3U", "*.m3u")])
         if filename:
             self.output_file.set(filename)
             self.status_var.set(f'Archivo de salida: {os.path.basename(filename)}')
     
     def open_output_folder(self):
+        """Abre output folder."""
         if self.last_output_folder:
             folder = os.path.dirname(self.last_output_folder)
             if os.name == 'nt':  # Windows
@@ -351,6 +366,7 @@ class M3UProcessor:
     
 
     def process_file(self):
+        """Process file."""
         if getattr(self, '_processing', False):
             return
         if not self.input_file.get():
@@ -372,7 +388,9 @@ class M3UProcessor:
         self.status_var.set(plain_ui_line('Procesando archivo…'))
 
         def report_progress(pct):
+            """Report progress."""
             def apply():
+                """Apply."""
                 if not getattr(self, '_processing', False):
                     return
                 try:
@@ -386,6 +404,7 @@ class M3UProcessor:
                 pass
 
         def work():
+            """Work."""
             channels = []
             error = None
             stopped = False
@@ -440,6 +459,7 @@ class M3UProcessor:
                 error = exc
 
             def done():
+                """Done."""
                 self._processing = False
                 try:
                     self.process_button['state'] = 'normal'
@@ -470,9 +490,11 @@ class M3UProcessor:
         threading.Thread(target=work, daemon=True).start()
 
     def stop_process(self):
+        """Detiene process."""
         self.stop_processing = True
 
     def _ensure_player(self):
+        """Uso interno: ensure player."""
         if self.video_player is None or not getattr(self.video_player, 'is_alive', lambda: False)():
             try:
                 self.video_player = VideoPlayer()
@@ -484,6 +506,7 @@ class M3UProcessor:
         return self.video_player
 
     def load_url(self):
+        """Carga URL."""
         url = ask_string(
             self.root,
             "Cargar URL",
@@ -505,6 +528,7 @@ class M3UProcessor:
         self._refresh_recent_menu()
 
     def load_local_file(self):
+        """Carga local file."""
         filename = filedialog.askopenfilename(
             parent=self.root,
             title="Selecciona un archivo M3U o M3U8",
@@ -519,6 +543,7 @@ class M3UProcessor:
             self._refresh_recent_menu()
 
     def open_player(self):
+        """Abre player."""
         player = self._ensure_player()
         if not player:
             return
@@ -531,11 +556,13 @@ class M3UProcessor:
         self._refresh_recent_menu()
 
     def close_player(self):
+        """Cierra player."""
         if self.video_player:
             self.video_player.close()
             self.video_player = None
 
     def quit_app(self):
+        """Quit app."""
         self._save_window_geometry()
         self.save_config()
         self.close_player()
@@ -545,6 +572,7 @@ class M3UProcessor:
         self.root.destroy()
 
     def _on_window_configure(self, event=None):
+        """Callback interno para ventana configure."""
         if event and event.widget is not self.root:
             return
         if self._geometry_save_job:
@@ -555,12 +583,14 @@ class M3UProcessor:
         self._geometry_save_job = self.root.after(500, self._save_window_geometry)
 
     def _save_window_geometry(self):
+        """Uso interno: save ventana geometry."""
         self._geometry_save_job = None
         geometry = app_config.capture_geometry(self.root)
         if geometry:
             app_config.remember_window('main', geometry)
 
     def _refresh_recent_menu(self):
+        """Uso interno: refresh recent menu."""
         menu = getattr(self, 'recientes_menu', None)
         if menu is None:
             return
@@ -576,6 +606,7 @@ class M3UProcessor:
         style_menu_tree(menu)
 
     def _open_recent(self, path):
+        """Uso interno: open recent."""
         player = self._ensure_player()
         if not player:
             return
@@ -590,9 +621,11 @@ class M3UProcessor:
         self._refresh_recent_menu()
 
     def _theme_button_label(self):
+        """Uso interno: theme button label."""
         return 'Tema claro' if self.tema_oscuro else 'Tema oscuro'
 
     def _refresh_native_chrome(self):
+        """Uso interno: refresh native chrome."""
         colors = get_colors()
         style_window(self.root)
         style_menu_tree(getattr(self, 'menubar', None))
@@ -607,6 +640,7 @@ class M3UProcessor:
             self.drop_label.configure(bg=colors['drop_bg'], fg=colors['text_muted'])
 
     def toggle_tema(self):
+        """Alterna tema."""
         self.tema_oscuro = not self.tema_oscuro
         apply_theme(self.root, self.tema_oscuro)
         self._refresh_native_chrome()
@@ -619,11 +653,13 @@ class M3UProcessor:
                 refresh()
 
     def open_preferences(self):
+        """Abre preferences."""
         from preferences import show_preferences
         player = getattr(self, 'video_player', None)
         show_preferences(self.root, on_apply=self.apply_preferences, video_player=player)
 
     def apply_preferences(self):
+        """Aplica preferences."""
         self.config = app_config.load()
         self.tema_oscuro = app_config.get_theme() == 'dark'
         apply_theme(self.root, self.tema_oscuro)
@@ -636,6 +672,7 @@ class M3UProcessor:
                 apply()
 
     def _refresh_tray_theme(self):
+        """Uso interno: refresh tray theme."""
         bandeja = getattr(self, 'icono_bandeja', None)
         if not bandeja:
             return
@@ -645,6 +682,7 @@ class M3UProcessor:
             pass
 
     def setup_drag_drop(self):
+        """Configura drag drop."""
         # Drag & Drop multiplataforma usando tkinterdnd2
         self.root.drop_target_register(DND_FILES)
         self.root.dnd_bind('<<Drop>>', self.handle_drop)
@@ -655,16 +693,19 @@ class M3UProcessor:
             pass
 
     def on_drag_enter(self, event):
+        """Responde al evento drag enter."""
         colors = get_colors()
         self.drop_zone.configure(highlightbackground=colors['accent'], highlightcolor=colors['accent'])
         self.drop_label.configure(fg=colors['accent'], text='Suelta el archivo para cargarlo')
         return event.action
 
     def on_drag_leave(self, event):
+        """Responde al evento drag leave."""
         self._reset_drop_zone()
         return event.action
 
     def _reset_drop_zone(self):
+        """Uso interno: reset drop zone."""
         colors = get_colors()
         self.drop_zone.configure(
             highlightbackground=colors['drop_border'],
@@ -673,6 +714,7 @@ class M3UProcessor:
         self.drop_label.configure(fg=colors['text_muted'], text='Arrastra un archivo .m3u aquí')
 
     def handle_drop(self, event):
+        """Gestiona drop."""
         file_path = event.data.strip()
         if file_path.startswith('{') and file_path.endswith('}'):
             file_path = file_path[1:-1]
@@ -694,18 +736,21 @@ class M3UProcessor:
                 pass
 
     def load_config(self):
+        """Carga configuración."""
         self.config = app_config.load()
         self.tema_oscuro = app_config.get_theme() == 'dark'
         if 'patterns' in self.config:
             self.patterns_list = self.config['patterns']
 
     def save_config(self):
+        """Guarda configuración."""
         self.config = app_config.save({
             'theme': 'dark' if self.tema_oscuro else 'light',
             'patterns': self.patterns_list,
         })
     
     def get_default_config(self):
+        """Obtiene default configuración."""
         return {
             'theme': 'dark',
             'recent_files': [],
@@ -713,6 +758,7 @@ class M3UProcessor:
         }
 
     def open_enlaces_manager(self):
+        """Abre enlaces manager."""
         from enlaces import EnlacesManager
         self.enlaces_manager = EnlacesManager(self.root)
         self.enlaces_manager.window.transient(self.root)
@@ -728,6 +774,7 @@ class M3UProcessor:
                     break
 
     def actualizar_menu_enlaces(self, menu):
+        """Actualizar menu enlaces."""
 
         last_index = menu.index(tk.END)
         if last_index is not None:

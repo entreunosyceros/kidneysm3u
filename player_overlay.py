@@ -11,7 +11,9 @@ YOUTUBE_TITLE_BAR_H = 44
 
 
 class YoutubeTitleOverlayMixin:
+    """Clase que representa youtubetitleoverlaymixin."""
     def _youtube_title_text(self):
+        """Uso interno: youtube title text."""
         if not getattr(self, '_playing_youtube', False):
             return ''
         handler = getattr(self, 'youtube_handler', None)
@@ -26,6 +28,7 @@ class YoutubeTitleOverlayMixin:
         return plain_display_text(title, '')
 
     def _cancel_youtube_title_hide_job(self):
+        """Uso interno: cancel youtube title hide job."""
         job = getattr(self, '_yt_title_hide_job', None)
         self._yt_title_hide_job = None
         if not job or not self._widget_exists(getattr(self, 'window', None)):
@@ -36,6 +39,7 @@ class YoutubeTitleOverlayMixin:
             pass
 
     def _hide_youtube_title_overlay(self):
+        """Uso interno: hide youtube title superposición."""
         self._cancel_youtube_title_hide_job()
         top = getattr(self, '_yt_title_top', None)
         self._yt_title_top = None
@@ -46,6 +50,7 @@ class YoutubeTitleOverlayMixin:
                 pass
 
     def _youtube_title_target_frame(self):
+        """Uso interno: youtube title target marco."""
         if callable(getattr(self, '_video_target_frame', None)):
             target = self._video_target_frame()
             if self._widget_exists(target):
@@ -56,6 +61,7 @@ class YoutubeTitleOverlayMixin:
         return None
 
     def _position_youtube_title_overlay(self, event=None):
+        """Uso interno: position youtube title superposición."""
         top = getattr(self, '_yt_title_top', None)
         if not self._widget_exists(top):
             return
@@ -81,6 +87,7 @@ class YoutubeTitleOverlayMixin:
             pass
 
     def _show_youtube_title_overlay(self):
+        """Uso interno: show youtube title superposición."""
         title = self._youtube_title_text()
         if not title or not self._widget_exists(self.window):
             self._hide_youtube_title_overlay()
@@ -144,6 +151,7 @@ class YoutubeTitleOverlayMixin:
             pass
 
     def _schedule_youtube_title_hide(self):
+        """Uso interno: schedule youtube title hide."""
         if not self._widget_exists(getattr(self, 'window', None)):
             return
         self._cancel_youtube_title_hide_job()
@@ -153,6 +161,7 @@ class YoutubeTitleOverlayMixin:
         )
 
     def _on_youtube_video_motion(self, event=None):
+        """Callback interno para youtube video motion."""
         if not getattr(self, '_playing_youtube', False):
             return
         if getattr(self, '_iptv_failed', False):
@@ -163,6 +172,7 @@ class YoutubeTitleOverlayMixin:
         self._schedule_youtube_title_hide()
 
     def _bind_youtube_title_motion(self, widget):
+        """Uso interno: bind youtube title motion."""
         if not self._widget_exists(widget):
             return
         try:
@@ -172,7 +182,9 @@ class YoutubeTitleOverlayMixin:
 
 
 class ChannelNoticeMixin:
+    """Clase que representa channelnoticemixin."""
     def _pack_video_frame(self):
+        """Uso interno: pack video marco."""
         frame = getattr(self, 'video_frame', None)
         if not self._widget_exists(frame):
             return
@@ -194,6 +206,7 @@ class ChannelNoticeMixin:
                 pass
 
     def _release_vlc_video_window(self):
+        """Uso interno: release VLC video ventana."""
         if not self.player:
             return
         try:
@@ -211,6 +224,7 @@ class ChannelNoticeMixin:
             pass
 
     def _position_notice_top(self, event=None):
+        """Uso interno: position notice top."""
         top = getattr(self, '_iptv_notice_top', None)
         if not self._widget_exists(top) or not self._widget_exists(self.window):
             return
@@ -255,6 +269,7 @@ class ChannelNoticeMixin:
                 pass
 
     def _hide_channel_status(self):
+        """Uso interno: hide canal status."""
         self._hide_youtube_title_overlay()
         hide_replay = getattr(self, '_hide_youtube_replay_prompt', None)
         if hide_replay:
@@ -285,6 +300,7 @@ class ChannelNoticeMixin:
         self._pack_video_frame()
 
     def _fill_notice_card(self, parent, name, colors):
+        """Uso interno: fill notice card."""
         card = tk.Frame(
             parent,
             bg=colors['surface'],
@@ -319,6 +335,7 @@ class ChannelNoticeMixin:
         parent._notice_card = card
 
     def _show_controls_banner(self, text, colors):
+        """Uso interno: show controls banner."""
         old = getattr(self, '_iptv_banner', None)
         if self._widget_exists(old):
             try:
@@ -447,4 +464,5 @@ class ChannelNoticeMixin:
             self.window.after(delay, self._position_notice_top)
 
     def _iptv_report_unavailable(self, name):
+        """Uso interno: IPTV report unavailable."""
         self._show_channel_unavailable(name)

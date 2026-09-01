@@ -6,6 +6,7 @@ import sys
 
 
 def _configure_webview(webview):
+    """Uso interno: configure webview."""
     settings = webview.get_settings()
     settings.set_enable_javascript(True)
     settings.set_enable_mediasource(True)
@@ -19,6 +20,7 @@ def _configure_webview(webview):
 
 
 def main():
+    """Main."""
     parser = argparse.ArgumentParser(description='Ventana de chat Twitch')
     parser.add_argument('--url', required=True)
     parser.add_argument('--title', default='Chat')

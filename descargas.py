@@ -1,3 +1,5 @@
+"""Módulo de descargas."""
+
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
@@ -16,6 +18,7 @@ from display_text import truncate_ui_text
 
 
 def download_history_label(item, max_len=72):
+    """Descarga historial label."""
     name = str((item or {}).get('name') or '').strip()
     url = str((item or {}).get('url') or '').strip()
     shown = name or url.split('#')[0].split('?')[0] or url
@@ -23,6 +26,7 @@ def download_history_label(item, max_len=72):
 
 
 def resolve_downloaded_path(planned):
+    """Resolve downloaded path."""
     planned = os.path.abspath(planned or '')
     if planned and os.path.isfile(planned):
         return planned
@@ -93,7 +97,9 @@ def reveal_in_file_manager(path):
         return False
 
 class DownloadManager:
+    """Clase que representa downloadmanager."""
     def __init__(self, parent):
+        """Inicializa DownloadManager."""
         self.window = tk.Toplevel(parent)
         self.window.title("Descargar URL")
         from ui_layout import setup_resizable_dialog
@@ -109,6 +115,7 @@ class DownloadManager:
         self.create_widgets()
         
     def create_widgets(self):
+        """Crea widgets."""
         buttons_frame = ttk.Frame(self.window, padding=(20, 0, 20, 16))
         buttons_frame.pack(side=tk.BOTTOM, fill=tk.X)
         self.download_button = ttk.Button(
@@ -193,6 +200,7 @@ class DownloadManager:
         self.progress_label.pack(anchor=tk.W)
 
     def _refresh_recent(self):
+        """Uso interno: refresh recent."""
         items = app_config.download_url_history()
         self._recent_items = items
         combo = getattr(self, 'url_combo', None)
@@ -226,6 +234,7 @@ class DownloadManager:
             empty.pack(anchor=tk.W, pady=(8, 0))
 
     def _apply_recent_item(self, item):
+        """Uso interno: apply recent item."""
         if not item:
             return
         url = item.get('url') or ''
@@ -235,6 +244,7 @@ class DownloadManager:
             self.filename.set(name)
 
     def _on_recent_url(self, event=None):
+        """Callback interno para recent URL."""
         url = (self.url.get() or '').strip()
         for item in self._recent_items:
             if item.get('url') == url:
@@ -242,6 +252,7 @@ class DownloadManager:
                 return
 
     def _on_recent_select(self, event=None):
+        """Callback interno para recent select."""
         if getattr(self, '_filling_recent', False):
             return
         listing = getattr(self, 'recent_list', None)
@@ -255,6 +266,7 @@ class DownloadManager:
             self._apply_recent_item(self._recent_items[index])
 
     def _recent_index_from_event(self, event=None, from_mouse=False):
+        """Uso interno: recent index from event."""
         listing = getattr(self, 'recent_list', None)
         if listing is None:
             return None
@@ -274,6 +286,7 @@ class DownloadManager:
         return None
 
     def _select_recent_index(self, index):
+        """Uso interno: select recent index."""
         listing = getattr(self, 'recent_list', None)
         if listing is None or index is None:
             return
@@ -286,6 +299,7 @@ class DownloadManager:
             pass
 
     def _redownload_item(self, event=None, from_mouse=False):
+        """Uso interno: redownload item."""
         index = self._recent_index_from_event(event, from_mouse=from_mouse)
         if index is None:
             return 'break'
@@ -295,9 +309,11 @@ class DownloadManager:
         return 'break'
 
     def _on_recent_double(self, event=None):
+        """Callback interno para recent double."""
         return self._redownload_item(event, from_mouse=True)
 
     def _copy_recent_url(self, event=None):
+        """Uso interno: copy recent URL."""
         from_mouse = event is not None and getattr(event, 'num', None) in (1, 2, 3)
         index = self._recent_index_from_event(event, from_mouse=from_mouse)
         if index is None:
@@ -314,6 +330,7 @@ class DownloadManager:
         return 'break'
 
     def _paste_url(self, event=None):
+        """Uso interno: paste URL."""
         try:
             text = (self.window.clipboard_get() or '').strip()
         except tk.TclError:
@@ -328,6 +345,7 @@ class DownloadManager:
         return 'break'
 
     def _on_recent_menu(self, event):
+        """Callback interno para recent menu."""
         index = self._recent_index_from_event(event, from_mouse=True)
         if index is None:
             return
@@ -347,6 +365,7 @@ class DownloadManager:
         return 'break'
         
     def browse_output(self):
+        """Browse output."""
         folder = filedialog.askdirectory(
             parent=self.window,
             title='Carpeta de destino',
@@ -356,9 +375,11 @@ class DownloadManager:
             self.output_path.set(folder)
 
     def _persist_open_folder(self):
+        """Uso interno: persist open folder."""
         app_config.set_open_folder_after_download(bool(self.open_folder_var.get()))
             
     def start_download(self):
+        """Inicia download."""
         if str(self.download_button.cget('state')) == 'disabled':
             return
         if not self.url.get():
@@ -389,6 +410,7 @@ class DownloadManager:
         threading.Thread(target=self._download, daemon=True).start()
         
     def _download(self):
+        """Uso interno: download."""
         try:
             # Asegurar que el nombre del archivo tenga una extensión válida
             filename = self.filename.get()
@@ -420,6 +442,7 @@ class DownloadManager:
             output_template = os.path.normpath(os.path.join(self.output_path.get(), filename))
             
             def progress_hook(d):
+                """Progress hook."""
                 if d['status'] == 'downloading':
                     # Calcular porcentaje
                     total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
@@ -506,10 +529,12 @@ class DownloadManager:
             self.window.after(0, self._show_error, str(e))
         
     def _update_progress(self, percentage, percent_str):
+        """Uso interno: update progress."""
         self.progress['value'] = percentage
         self.progress_label.configure(text=f"Descargando: {percent_str}")
         
     def _download_complete(self, path=''):
+        """Uso interno: download complete."""
         self.progress['value'] = 100
         self.progress_label.configure(text="¡Descarga completada!")
         app_config.remember_download_url(self.url.get().strip(), self.filename.get().strip())
@@ -527,6 +552,7 @@ class DownloadManager:
         self.window.destroy()
         
     def _show_error(self, error):
+        """Uso interno: show error."""
         self.download_button.configure(state='normal')
         messagebox.showerror("Error", f"Error durante la descarga:\n{error}")
         

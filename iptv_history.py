@@ -11,6 +11,7 @@ from ui_layout import bind_wraplength, bind_tree_stretch, setup_resizable_dialog
 
 
 def show_iptv_history(player):
+    """Muestra IPTV historial."""
     if not getattr(player, 'window', None):
         return None
     existing = getattr(player, '_iptv_history', None)
@@ -27,7 +28,9 @@ def show_iptv_history(player):
 
 
 class HistoryWindow:
+    """Clase que representa historywindow."""
     def __init__(self, player):
+        """Inicializa HistoryWindow."""
         self.player = player
         player._iptv_history = self
         colors = get_colors()
@@ -86,6 +89,7 @@ class HistoryWindow:
         self.refresh()
 
     def close(self):
+        """Close."""
         if getattr(self.player, '_iptv_history', None) is self:
             self.player._iptv_history = None
         try:
@@ -94,6 +98,7 @@ class HistoryWindow:
             pass
 
     def refresh(self):
+        """Refresh."""
         if not self.player._widget_exists(self.window):
             return
         try:
@@ -127,6 +132,7 @@ class HistoryWindow:
             self.tree.insert('', 'end', iid='empty-yt', text='Aún no hay vídeos de YouTube', values=('', ''))
 
     def _insert_iptv(self, iid, item, watching):
+        """Uso interno: insert IPTV."""
         url = item.get('url') or ''
         self._entries[iid] = {'kind': 'iptv', 'url': url}
         kind = 'Película / VOD' if item.get('kind') == 'vod' else 'Directo'
@@ -147,6 +153,7 @@ class HistoryWindow:
         )
 
     def _insert_youtube(self, iid, item, watching):
+        """Uso interno: insert youtube."""
         self._entries[iid] = {
             'kind': 'youtube',
             'url': item.get('url') or '',
@@ -169,6 +176,7 @@ class HistoryWindow:
         )
 
     def _selected_entry(self):
+        """Uso interno: selected entry."""
         try:
             selection = self.tree.selection()
         except tk.TclError:
@@ -178,6 +186,7 @@ class HistoryWindow:
         return self._entries.get(selection[0])
 
     def _play_selected(self, event=None):
+        """Uso interno: play selected."""
         entry = self._selected_entry()
         if not entry:
             return
@@ -194,6 +203,7 @@ class HistoryWindow:
             play(url)
 
     def _remove_selected(self):
+        """Uso interno: remove selected."""
         entry = self._selected_entry()
         if not entry:
             return
@@ -207,6 +217,7 @@ class HistoryWindow:
             fill()
 
     def _clear(self):
+        """Uso interno: clear."""
         if not app_config.iptv_history() and not app_config.youtube_history():
             return
         if not messagebox.askyesno(

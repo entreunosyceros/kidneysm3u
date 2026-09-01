@@ -1,3 +1,5 @@
+"""Módulo de test favorites."""
+
 from favorites_manager import (
     add_favorite,
     favorite_entry,
@@ -8,6 +10,7 @@ from favorites_manager import (
 
 
 def test_favorites_normalize_tuples_and_duplicates():
+    """Prueba favoritos normalize tuples and duplicates."""
     items = [
         ('Uno', 'http://panel.example/1.ts'),
         ['Uno', 'http://panel.example/1.ts'],
@@ -24,6 +27,7 @@ def test_favorites_normalize_tuples_and_duplicates():
 
 
 def test_add_favorite_from_search_once_by_url():
+    """Prueba add favorito from search once by URL."""
     favorites, added = add_favorite([], 'La 1', 'http://panel.example/la1.ts')
     assert added is True
     assert favorites_contain(favorites, 'La 1 HD', 'http://panel.example/la1.ts')
@@ -33,6 +37,7 @@ def test_add_favorite_from_search_once_by_url():
 
 
 def test_remove_favorite_matches_json_lists():
+    """Prueba remove favorito matches json lists."""
     favorites, removed = remove_favorite(
         [['La 1', 'http://panel.example/la1.ts']],
         'Otro nombre',
@@ -47,6 +52,7 @@ def test_remove_favorite_matches_json_lists():
 
 
 def test_export_import_json_and_m3u(tmp_path):
+    """Prueba export import json and lista M3U."""
     from favorites_manager import (
         FAVORITES_KIND,
         merge_favorites,

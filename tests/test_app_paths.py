@@ -1,4 +1,7 @@
+"""Módulo de test app paths."""
+
 def test_data_dir_windows_frozen_uses_localappdata(tmp_path, monkeypatch):
+    """Prueba data dir windows frozen uses localappdata."""
     import app_paths
 
     monkeypatch.setattr(app_paths.sys, 'frozen', True, raising=False)
@@ -10,6 +13,7 @@ def test_data_dir_windows_frozen_uses_localappdata(tmp_path, monkeypatch):
 
 
 def test_data_dir_unfrozen_is_source_tree():
+    """Prueba data dir unfrozen is source árbol."""
     import os
     import app_paths
 

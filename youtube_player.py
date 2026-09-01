@@ -1,3 +1,5 @@
+"""Módulo de youtube player."""
+
 import yt_dlp
 import json
 import re
@@ -38,6 +40,7 @@ PLAYABLE_VIDEO_EXT = {'.mp4', '.m4v', '.mkv', '.webm', '.avi', '.mov', '.mpeg', 
 
 
 def youtube_cache_dir():
+    """Youtube cache dir."""
     path = os.path.join(tempfile.gettempdir(), YT_CACHE_DIRNAME)
     try:
         os.makedirs(path, exist_ok=True)
@@ -79,6 +82,7 @@ def youtube_format_selector(max_height=None):
 
 
 def find_cached_youtube_video(video_id, quality=None):
+    """Localiza cached youtube video."""
     video_id = str(video_id or '').strip()
     if len(video_id) != 11:
         return None
@@ -182,6 +186,7 @@ def detect_js_runtimes():
 
 
 def _merge_extractor_args(base, extra):
+    """Uso interno: merge extractor args."""
     merged = {}
     for source in (base, extra):
         if not source:
@@ -283,6 +288,7 @@ def firefox_cookie_sqlite_paths(environ=None, brand='firefox'):
     seen = set()
 
     def _add(path):
+        """Uso interno: add."""
         path = os.path.normpath(path)
         if path in seen or not os.path.isfile(path):
             return
@@ -317,6 +323,7 @@ def _copy_sqlite_for_read(src):
     os.close(fd)
 
     def _copy_sidecars():
+        """Uso interno: copy sidecars."""
         for suffix in ('-wal', '-shm'):
             extra = src + suffix
             if os.path.isfile(extra):
@@ -347,6 +354,7 @@ def _copy_sqlite_for_read(src):
 
 
 def _cookie_load_hint(exc):
+    """Uso interno: cookie load hint."""
     text = str(exc or '').lower()
     if any(token in text for token in ('decrypt', 'dpapi', 'v20', 'app-bound', 'os_crypt')):
         return 'Chrome/Edge cifran las cookies en Windows; usa Firefox con sesión en YouTube.'
@@ -358,28 +366,36 @@ def _cookie_load_hint(exc):
 
 
 def _jar_from_browser_cookie3(name, loader, cookie_file=None):
+    """Uso interno: jar from browser cookie3."""
     if cookie_file:
         return loader(cookie_file=cookie_file, domain_name='youtube.com')
     return loader(domain_name='youtube.com')
 
 
 def _jar_from_ytdlp_browser(name):
+    """Uso interno: jar from ytdlp browser."""
     from yt_dlp.cookies import extract_cookies_from_browser
 
     class _Quiet:
+        """Clase que representa quiet."""
         def debug(self, msg):
+            """Debug."""
             return None
 
         def info(self, msg):
+            """Info."""
             return None
 
         def warning(self, msg):
+            """Warning."""
             return None
 
         def error(self, msg):
+            """Error."""
             return None
 
         def info_once(self, msg):
+            """Info once."""
             return None
 
     return extract_cookies_from_browser(name, logger=_Quiet())
@@ -487,6 +503,7 @@ _YT_AUTH_ERROR_MARKERS = (
 
 
 def cookies_file_path():
+    """Cookies file path."""
     return COOKIES_PATH
 
 
@@ -504,11 +521,13 @@ def _normalize_cookie_expiry(expires):
 
 
 def _cookie_domain_ok(domain):
+    """Uso interno: cookie domain ok."""
     host = (domain or '').lstrip('.').lower()
     return any(host == item or host.endswith('.' + item) for item in _YT_COOKIE_DOMAINS)
 
 
 def _youtube_cookie_keep(cookie, now=None):
+    """Uso interno: youtube cookie keep."""
     name = getattr(cookie, 'name', '') or ''
     value = getattr(cookie, 'value', '') or ''
     domain = getattr(cookie, 'domain', '') or ''
@@ -622,11 +641,13 @@ def inspect_youtube_session(path=None):
 
 
 def youtube_auth_blocked(exc):
+    """Youtube auth blocked."""
     text = str(exc or '').lower()
     return any(marker in text for marker in _YT_AUTH_ERROR_MARKERS)
 
 
 def youtube_auth_help():
+    """Youtube auth help."""
     return (
         "YouTube pide iniciar sesión (bot-check o cookies caducadas).\n"
         "Inicia sesión en el navegador y pulsa «Reexportar cookies»."
@@ -653,14 +674,17 @@ class _GrowingTSHandler(BaseHTTPRequestHandler):
     """Sirve un MPEG-TS que ffmpeg sigue escribiendo."""
 
     def log_message(self, format, *args):
+        """Log message."""
         return
 
     def _range_start(self):
+        """Uso interno: range start."""
         header = self.headers.get('Range') or ''
         match = re.match(r'bytes=(\d+)-', header)
         return int(match.group(1)) if match else 0
 
     def do_HEAD(self):
+        """Do head."""
         self.send_response(200)
         self.send_header('Content-Type', 'video/MP2T')
         self.send_header('Accept-Ranges', 'bytes')
@@ -668,6 +692,7 @@ class _GrowingTSHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        """Do get."""
         path = self.server.ts_path
         pos = self._range_start()
         if pos > 0:
@@ -707,7 +732,9 @@ class _GrowingTSHandler(BaseHTTPRequestHandler):
 
 
 class YouTubeHandler:
+    """Clase que representa youtubehandler."""
     def __init__(self, video_player):
+        """Inicializa YouTubeHandler."""
         self.video_player = video_player
         self._yt_procs = []
         self._yt_tmpdir = None
@@ -734,6 +761,7 @@ class YouTubeHandler:
         cleanup_youtube_temp_dirs()
 
     def stop_pipeline(self):
+        """Detiene pipeline."""
         server = self._yt_server
         self._yt_server = None
         if server:
@@ -766,6 +794,7 @@ class YouTubeHandler:
         cleanup_youtube_temp_dirs()
         
     def prompt_youtube_url(self, url=None):
+        """Prompt youtube url."""
         if url is None:
             ensure = getattr(self.video_player, 'ensure_window', None)
             if ensure:
@@ -844,6 +873,7 @@ class YouTubeHandler:
         self.video_player.clear_youtube_subtitles()
 
         def work():
+            """Work."""
             err = None
             stream = None
             try:
@@ -860,6 +890,7 @@ class YouTubeHandler:
                 err = exc
 
             def cont():
+                """Cont."""
                 if gen != self._play_gen:
                     return
                 if err:
@@ -876,6 +907,7 @@ class YouTubeHandler:
         threading.Thread(target=work, daemon=True).start()
 
     def _initial_youtube_subtitle_path(self, subs):
+        """Uso interno: initial youtube subtitle path."""
         if not app_config.get_youtube_auto_subtitles() or not subs:
             return None
         preferred = pick_preferred_youtube_sub(subs)
@@ -887,6 +919,7 @@ class YouTubeHandler:
         return None
 
     def _apply_youtube_subtitles_to_player(self, subs, subtitle_loaded=False):
+        """Uso interno: apply youtube subtitles to player."""
         player = self.video_player
         player.set_youtube_subtitles(subs)
         if not app_config.get_youtube_auto_subtitles() or not subs:
@@ -900,6 +933,7 @@ class YouTubeHandler:
         player._schedule_youtube_auto_subtitle(preferred)
 
     def _begin_playback(self, url, stream, force_pulse, show_progress, is_sequential):
+        """Uso interno: begin playback."""
         video_id = self.extract_youtube_id(url)
         duration = (stream or {}).get('duration')
         pending = getattr(self, '_pending_resume_s', None)
@@ -927,6 +961,7 @@ class YouTubeHandler:
                 self._set_loading_status("Abriendo el vídeo…")
 
             def fallback():
+                """Fallback."""
                 print("[YouTubeHandler] VLC no pudo abrir el stream directo; probando archivo local")
                 if self._play_playable_file(
                     url, force_pulse, show_progress, is_sequential,
@@ -982,6 +1017,7 @@ class YouTubeHandler:
         self._show_playback_error(url)
 
     def _resume_clock(self, seconds):
+        """Uso interno: resume clock."""
         formatter = getattr(self.video_player, '_format_clock', None)
         if formatter:
             return formatter(int(float(seconds) * 1000))
@@ -993,14 +1029,17 @@ class YouTubeHandler:
         return f'{minutes:02d}:{secs:02d}'
 
     def _new_play_gen(self):
+        """Uso interno: new play gen."""
         self._play_gen = getattr(self, '_play_gen', 0) + 1
         return self._play_gen
 
     def cancel_pending_play(self):
+        """Cancela pending play."""
         self._new_play_gen()
         self.hide_loading()
 
     def _ui_after(self, fn, delay_ms=0):
+        """Uso interno: interfaz after."""
         window = getattr(self.video_player, 'window', None)
         if not window:
             return
@@ -1010,6 +1049,7 @@ class YouTubeHandler:
             pass
 
     def _clear_video_surface(self):
+        """Uso interno: clear video surface."""
         frame = getattr(self.video_player, 'video_frame', None)
         if not frame:
             return
@@ -1020,6 +1060,7 @@ class YouTubeHandler:
             pass
 
     def _loading_alive(self):
+        """Uso interno: loading alive."""
         frame = getattr(self, '_loading_frame', None)
         try:
             return bool(frame and frame.winfo_exists())
@@ -1027,6 +1068,7 @@ class YouTubeHandler:
             return False
 
     def hide_loading(self):
+        """Hide loading."""
         bar = getattr(self, '_loading_bar', None)
         if bar:
             try:
@@ -1046,12 +1088,14 @@ class YouTubeHandler:
                 pass
 
     def _show_status(self, text):
+        """Uso interno: show status."""
         if self._loading_alive():
             self._set_loading_status(text)
             return
         self._show_loading(text)
 
     def _show_loading(self, status, video_id=None, title=None):
+        """Uso interno: show loading."""
         from ui_theme import get_colors, get_font
 
         video_id = video_id or getattr(self, '_loading_video_id', None)
@@ -1168,6 +1212,7 @@ class YouTubeHandler:
             pass
 
     def _set_loading_status(self, text):
+        """Uso interno: set loading status."""
         label = getattr(self, '_loading_status_label', None)
         try:
             if label and label.winfo_exists():
@@ -1176,6 +1221,7 @@ class YouTubeHandler:
             pass
 
     def _set_loading_title(self, title):
+        """Uso interno: set loading title."""
         title = (title or '').strip()
         if not title or title == 'YouTube':
             return
@@ -1188,12 +1234,14 @@ class YouTubeHandler:
             pass
 
     def _load_loading_meta(self, gen, video_id, have_title):
+        """Uso interno: load loading meta."""
         title = None if have_title else self._oembed_title(video_id)
         data = None
         if video_id not in getattr(self, '_thumb_photos', {}):
             data = self._download_thumb_bytes(video_id)
 
         def apply():
+            """Apply."""
             if gen != self._play_gen:
                 return
             if title:
@@ -1205,6 +1253,7 @@ class YouTubeHandler:
         self._ui_after(apply)
 
     def _oembed_title(self, video_id):
+        """Uso interno: oembed title."""
         url = (
             'https://www.youtube.com/oembed?format=json'
             f'&url=https://www.youtube.com/watch?v={video_id}'
@@ -1223,6 +1272,7 @@ class YouTubeHandler:
             return None
 
     def _download_thumb_bytes(self, video_id):
+        """Uso interno: download miniatura bytes."""
         headers = {
             'User-Agent': (
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) '
@@ -1242,6 +1292,7 @@ class YouTubeHandler:
         return None
 
     def _apply_thumb_bytes(self, video_id, data):
+        """Uso interno: apply miniatura bytes."""
         try:
             from PIL import Image, ImageTk
         except Exception:
@@ -1262,6 +1313,7 @@ class YouTubeHandler:
         self._rescale_loading_thumb()
 
     def _rescale_loading_thumb(self):
+        """Uso interno: rescale loading miniatura."""
         video_id = getattr(self, '_loading_video_id', None)
         img = getattr(self, '_thumb_pil', {}).get(video_id)
         wrap = getattr(self, '_loading_thumb_wrap', None)
@@ -1282,6 +1334,7 @@ class YouTubeHandler:
             pass
 
     def _sync_sidebar_title(self, url, title):
+        """Uso interno: sync barra lateral title."""
         title = (title or '').strip()
         if not title or not url or title in ('YouTube', url):
             return
@@ -1297,6 +1350,7 @@ class YouTubeHandler:
             add(title, url)
 
     def _show_playback_error(self, url):
+        """Uso interno: show playback error."""
         from ui_theme import get_colors, get_font
         self.hide_loading()
         self._clear_video_surface()
@@ -1356,6 +1410,7 @@ class YouTubeHandler:
             ).pack(pady=(0, 10))
 
     def _ffmpeg_header_block(self, headers):
+        """Uso interno: ffmpeg header block."""
         parts = []
         for key, value in (headers or {}).items():
             if value:
@@ -1367,6 +1422,7 @@ class YouTubeHandler:
         return bool((stream or {}).get('url'))
 
     def _play_local_video(self, path, force_pulse, show_progress, is_sequential, duration=None, start_s=0):
+        """Uso interno: play local video."""
         print(f"[YouTubeHandler] Reproduciendo archivo local (sin remux): {path}")
         self.video_player._yt_via_pipe = False
         self.video_player._yt_start_offset_ms = 0
@@ -1457,6 +1513,7 @@ class YouTubeHandler:
         self._yt_tmpdir = tmpdir
 
         def producer():
+            """Producer."""
             try:
                 if source_url:
                     ffmpeg_cmd = [
@@ -1515,6 +1572,7 @@ class YouTubeHandler:
         threading.Thread(target=producer, daemon=True).start()
 
         def wait_and_play():
+            """Wait and play."""
             min_bytes = 256 * 1024
             deadline = time.time() + 75
             while time.time() < deadline:
@@ -1538,6 +1596,7 @@ class YouTubeHandler:
                 return
 
             def start_player():
+                """Inicia player."""
                 size = os.path.getsize(ts_path)
                 print(f"[YouTubeHandler] Reproduciendo stream local ({size} bytes) {stream_url}")
                 self._clear_video_surface()
@@ -1577,6 +1636,7 @@ class YouTubeHandler:
         outtmpl = os.path.join(youtube_cache_dir(), f'{video_id or "video"}_{quality_key}.%(ext)s')
 
         def work():
+            """Work."""
             try:
                 opts = youtube_ydl_opts(
                     outtmpl=outtmpl,
@@ -1601,6 +1661,7 @@ class YouTubeHandler:
                     raise FileNotFoundError(f'El formato descargado no es jugable: {path}')
 
                 def start():
+                    """Start."""
                     self._play_local_video(
                         path, force_pulse, show_progress, is_sequential,
                         duration=duration or info.get('duration'),
@@ -1616,6 +1677,7 @@ class YouTubeHandler:
         return True
 
     def _ytdlp_argv(self, youtube_url, start_s=0):
+        """Uso interno: ytdlp argv."""
         cmd = [
             sys.executable, '-m', 'yt_dlp', youtube_url,
             '-o', '-',
@@ -1785,6 +1847,7 @@ class YouTubeHandler:
 
 
     def _sub_cache_dir(self):
+        """Uso interno: subtítulo cache dir."""
         player = self.video_player
         current = getattr(player, '_yt_sub_dir', None)
         if current and os.path.isdir(current):
@@ -1794,6 +1857,7 @@ class YouTubeHandler:
         return tmpdir
 
     def _find_sub_file(self, directory, lang=None):
+        """Uso interno: find subtítulo file."""
         if not directory or not os.path.isdir(directory):
             return None
         lang = (lang or '').lower()
@@ -1865,6 +1929,7 @@ class YouTubeHandler:
             print(f"[YouTube] Subtítulo listo {lang}")
 
     def _dl_sub_url(self, url, lang, ext='vtt'):
+        """Uso interno: dl subtítulo URL."""
         if not url:
             return None
         if time.time() < getattr(self, '_sub_429_until', 0):
@@ -1948,6 +2013,7 @@ class YouTubeHandler:
         return []
 
     def _populate_stream_subtitles(self, youtube_url, stream, info, ydl):
+        """Uso interno: populate stream subtitles."""
         subs = collect_youtube_subs(info)
         if subs:
             self._write_subs_from_info(ydl, info, subs)
@@ -2017,6 +2083,7 @@ class YouTubeHandler:
         return None
 
     def _headers_for_vlc(self, headers):
+        """Uso interno: headers for VLC."""
         merged = dict(headers or {})
         cookie = merged.get('Cookie') or merged.get('cookie') or self._cookie_header_from_file()
         if cookie:
@@ -2026,6 +2093,7 @@ class YouTubeHandler:
         return merged
 
     def _cookie_header_from_file(self):
+        """Uso interno: cookie header from file."""
         path = cookies_file_path()
         if not os.path.exists(path):
             return None
@@ -2046,6 +2114,7 @@ class YouTubeHandler:
         return '; '.join(parts) if parts else None
 
     def _pick_playable_stream(self, info, max_height=None):
+        """Uso interno: pick playable stream."""
         formats = list(info.get('formats') or [])
         headers = dict(info.get('http_headers') or {})
         preferred = app_config.effective_youtube_quality(max_height)
@@ -2053,9 +2122,11 @@ class YouTubeHandler:
             preferred = 10000
 
         def protocol_of(fmt):
+            """Protocol of."""
             return (fmt.get('protocol') or '').lower()
 
         def is_playable(fmt):
+            """Indica si playable."""
             if not fmt.get('url'):
                 return False
             if fmt.get('vcodec', 'none') in ('none', '', None):
@@ -2068,16 +2139,19 @@ class YouTubeHandler:
             return True
 
         def is_progressive(fmt):
+            """Indica si progressive."""
             acodec = fmt.get('acodec') or 'none'
             vcodec = fmt.get('vcodec') or 'none'
             return acodec not in ('none', '') and vcodec not in ('none', '')
 
         def is_hls(fmt):
+            """Indica si hls."""
             proto = protocol_of(fmt)
             url = fmt.get('url') or ''
             return 'm3u8' in proto or '.m3u8' in url
 
         def height_score(fmt):
+            """Height score."""
             height = int(fmt.get('height') or 0)
             if height <= 0:
                 return 1
@@ -2137,6 +2211,7 @@ class YouTubeHandler:
             messagebox.showerror("Error", f"No se pudo abrir el navegador: {e}")
 
     def session_view(self):
+        """Session view."""
         info = inspect_youtube_session()
         if self._session_override == 'caducada':
             info = {
@@ -2147,18 +2222,22 @@ class YouTubeHandler:
         return info
 
     def add_session_listener(self, callback):
+        """Añade session listener."""
         if callback and callback not in self._session_listeners:
             self._session_listeners.append(callback)
 
     def remove_session_listener(self, callback):
+        """Quita session listener."""
         try:
             self._session_listeners.remove(callback)
         except ValueError:
             pass
 
     def notify_session(self):
+        """Notify session."""
         info = self.session_view()
         def apply():
+            """Apply."""
             player = self.video_player
             refresh = getattr(player, 'update_youtube_session_ui', None)
             if refresh:
@@ -2171,6 +2250,7 @@ class YouTubeHandler:
         self._ui_after(apply)
 
     def mark_session_from_error(self, exc):
+        """Mark session from error."""
         if not youtube_auth_blocked(exc):
             self.notify_session()
             return
@@ -2203,12 +2283,14 @@ class YouTubeHandler:
     def export_cookies_from_browser(self, output_path=None, silent=False):
         """Exporta cookies de YouTube desde el navegador. No escribe cookies.txt si no hay login vigente."""
         def _error(message):
+            """Uso interno: error."""
             if silent:
                 print(f"[YouTubeHandler] {message}")
             else:
                 messagebox.showerror("Error", message)
 
         def _warn(message):
+            """Uso interno: warn."""
             if silent:
                 print(f"[YouTubeHandler] {message}")
             else:

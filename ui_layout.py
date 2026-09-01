@@ -22,6 +22,7 @@ def bind_wraplength(root, padding=36, min_wrap=240):
     last = {'value': 0}
 
     def _sync(_event=None):
+        """Uso interno: sync."""
         try:
             width = max(1, int(root.winfo_width()))
         except tk.TclError:
@@ -41,6 +42,7 @@ def bind_mousewheel(canvas, *widgets):
     """Rueda del ratón en canvas y widgets del scroll shell."""
 
     def _on_wheel(event):
+        """Callback interno para wheel."""
         if getattr(event, 'num', None) == 5:
             steps = 1
         elif getattr(event, 'num', None) == 4:
@@ -54,6 +56,7 @@ def bind_mousewheel(canvas, *widgets):
         return 'break'
 
     def _bind_recursive(widget):
+        """Uso interno: bind recursive."""
         widget.bind('<MouseWheel>', _on_wheel, add='+')
         widget.bind('<Button-4>', _on_wheel, add='+')
         widget.bind('<Button-5>', _on_wheel, add='+')
@@ -87,6 +90,7 @@ def make_vertical_scroll(parent, padding=(0, 0, 8, 4), wrap_padding=36, min_wrap
     last_wrap = {'value': 0}
 
     def sync(_event=None):
+        """Sync."""
         if syncing['on']:
             return
         syncing['on'] = True
@@ -110,6 +114,7 @@ def make_vertical_scroll(parent, padding=(0, 0, 8, 4), wrap_padding=36, min_wrap
 
 
 def wraplength_for(width, padding=28, min_wrap=120, max_wrap=720):
+    """Wraplength for."""
     return max(min_wrap, min(int(width) - padding, max_wrap))
 
 
@@ -117,6 +122,7 @@ def bind_loading_card(overlay, card, labels, thumb_wrap=None, max_thumb=(440, 24
     """Ajusta wraplength y miniatura del overlay de carga al tamaño del vídeo."""
 
     def sync(_event=None):
+        """Sync."""
         try:
             width = max(1, int(overlay.winfo_width()))
         except tk.TclError:
@@ -167,6 +173,7 @@ def bind_tree_stretch(tree, stretch_columns=None):
             pass
 
     def _resize(_event=None):
+        """Uso interno: resize."""
         try:
             total = max(tree.winfo_width(), 1)
         except tk.TclError:

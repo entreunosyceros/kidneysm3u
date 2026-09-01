@@ -19,6 +19,7 @@ from ui_layout import bind_wraplength, setup_resizable_dialog
 
 
 def _format_duration(seconds):
+    """Uso interno: format duration."""
     try:
         seconds = int(seconds or 0)
     except (TypeError, ValueError):
@@ -29,6 +30,7 @@ def _format_duration(seconds):
 
 
 def _vod_line(item):
+    """Uso interno: vod line."""
     title = plain_display_text(item.get('title') or 'Twitch', 'Twitch')
     duration = _format_duration(item.get('duration'))
     if duration:
@@ -37,6 +39,7 @@ def _vod_line(item):
 
 
 def open_twitch_channel_browser(player, channel=None):
+    """Abre twitch canal browser."""
     if not getattr(player, 'window', None):
         return None
     if channel is None:
@@ -64,7 +67,9 @@ def open_twitch_channel_browser(player, channel=None):
 
 
 class TwitchChannelBrowser:
+    """Clase que representa twitchchannelbrowser."""
     def __init__(self, player, channel):
+        """Inicializa TwitchChannelBrowser."""
         self.player = player
         self.channel = channel
         self._videos = []
@@ -148,6 +153,7 @@ class TwitchChannelBrowser:
         self.load_channel(channel)
 
     def close(self):
+        """Close."""
         if getattr(self.player, '_twitch_channel_browser', None) is self:
             self.player._twitch_channel_browser = None
         try:
@@ -156,9 +162,11 @@ class TwitchChannelBrowser:
             pass
 
     def _set_status(self, text):
+        """Uso interno: set status."""
         self.status_var.set(plain_ui_line(text))
 
     def _search(self):
+        """Uso interno: search."""
         channel = normalize_twitch_channel_input(self.channel_var.get())
         if not channel:
             messagebox.showinfo('Twitch', 'Introduce un nombre de canal válido.', parent=self.window)
@@ -166,9 +174,11 @@ class TwitchChannelBrowser:
         self.load_channel(channel)
 
     def _reload(self):
+        """Uso interno: reload."""
         self.load_channel(self.channel)
 
     def load_channel(self, channel):
+        """Carga canal."""
         channel = normalize_twitch_channel_input(channel)
         if not channel:
             return
@@ -189,6 +199,7 @@ class TwitchChannelBrowser:
             pass
 
         def work():
+            """Work."""
             err = None
             live = None
             videos = []
@@ -200,6 +211,7 @@ class TwitchChannelBrowser:
                 err = exc
 
             def done():
+                """Done."""
                 if gen != self._load_gen:
                     return
                 if err:
@@ -259,6 +271,7 @@ class TwitchChannelBrowser:
         threading.Thread(target=work, daemon=True).start()
 
     def _play_live(self):
+        """Uso interno: play live."""
         live = self._live or {}
         url = live.get('url') or f'https://www.twitch.tv/{self.channel}'
         title = plain_display_text(live.get('title') or self.channel, self.channel)
@@ -267,6 +280,7 @@ class TwitchChannelBrowser:
             play(url, title=title)
 
     def _play_selected(self, _event=None):
+        """Uso interno: play selected."""
         try:
             index = self.listbox.curselection()[0]
         except IndexError:

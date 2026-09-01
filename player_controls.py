@@ -5,6 +5,7 @@ from tkinter import ttk
 
 
 class PlayerControlsMixin:
+    """Clase que representa playercontrolsmixin."""
     def hide_controls_and_menu(self):
         """Oculta controles y menú superior juntos (solo en fullscreen el menú)."""
         if getattr(self, '_posted_popup', None) or (
@@ -41,6 +42,7 @@ class PlayerControlsMixin:
             pass
 
     def enter_fullscreen(self):
+        """Enter fullscreen."""
         if getattr(self, 'pip_is_open', lambda: False)():
             self.close_pip()
         self.window.attributes('-fullscreen', True)
@@ -55,6 +57,7 @@ class PlayerControlsMixin:
         self.hide_controls_and_menu()  # Ocultar controles y menú al entrar en fullscreen
 
     def exit_fullscreen(self):
+        """Exit fullscreen."""
         self.window.attributes('-fullscreen', False)
         self.is_fullscreen = False
         self.window.config(menu=self.menubar)
@@ -97,6 +100,7 @@ class PlayerControlsMixin:
             self.reset_hide_controls_timer()
 
     def add_volume_control(self):
+        """Añade volume control."""
         self.volume_scale = ttk.Scale(
             self.controls_frame, from_=0, to=100,
             orient='horizontal', command=self.set_volume
@@ -123,9 +127,11 @@ class PlayerControlsMixin:
             print(f"Error al ajustar el volumen: {e}")
 
     def toggle_mute(self):
+        """Alterna mute."""
         self.player.audio_toggle_mute()
 
     def toggle_fullscreen(self, event=None):
+        """Alterna fullscreen."""
         if not self.is_fullscreen:
             self.enter_fullscreen()
         else:
@@ -187,4 +193,5 @@ class PlayerControlsMixin:
         self.progress_bar.state(['!disabled'])
 
     def hide_progress_bar(self):
+        """Hide progress bar."""
         self.progress_frame.pack_forget()

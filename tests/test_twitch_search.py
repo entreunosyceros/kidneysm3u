@@ -1,3 +1,5 @@
+"""Módulo de test twitch search."""
+
 from twitch_search import (
     search_twitch,
     twitch_search_label,
@@ -8,6 +10,7 @@ from twitch_search import (
 
 
 def test_parse_live_channel():
+    """Prueba parse live canal."""
     item = {
         'login': 'shroud',
         'displayName': 'shroud',
@@ -22,6 +25,7 @@ def test_parse_live_channel():
 
 
 def test_parse_offline_channel():
+    """Prueba parse offline canal."""
     item = {
         'login': 'shroud',
         'displayName': 'shroud',
@@ -33,6 +37,7 @@ def test_parse_offline_channel():
 
 
 def test_parse_vod():
+    """Prueba parse vod."""
     item = {
         'id': '1234567890',
         'title': 'Stream de ayer',
@@ -46,6 +51,7 @@ def test_parse_vod():
 
 
 def test_twitch_search_label():
+    """Prueba twitch search label."""
     live = {'kind': 'live', 'login': 'demo', 'title': 'Playing', 'viewers': 1500}
     assert 'Directo' in twitch_search_label(live)
     vod = {'kind': 'vod', 'login': 'demo', 'title': 'Clip largo', 'duration': 120}
@@ -53,6 +59,7 @@ def test_twitch_search_label():
 
 
 def test_search_twitch_merged(monkeypatch):
+    """Prueba search twitch merged."""
     channel_payload = [{
         'data': {
             'searchFor': {
@@ -94,6 +101,7 @@ def test_search_twitch_merged(monkeypatch):
     calls = []
 
     def fake_post(payload):
+        """Fake post."""
         calls.append(payload[0]['variables']['options']['targets'][0]['index'])
         if calls[-1] == 'CHANNEL':
             return channel_payload

@@ -1,3 +1,5 @@
+"""Módulo de test youtube features."""
+
 import app_config
 from youtube_player import youtube_format_selector
 from youtube_search import (
@@ -15,6 +17,7 @@ from youtube_search import (
 
 
 def _isolate_config(tmp_path, monkeypatch):
+    """Uso interno: isolate configuración."""
     previous = app_config._cache
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(tmp_path / 'config.json'))
     app_config._cache = None
@@ -22,6 +25,7 @@ def _isolate_config(tmp_path, monkeypatch):
 
 
 def test_youtube_quality_1080_and_best(tmp_path, monkeypatch):
+    """Prueba youtube quality 1080 and best."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         assert app_config.normalize_youtube_quality(1080) == 1080
@@ -43,6 +47,7 @@ def test_youtube_quality_1080_and_best(tmp_path, monkeypatch):
 
 
 def test_youtube_queue_reorder_and_pop(tmp_path, monkeypatch):
+    """Prueba youtube cola reorder and pop."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         added = app_config.enqueue_youtube_queue([
@@ -67,6 +72,7 @@ def test_youtube_queue_reorder_and_pop(tmp_path, monkeypatch):
 
 
 def test_youtube_history_same_window_data(tmp_path, monkeypatch):
+    """Prueba youtube historial same ventana data."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         video_id = 'abcdefghijk'
@@ -98,6 +104,7 @@ def test_youtube_history_same_window_data(tmp_path, monkeypatch):
 
 
 def test_youtube_channel_tab_url():
+    """Prueba youtube canal tab URL."""
     assert youtube_channel_tab_url('https://www.youtube.com/channel/UCabcdefghij') == (
         'https://www.youtube.com/channel/UCabcdefghij/videos'
     )
@@ -110,6 +117,7 @@ def test_youtube_channel_tab_url():
 
 
 def test_channel_url_from_query_and_name_match():
+    """Prueba canal URL from query and name match."""
     from youtube_search import channel_url_from_query, channel_name_matches_query
 
     assert channel_url_from_query('@MrBeast') == 'https://www.youtube.com/@MrBeast'
@@ -123,6 +131,7 @@ def test_channel_url_from_query_and_name_match():
 
 
 def test_youtube_channel_and_playlist_urls_are_not_videos():
+    """Prueba youtube canal and lista de reproducción URLs are not videos."""
     channel = 'https://www.youtube.com/channel/UCabcdefghijklmnop'
     handle = 'https://www.youtube.com/@demo'
     playlist = 'https://www.youtube.com/playlist?list=PLabcdefghij'
@@ -152,10 +161,12 @@ def test_youtube_channel_and_playlist_urls_are_not_videos():
 
 
 def _sub_entries(ext='json3'):
+    """Uso interno: subtítulo entries."""
     return [{'ext': ext, 'url': f'https://example.invalid/caption.{ext}'}]
 
 
 def test_collect_youtube_subs_prefers_original_auto():
+    """Prueba collect youtube subtítulos prefers original auto."""
     from youtube_subs import collect_youtube_subs
 
     items = collect_youtube_subs({
@@ -178,6 +189,7 @@ def test_collect_youtube_subs_prefers_original_auto():
 
 
 def test_translated_spanish_uses_vtt_not_cached_english():
+    """Prueba translated spanish uses vtt not cached english."""
     from youtube_subs import (
         collect_youtube_subs,
         ensure_caption_tlang,
@@ -222,6 +234,7 @@ def test_translated_spanish_uses_vtt_not_cached_english():
 
 
 def test_youtube_ydl_opts_without_global_lang():
+    """Prueba youtube ydl opts without global lang."""
     from youtube_player import youtube_ydl_opts
 
     opts = youtube_ydl_opts(silent=True)
@@ -230,6 +243,7 @@ def test_youtube_ydl_opts_without_global_lang():
 
 
 def test_pick_preferred_youtube_sub_returns_first_item():
+    """Prueba pick preferred youtube subtítulo returns first item."""
     from youtube_subs import collect_youtube_subs, pick_preferred_youtube_sub
 
     items = collect_youtube_subs({
@@ -246,6 +260,7 @@ def test_pick_preferred_youtube_sub_returns_first_item():
 
 
 def test_youtube_auto_subtitles_preference(tmp_path, monkeypatch):
+    """Prueba youtube auto subtitles preference."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         assert app_config.get_youtube_auto_subtitles() is True
@@ -256,12 +271,14 @@ def test_youtube_auto_subtitles_preference(tmp_path, monkeypatch):
 
 
 def test_populate_stream_subtitles_uses_fallback(monkeypatch):
+    """Prueba populate stream subtitles uses fallback."""
     from youtube_player import YouTubeHandler
 
     handler = YouTubeHandler.__new__(YouTubeHandler)
     fallback_called = []
 
     def fake_extract(url):
+        """Fake extract."""
         fallback_called.append(url)
         return [{'lang': 'en', 'kind': 'official', 'label': 'English', 'url': 'http://x', 'ext': 'vtt'}]
 
@@ -277,6 +294,7 @@ def test_populate_stream_subtitles_uses_fallback(monkeypatch):
 
 
 def test_sanitize_youtube_vtt_and_json3(tmp_path):
+    """Prueba sanitize youtube vtt and json3."""
     from youtube_subs import json3_to_vtt, prepare_subtitle_for_vlc, sanitize_youtube_vtt, vtt_to_srt
 
     raw_vtt = """WEBVTT
@@ -329,6 +347,7 @@ sigue el vídeo
 
 
 def test_youtube_rollup_stays_one_line_and_does_not_overlap():
+    """Prueba youtube rollup stays one line and does not overlap."""
     from youtube_subs import sanitize_youtube_vtt, vtt_to_srt
 
     raw_vtt = """WEBVTT
@@ -383,6 +402,7 @@ esta receta
 
 
 def test_yt_dlp_upgrade_command_and_pip_messages(monkeypatch):
+    """Prueba YouTube dlp upgrade command and PiP messages."""
     from preferences import parse_yt_dlp_pip_result, yt_dlp_update_message, yt_dlp_upgrade_cmd
 
     cmd = yt_dlp_upgrade_cmd('/tmp/fake-python')
@@ -425,6 +445,7 @@ def test_yt_dlp_upgrade_command_and_pip_messages(monkeypatch):
 
 
 def test_firefox_cookie_sqlite_paths_from_profiles_ini(tmp_path, monkeypatch):
+    """Prueba firefox cookie sqlite paths from profiles ini."""
     from youtube_player import firefox_cookie_sqlite_paths, _cookie_load_hint
 
     root = tmp_path / 'Roaming' / 'Mozilla' / 'Firefox'
@@ -451,6 +472,7 @@ def test_firefox_cookie_sqlite_paths_from_profiles_ini(tmp_path, monkeypatch):
 
 
 def test_librewolf_cookie_sqlite_paths_windows(tmp_path, monkeypatch):
+    """Prueba librewolf cookie sqlite paths windows."""
     from youtube_player import firefox_cookie_sqlite_paths
 
     profile = tmp_path / 'Roaming' / 'librewolf' / 'Profiles' / 'xyz.default'
@@ -469,6 +491,7 @@ def test_librewolf_cookie_sqlite_paths_windows(tmp_path, monkeypatch):
 
 
 def test_youtube_search_history_unique_and_capped(tmp_path, monkeypatch):
+    """Prueba youtube search historial unique and capped."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         assert app_config.youtube_search_history() == []
@@ -501,6 +524,7 @@ def test_youtube_search_history_unique_and_capped(tmp_path, monkeypatch):
 
 
 def test_parse_relative_upload_text_spanish():
+    """Prueba parse relative upload text spanish."""
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -517,6 +541,7 @@ def test_parse_relative_upload_text_spanish():
 
 
 def test_youtube_search_sp_fecha_puts_upload_date_first():
+    """Prueba youtube search sp fecha puts upload date first."""
     import base64
 
     video_date = youtube_search_sp_from_ui('Vídeos', 'Fecha')
@@ -525,6 +550,7 @@ def test_youtube_search_sp_fecha_puts_upload_date_first():
     video_rel = youtube_search_sp_from_ui('Vídeos', 'Relevancia')
 
     def decoded(sp):
+        """Decoded."""
         padding = '=' * ((4 - len(sp) % 4) % 4)
         return base64.urlsafe_b64decode(sp + padding)
 
@@ -540,6 +566,7 @@ def test_youtube_search_sp_fecha_puts_upload_date_first():
 
 
 def test_sort_search_entries_newest_first_when_fecha():
+    """Prueba sort search entries newest first when fecha."""
     older = {'title': 'viejo', 'timestamp': 100}
     newer = {'title': 'nuevo', 'timestamp': 300}
     mid = {'title': 'medio', 'timestamp': 200}
@@ -569,6 +596,7 @@ def test_sort_search_entries_newest_first_when_fecha():
 
 
 def test_should_offer_youtube_replay_only_for_standalone():
+    """Prueba should offer youtube replay only for standalone."""
     from video_player import should_offer_youtube_replay
 
     assert should_offer_youtube_replay(True, True, False, False) is True

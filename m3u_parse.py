@@ -42,6 +42,7 @@ _TVG_LOGO_RE = re.compile(
 
 
 def _channel_name(extinf):
+    """Uso interno: canal name."""
     if ',' in extinf:
         raw = extinf.split(',', 1)[1].strip() or extinf.strip()
     else:
@@ -50,16 +51,19 @@ def _channel_name(extinf):
 
 
 def _quoted_groups(match):
+    """Uso interno: quoted groups."""
     if not match:
         return ''
     return (match.group(1) or match.group(2) or match.group(3) or '').strip()
 
 
 def _channel_group(extinf):
+    """Uso interno: canal group."""
     return plain_display_text(_quoted_groups(_GROUP_RE.search(extinf or '')), '')
 
 
 def _channel_tvg_id(extinf):
+    """Uso interno: canal tvg id."""
     tvg_id = _quoted_groups(_TVG_ID_RE.search(extinf or ''))
     if tvg_id:
         return tvg_id
@@ -70,10 +74,12 @@ def _channel_tvg_id(extinf):
 
 
 def _channel_logo(extinf):
+    """Uso interno: canal logo."""
     return _quoted_groups(_TVG_LOGO_RE.search(extinf or ''))
 
 
 def _collect_epg_urls(text, urls, seen):
+    """Uso interno: collect guía EPG URLs."""
     for match in _TVG_URL_RE.finditer(text or ''):
         blob = _quoted_groups(match)
         for part in blob.split(','):
@@ -119,6 +125,7 @@ def parse_m3u_channels(content, on_progress=None):
     last_tick = -step
 
     def tick(at):
+        """Tick."""
         nonlocal last_tick
         if not on_progress:
             return
@@ -168,10 +175,12 @@ def parse_m3u_entries(content):
 
 
 def decode_m3u_bytes(raw):
+    """Decode lista m3u bytes."""
     return _decode_bytes(raw)
 
 
 def _decode_bytes(raw):
+    """Uso interno: decode bytes."""
     if isinstance(raw, str):
         return raw
     for encoding in ('utf-8-sig', 'utf-8', 'latin-1'):
@@ -227,7 +236,9 @@ def is_iptv_vod(url):
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Clase que representa noredirect."""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """Redirect request."""
         return None
 
 

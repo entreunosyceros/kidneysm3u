@@ -1,3 +1,5 @@
+"""Módulo de test iptv player features."""
+
 import os
 
 import app_config
@@ -13,6 +15,7 @@ from iptv_record import StreamRecorder, _ffmpeg_copy_cmd, _safe_filename, defaul
 
 
 def _isolate_config(tmp_path, monkeypatch):
+    """Uso interno: isolate configuración."""
     previous = app_config._cache
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(tmp_path / 'config.json'))
     app_config._cache = None
@@ -20,6 +23,7 @@ def _isolate_config(tmp_path, monkeypatch):
 
 
 def test_detect_and_strip_quality_tokens():
+    """Prueba detect and strip quality tokens."""
     assert detect_iptv_quality('La 1 FHD') == ('FHD', 1080)
     assert detect_iptv_quality('La 1 HD') == ('HD', 720)
     assert detect_iptv_quality('La 1 SD', 'España') == ('SD', 480)
@@ -29,6 +33,7 @@ def test_detect_and_strip_quality_tokens():
 
 
 def test_iptv_variants_pick_sd_hd_fhd():
+    """Prueba IPTV variants pick sd hd fhd."""
     entries = [
         ('La 1 SD', 'http://panel.example/live/sd', 'SD', 'la1'),
         ('La 1 HD', 'http://panel.example/live/hd', 'HD', 'la1'),
@@ -47,6 +52,7 @@ def test_iptv_variants_pick_sd_hd_fhd():
 
 
 def test_fallback_same_name_then_backup_does_not_invent_urls():
+    """Prueba fallback same name then backup does not invent URLs."""
     entries = [
         ('La 1', 'http://panel.example/live/a', 'España', 'la1'),
         ('La 1', 'http://panel.example/live/b', 'Internacional', 'la1'),
@@ -75,6 +81,7 @@ def test_fallback_same_name_then_backup_does_not_invent_urls():
 
 
 def test_ffmpeg_copy_command_is_local_copy():
+    """Prueba ffmpeg copy command is local copy."""
     cmd = _ffmpeg_copy_cmd(
         'ffmpeg',
         'http://panel.example/live/1',
@@ -94,6 +101,7 @@ def test_ffmpeg_copy_command_is_local_copy():
 
 
 def test_default_recording_path_uses_download_folder(tmp_path, monkeypatch):
+    """Prueba default recording path uses download folder."""
     previous = app_config._cache
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(tmp_path / 'config.json'))
     app_config._cache = None
@@ -108,7 +116,9 @@ def test_default_recording_path_uses_download_folder(tmp_path, monkeypatch):
 
 
 def test_recorder_reads_iptv_and_youtube_source():
+    """Prueba recorder reads IPTV and youtube source."""
     class IptvDummy:
+        """Clase que representa iptvdummy."""
         _playing_youtube = False
         _iptv_source_url = 'http://panel.example/live/1'
         _iptv_retry_name = 'La 1 HD'
@@ -119,11 +129,13 @@ def test_recorder_reads_iptv_and_youtube_source():
     assert headers == {}
 
     class YtHandler:
+        """Clase que representa ythandler."""
         _direct_url = 'https://googlevideo.example/video'
         _direct_headers = {'Referer': 'https://www.youtube.com/'}
         _loading_title_text = 'Un vídeo'
 
     class YtDummy:
+        """Clase que representa ytdummy."""
         _playing_youtube = True
         youtube_handler = YtHandler()
 
@@ -134,6 +146,7 @@ def test_recorder_reads_iptv_and_youtube_source():
 
 
 def test_iptv_quality_and_backup_config(tmp_path, monkeypatch):
+    """Prueba IPTV quality and backup configuración."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         assert app_config.normalize_iptv_quality(900) == 1080
@@ -153,22 +166,28 @@ def test_iptv_quality_and_backup_config(tmp_path, monkeypatch):
 
 
 class _FakeHttp:
+    """Clase que representa fakehttp."""
     def __init__(self, body, content_type='application/octet-stream', status=200):
+        """Inicializa _FakeHttp."""
         self.body = body
         self.status = status
         self.headers = {'Content-Type': content_type}
 
     def read(self, n=512):
+        """Read."""
         return self.body[:n]
 
     def __enter__(self):
+        """Entra en el contexto de _FakeHttp."""
         return self
 
     def __exit__(self, *args):
+        """Sale del contexto de _FakeHttp."""
         return False
 
 
 def test_probe_iptv_url_rejects_html(monkeypatch):
+    """Prueba probe IPTV URL rejects html."""
     monkeypatch.setattr(
         'urllib.request.urlopen',
         lambda *args, **kwargs: _FakeHttp(b'<!DOCTYPE html><html>error</html>', 'text/html'),
@@ -177,6 +196,7 @@ def test_probe_iptv_url_rejects_html(monkeypatch):
 
 
 def test_probe_iptv_url_accepts_mpegts(monkeypatch):
+    """Prueba probe IPTV URL accepts mpegts."""
     monkeypatch.setattr(
         'urllib.request.urlopen',
         lambda *args, **kwargs: _FakeHttp(b'\x47' + b'\x00' * 187, 'video/mp2t'),
@@ -185,6 +205,7 @@ def test_probe_iptv_url_accepts_mpegts(monkeypatch):
 
 
 def test_group_buckets_keeps_first_seen_order():
+    """Prueba group buckets keeps first seen order."""
     from channel_sidebar import COMBO_MAX_GROUPS, UNGROUPED, _group_buckets
 
     order, buckets = _group_buckets(['España', 'Deportes', 'España', '', 'Deportes'])

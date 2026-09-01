@@ -1,3 +1,5 @@
+"""Módulo de test twitch chat."""
+
 import urllib.request
 
 from twitch_chat import (
@@ -14,12 +16,15 @@ from twitch_chat import (
 
 
 class _FakeHandler:
+    """Clase que representa fakehandler."""
     def __init__(self, stream=None, url=''):
+        """Inicializa _FakeHandler."""
         self._current_stream = stream or {}
         self._current_url = url
 
 
 def test_chat_embed_html_uses_matching_parent():
+    """Prueba chat embed html uses matching parent."""
     html = chat_embed_html('DemoChannel', '127.0.0.1')
     assert 'embed/demochannel/chat?parent=127.0.0.1' in html.lower()
     assert 'darkpopout' in html
@@ -27,18 +32,21 @@ def test_chat_embed_html_uses_matching_parent():
 
 
 def test_twitch_chat_window_url_uses_popout():
+    """Prueba twitch chat ventana URL uses popout."""
     assert twitch_chat_window_url('DemoChannel') == (
         'https://www.twitch.tv/popout/demochannel/chat?popout='
     )
 
 
 def test_twitch_popout_chat_url():
+    """Prueba twitch popout chat URL."""
     assert twitch_popout_chat_url('DemoChannel') == (
         'https://www.twitch.tv/popout/demochannel/chat?popout='
     )
 
 
 def test_can_show_twitch_chat_only_for_live():
+    """Prueba can show twitch chat only for live."""
     live = _FakeHandler({'is_live': True, 'channel': 'demo'}, 'https://www.twitch.tv/demo')
     vod = _FakeHandler({'is_live': False, 'channel': 'demo'}, 'https://www.twitch.tv/videos/1')
     assert can_show_twitch_chat(live) is True
@@ -46,16 +54,19 @@ def test_can_show_twitch_chat_only_for_live():
 
 
 def test_resolve_twitch_channel_prefers_stream_name():
+    """Prueba resolve twitch canal prefers stream name."""
     handler = _FakeHandler({'is_live': True, 'channel': 'DemoChannel'}, 'https://www.twitch.tv/other')
     assert resolve_twitch_channel(handler) == 'demochannel'
 
 
 def test_resolve_twitch_channel_from_url():
+    """Prueba resolve twitch canal from URL."""
     handler = _FakeHandler({'is_live': True, 'channel': ''}, 'https://www.twitch.tv/livechannel')
     assert resolve_twitch_channel(handler) == 'livechannel'
 
 
 def test_chat_server_serves_embed_page():
+    """Prueba chat server serves embed page."""
     server = _ChatServer()
     port = server.start('demo')
     try:
@@ -67,15 +78,18 @@ def test_chat_server_serves_embed_page():
 
 
 def test_chat_backend_status_has_fallback():
+    """Prueba chat backend status has fallback."""
     backend, _detail = chat_backend_status()
     assert backend in ('pywebview', 'system_gtk', 'browser')
 
 
 def test_system_python_with_gi_finds_ubuntu_python():
+    """Prueba system python with gi finds ubuntu python."""
     py = system_python_with_gi()
     if py:
         assert py.endswith('python3') or 'python3' in py
 
 
 def test_pywebview_gtk_ready_is_bool():
+    """Prueba pywebview gtk ready is bool."""
     assert isinstance(pywebview_gtk_ready(), bool)

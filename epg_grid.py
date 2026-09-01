@@ -18,13 +18,16 @@ HEAD_H = 28
 
 
 def _floor_half_hour(ts):
+    """Uso interno: floor half hour."""
     dt = datetime.fromtimestamp(ts)
     minute = 0 if dt.minute < 30 else 30
     return dt.replace(minute=minute, second=0, microsecond=0).timestamp()
 
 
 class EpgGridWindow:
+    """Clase que representa epggridwindow."""
     def __init__(self, player):
+        """Inicializa EpgGridWindow."""
         self.player = player
         existing = getattr(player, '_epg_grid', None)
         if existing is not None:
@@ -92,6 +95,7 @@ class EpgGridWindow:
         self._schedule_tick()
 
     def close(self):
+        """Close."""
         job = self._tick_job
         self._tick_job = None
         if job and self.player._widget_exists(self.window):
@@ -107,28 +111,33 @@ class EpgGridWindow:
             pass
 
     def _reload(self):
+        """Uso interno: reload."""
         start = getattr(self.player, '_start_epg', None)
         if start:
             start(notify=False)
         self._hint.configure(text=plain_ui_line('Actualizando…'))
 
     def _schedule_tick(self):
+        """Uso interno: schedule tick."""
         if not self.player._widget_exists(self.window):
             return
         self._tick_job = self.window.after(30000, self._tick)
 
     def _tick(self):
+        """Uso interno: tick."""
         if not self.player._widget_exists(self.window):
             return
         self.draw()
         self._schedule_tick()
 
     def refresh(self):
+        """Refresh."""
         if not self.player._widget_exists(self.window):
             return
         self.draw()
 
     def _on_wheel(self, event):
+        """Callback interno para wheel."""
         delta = -1
         if getattr(event, 'num', None) == 5 or getattr(event, 'delta', 0) < 0:
             delta = 1
@@ -136,12 +145,14 @@ class EpgGridWindow:
         return 'break'
 
     def _rows(self):
+        """Uso interno: rows."""
         getter = getattr(self.player, '_epg_grid_rows', None)
         if not getter:
             return []
         return getter()
 
     def _on_click(self, event):
+        """Callback interno para click."""
         y = self.canvas.canvasy(event.y)
         if y < HEAD_H:
             return
@@ -154,6 +165,7 @@ class EpgGridWindow:
                 play(index)
 
     def draw(self):
+        """Draw."""
         if not self.player._widget_exists(self.window):
             return
         colors = get_colors()
@@ -293,6 +305,7 @@ class EpgGridWindow:
 
 
 def show_epg_grid(player):
+    """Muestra guía EPG grid."""
     if not getattr(player, 'window', None):
         return None
     grid = EpgGridWindow(player)

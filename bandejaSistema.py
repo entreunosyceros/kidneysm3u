@@ -1,3 +1,5 @@
+"""Módulo de bandejaSistema."""
+
 import pystray
 from PIL import Image
 import tkinter as tk
@@ -5,7 +7,9 @@ from app_paths import resource_dir
 from pathlib import Path
 
 class IconoBandeja:
+    """Clase que representa iconobandeja."""
     def __init__(self, root):
+        """Inicializa IconoBandeja."""
         self.root = root
         self.oculto = False
         self._last_click_time = 0
@@ -88,6 +92,7 @@ class IconoBandeja:
         return imagen
 
     def crear_menu(self):
+        """Crear menu."""
         return pystray.Menu(
             pystray.MenuItem(
                 "Restaurar",
@@ -119,6 +124,7 @@ class IconoBandeja:
     def salir_programa(self, icon, item):
         """Cierra completamente el programa"""
         def cerrar():
+            """Cerrar."""
             try:
                 import app_config
                 geometry = app_config.capture_geometry(self.root)

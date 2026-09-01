@@ -27,19 +27,23 @@ _SPACE = re.compile(r'\s+')
 
 
 def _norm_epg_name(text):
+    """Uso interno: norm guía EPG name."""
     return _SPACE.sub(' ', (text or '').strip()).lower()
 
 
 class Programme:
+    """Clase que representa programme."""
     __slots__ = ('start', 'stop', 'title')
 
     def __init__(self, start, stop, title):
+        """Inicializa Programme."""
         self.start = start
         self.stop = stop
         self.title = title or ''
 
     @property
     def clock(self):
+        """Clock."""
         try:
             return datetime.fromtimestamp(self.start).strftime('%H:%M')
         except (OSError, OverflowError, ValueError):
@@ -47,20 +51,25 @@ class Programme:
 
 
 class Guide:
+    """Clase que representa guide."""
     def __init__(self, programmes=None, icons=None):
+        """Inicializa Guide."""
         self._by_id = programmes or {}
         self._icons = icons or {}
 
     def channel_count(self):
+        """Canal count."""
         return len({key for key in self._by_id if key and key != key.lower()}) or len(self._by_id)
 
     def _items(self, tvg_id):
+        """Uso interno: items."""
         key = (tvg_id or '').strip()
         if not key:
             return []
         return self._by_id.get(key) or self._by_id.get(key.lower()) or []
 
     def now_next(self, tvg_id, now=None):
+        """Now next."""
         items = self._items(tvg_id)
         if not items:
             return None, None
@@ -79,12 +88,14 @@ class Guide:
         return current, nxt
 
     def now_title(self, tvg_id, now=None, limit=36):
+        """Now title."""
         current, _nxt = self.now_next(tvg_id, now=now)
         if not current:
             return ''
         return _short(current.title, limit)
 
     def programmes_between(self, tvg_id, start, stop):
+        """Programmes between."""
         items = self._items(tvg_id)
         if not items or stop <= start:
             return []
@@ -96,6 +107,7 @@ class Guide:
         return found
 
     def icon(self, tvg_id):
+        """Icon."""
         key = (tvg_id or '').strip()
         if not key:
             return ''
@@ -103,10 +115,12 @@ class Guide:
 
 
 def time_now():
+    """Time now."""
     return datetime.now().timestamp()
 
 
 def parse_xmltv_datetime(value):
+    """Interpreta xmltv datetime."""
     text = (value or '').strip()
     match = _XMLTV_DT.match(text)
     if not match:
@@ -131,6 +145,7 @@ def parse_xmltv_datetime(value):
 
 
 def format_now_next(current, nxt):
+    """Formatea now next."""
     lines = []
     if current:
         title = _short(current.title)
@@ -144,18 +159,21 @@ def format_now_next(current, nxt):
 
 
 def _short(text, limit=80):
+    """Uso interno: short."""
     text = plain_display_text(text)
     text = re.sub(r'\s+', ' ', text or '').strip()
     return truncate_ui_text(text, limit)
 
 
 def _local_name(tag):
+    """Uso interno: local name."""
     if not tag:
         return ''
     return tag.split('}', 1)[-1]
 
 
 def _programme_title(elem):
+    """Uso interno: programme title."""
     chosen = ''
     for child in elem:
         if _local_name(child.tag) != 'title':
@@ -265,6 +283,7 @@ def parse_xmltv(source, wanted_ids, now=None, wanted_names=None):
 
 
 def _read_limited(handle, limit=MAX_EPG_BYTES):
+    """Uso interno: read limited."""
     chunks = []
     total = 0
     while True:
@@ -279,6 +298,7 @@ def _read_limited(handle, limit=MAX_EPG_BYTES):
 
 
 def _maybe_gunzip(raw):
+    """Uso interno: maybe gunzip."""
     data = raw or b''
     for _ in range(2):
         if data[:2] != b'\x1f\x8b':
@@ -288,6 +308,7 @@ def _maybe_gunzip(raw):
 
 
 def _looks_like_html(raw):
+    """Uso interno: looks like html."""
     head = (raw or b'').lstrip()[:180].lower()
     return head.startswith(b'<html') or head.startswith(b'<!doctype html')
 
@@ -312,6 +333,7 @@ def normalize_epg_source(value):
 
 
 def _urlopen_bytes(request):
+    """Uso interno: urlopen bytes."""
     try:
         with urlopen(request, timeout=FETCH_TIMEOUT) as response:
             return _maybe_gunzip(_read_limited(response))
@@ -325,6 +347,7 @@ def _urlopen_bytes(request):
 
 
 def _fetch_http(url):
+    """Uso interno: fetch http."""
     last_error = None
     for user_agent in (IPTV_USER_AGENT, 'Mozilla/5.0'):
         request = Request(
@@ -347,6 +370,7 @@ def _fetch_http(url):
 
 
 def _fetch_bytes(source):
+    """Uso interno: fetch bytes."""
     source = normalize_epg_source(source)
     if not source:
         return b''
@@ -398,5 +422,6 @@ def load_guide(urls, wanted_ids, wanted_names=None):
 
 
 def load_guide_from_text(xml_text, wanted_ids, now=None, wanted_names=None):
+    """Carga guide from text."""
     raw = xml_text.encode('utf-8') if isinstance(xml_text, str) else xml_text
     return parse_xmltv(BytesIO(raw), wanted_ids, now=now, wanted_names=wanted_names)

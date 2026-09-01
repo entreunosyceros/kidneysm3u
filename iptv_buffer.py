@@ -51,6 +51,7 @@ _PROFILE_ALIASES = {
 
 
 def normalize_iptv_buffer_profile(value):
+    """Normaliza IPTV buffer profile."""
     text = str(value or '').strip().lower()
     if text in PROFILES:
         return text
@@ -66,6 +67,7 @@ def vlc_aout_option(force_pulse=False, prefix=':'):
 
 
 def vlc_aout_instance_args():
+    """Vlc aout instance args."""
     option = vlc_aout_option(force_pulse=False, prefix='')
     return [f'--{option}'] if option else []
 
@@ -91,6 +93,7 @@ def iptv_cache_ms(kind, *, vod=False, local=False, profile='balanced', force_ts=
 
 
 def iptv_is_live(kind, *, vod=False, force_ts=False):
+    """Iptv is live."""
     if vod:
         return False
     if force_ts:
@@ -133,6 +136,7 @@ def iptv_vlc_buffer_options(
 
 
 def vlc_state_name(state):
+    """Vlc state name."""
     if state is None:
         return ''
     name = getattr(state, 'name', None)
@@ -143,6 +147,7 @@ def vlc_state_name(state):
 
 
 def iptv_bytes_progress(stats):
+    """Iptv bytes progress."""
     if stats is None:
         return 0
     best = 0

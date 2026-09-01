@@ -1,7 +1,10 @@
+"""Módulo de test iptv history."""
+
 import app_config
 
 
 def _isolate_config(tmp_path, monkeypatch):
+    """Uso interno: isolate configuración."""
     previous = app_config._cache
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(tmp_path / 'config.json'))
     app_config._cache = None
@@ -9,6 +12,7 @@ def _isolate_config(tmp_path, monkeypatch):
 
 
 def test_iptv_history_resume_and_privacy(tmp_path, monkeypatch):
+    """Prueba IPTV historial resume and privacy."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         live = 'http://panel.example/live/user/pass/10.ts'
@@ -49,6 +53,7 @@ def test_iptv_history_resume_and_privacy(tmp_path, monkeypatch):
 
 
 def test_iptv_history_skips_youtube_and_caps(tmp_path, monkeypatch):
+    """Prueba IPTV historial skips youtube and caps."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         app_config.remember_iptv_history('YT', 'https://www.youtube.com/watch?v=abcdefghijk')

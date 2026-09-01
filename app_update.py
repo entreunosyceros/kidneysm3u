@@ -26,6 +26,7 @@ _dialog = None
 
 
 def current_version():
+    """Current version."""
     return normalize_version(app_version.__version__) or '0'
 
 
@@ -41,6 +42,7 @@ def normalize_version(text):
 
 
 def version_tuple(text):
+    """Version tuple."""
     parts = []
     for chunk in normalize_version(text).split('.'):
         if chunk.isdigit():
@@ -49,6 +51,7 @@ def version_tuple(text):
 
 
 def is_newer_version(remote, local):
+    """Indica si newer version."""
     left = list(version_tuple(remote))
     right = list(version_tuple(local))
     size = max(len(left), len(right))
@@ -78,6 +81,7 @@ def install_kind(frozen=None, platform=None, here=None, share_version=None, data
 
 
 def safe_asset_filename(name):
+    """Safe asset filename."""
     text = str(name or '').strip()
     if not text or text != os.path.basename(text):
         return None
@@ -89,6 +93,7 @@ def safe_asset_filename(name):
 
 
 def pick_release_asset(assets, kind):
+    """Elige release asset."""
     items = []
     for asset in assets or []:
         if not isinstance(asset, dict):
@@ -119,6 +124,7 @@ def pick_release_asset(assets, kind):
 
 
 def parse_latest_release(payload):
+    """Interpreta latest release."""
     if not isinstance(payload, dict):
         return None
     tag = str(payload.get('tag_name') or '').strip()
@@ -146,6 +152,7 @@ def parse_latest_release(payload):
 
 
 def fetch_latest_release(timeout=12):
+    """Obtiene latest release desde la red o el disco."""
     response = requests.get(
         app_version.GITHUB_LATEST_API,
         headers={
@@ -162,6 +169,7 @@ def fetch_latest_release(timeout=12):
 
 
 def _cache_is_fresh(now=None):
+    """Uso interno: cache is fresh."""
     import time
     now = time.time() if now is None else now
     checked = app_config.get_app_update_checked_at()
@@ -207,6 +215,7 @@ def check_for_app_update(force=False):
 
 
 def download_release_asset(url, filename, dest_dir=None, timeout=60):
+    """Descarga release asset."""
     name = safe_asset_filename(filename)
     if not name:
         raise ValueError('Nombre de paquete no válido.')
@@ -246,6 +255,7 @@ def download_release_asset(url, filename, dest_dir=None, timeout=60):
 
 
 def launch_windows_installer(path):
+    """Launch windows installer."""
     if os.name == 'nt':
         os.startfile(path)  # noqa: S606 — instalador local recién descargado
         return
@@ -253,6 +263,7 @@ def launch_windows_installer(path):
 
 
 def install_debian_package(path):
+    """Install debian package."""
     try:
         completed = subprocess.run(
             ['pkexec', 'dpkg', '-i', path],
@@ -271,12 +282,14 @@ def install_debian_package(path):
 
 
 def start_startup_update_check(root, quit_app=None):
+    """Inicia startup update check."""
     if not app_config.get_check_app_updates():
         return
     _start_check(root, quit_app=quit_app, force=False, silent_if_current=True)
 
 
 def start_manual_update_check(root, quit_app=None, status_var=None):
+    """Inicia manual update check."""
     if status_var is not None:
         try:
             status_var.set(plain_ui_line('Buscando actualizaciones…'))
@@ -292,6 +305,7 @@ def start_manual_update_check(root, quit_app=None, status_var=None):
 
 
 def _start_check(root, quit_app=None, force=False, silent_if_current=True, status_var=None):
+    """Uso interno: start check."""
     global _busy
     if _busy:
         if not silent_if_current:
@@ -303,6 +317,7 @@ def _start_check(root, quit_app=None, force=False, silent_if_current=True, statu
     _busy = True
 
     def work():
+        """Work."""
         global _busy
         try:
             result = check_for_app_update(force=force)
@@ -328,6 +343,7 @@ def _start_check(root, quit_app=None, force=False, silent_if_current=True, statu
 
 
 def _on_check_done(root, result, quit_app, silent_if_current, status_var=None):
+    """Callback interno para check done."""
     global _busy
     _busy = False
     try:
@@ -367,6 +383,7 @@ def _on_check_done(root, result, quit_app, silent_if_current, status_var=None):
 
 
 def show_update_dialog(root, result, quit_app=None):
+    """Muestra update dialog."""
     global _dialog
     if _dialog is not None:
         try:
@@ -433,23 +450,28 @@ def show_update_dialog(root, result, quit_app=None):
     buttons.pack(fill=tk.X, side=tk.BOTTOM, pady=(16, 0))
 
     def close():
+        """Close."""
         global _dialog
         if _dialog is window:
             _dialog = None
         window.destroy()
 
     def disable_notices():
+        """Disable notices."""
         app_config.set_check_app_updates(False)
         close()
 
     def later():
+        """Later."""
         close()
 
     def open_page():
+        """Abre page."""
         webbrowser.open_new(page)
         close()
 
     def apply_update():
+        """Aplica update."""
         if kind == 'source' or not can_install:
             open_page()
             return
@@ -461,6 +483,7 @@ def show_update_dialog(root, result, quit_app=None):
         status.set(plain_ui_line('Descargando el paquete…'))
 
         def work():
+            """Work."""
             try:
                 path = download_release_asset(asset['url'], asset['name'])
                 error = ''
@@ -469,6 +492,7 @@ def show_update_dialog(root, result, quit_app=None):
                 error = str(exc) or 'No se pudo descargar.'
 
             def done():
+                """Done."""
                 if error or not path:
                     status.set('')
                     for child in (update_btn, later_btn, skip_btn):
@@ -506,9 +530,11 @@ def show_update_dialog(root, result, quit_app=None):
                 window.update_idletasks()
 
                 def install():
+                    """Install."""
                     ok, detail = install_debian_package(path)
 
                     def after_install():
+                        """After install."""
                         if ok:
                             messagebox.showinfo(
                                 'Actualización',

@@ -26,6 +26,7 @@ SEARCH_OPERATION = 'SearchResultsPage_SearchResults'
 
 
 def _format_duration(seconds):
+    """Uso interno: format duration."""
     try:
         seconds = int(seconds or 0)
     except (TypeError, ValueError):
@@ -36,6 +37,7 @@ def _format_duration(seconds):
 
 
 def _format_viewers(count):
+    """Uso interno: format viewers."""
     try:
         count = int(count or 0)
     except (TypeError, ValueError):
@@ -50,6 +52,7 @@ def _format_viewers(count):
 
 
 def _gql_headers():
+    """Uso interno: gql headers."""
     headers = {
         'Client-ID': TWITCH_GQL_CLIENT_ID,
         'Content-Type': 'application/json',
@@ -65,6 +68,7 @@ def _gql_headers():
 
 
 def _gql_post(payload):
+    """Uso interno: gql post."""
     body = json.dumps(payload).encode('utf-8')
     req = urlrequest.Request(TWITCH_GQL_URL, data=body, headers=_gql_headers(), method='POST')
     try:
@@ -78,6 +82,7 @@ def _gql_post(payload):
 
 
 def _search_payload(query, target_index, limit):
+    """Uso interno: search payload."""
     limit = max(5, min(int(limit or 15), 30))
     return [{
         'operationName': SEARCH_OPERATION,
@@ -100,6 +105,7 @@ def _search_payload(query, target_index, limit):
 
 
 def _search_block(payload):
+    """Uso interno: search block."""
     raw = _gql_post(payload)
     if isinstance(raw, list):
         block = raw[0] if raw else {}
@@ -116,6 +122,7 @@ def _search_block(payload):
 
 
 def _channel_stream_title(item):
+    """Uso interno: canal stream title."""
     stream = item.get('stream') or {}
     settings = item.get('broadcastSettings') or {}
     return plain_display_text(
@@ -125,6 +132,7 @@ def _channel_stream_title(item):
 
 
 def _parse_live_channel(item):
+    """Uso interno: parse live canal."""
     login = plain_display_text(item.get('login') or '', '').strip()
     if not login:
         return None
@@ -142,6 +150,7 @@ def _parse_live_channel(item):
 
 
 def _parse_offline_channel(item):
+    """Uso interno: parse offline canal."""
     login = plain_display_text(item.get('login') or '', '').strip()
     if not login:
         return None
@@ -159,6 +168,7 @@ def _parse_offline_channel(item):
 
 
 def _parse_related_live(item):
+    """Uso interno: parse related live."""
     stream = item.get('stream') or {}
     broadcaster = stream.get('broadcaster') or {}
     login = plain_display_text(broadcaster.get('login') or '', '').strip()
@@ -176,6 +186,7 @@ def _parse_related_live(item):
 
 
 def _parse_vod(item):
+    """Uso interno: parse vod."""
     vod_id = str(item.get('id') or '').strip()
     if not vod_id:
         return None
@@ -193,6 +204,7 @@ def _parse_vod(item):
 
 
 def _merge_result(results, seen, item):
+    """Uso interno: merge result."""
     if not item:
         return
     key = (item.get('kind'), item.get('url'))
@@ -235,6 +247,7 @@ def search_twitch(query, limit=15):
 
 
 def twitch_search_label(item):
+    """Twitch search label."""
     item = item or {}
     kind = item.get('kind')
     title = plain_display_text(item.get('title') or '', 'Twitch')
@@ -260,6 +273,7 @@ def twitch_search_label(item):
 
 
 def open_twitch_search(player):
+    """Abre twitch search."""
     if not getattr(player, 'window', None):
         return None
     existing = getattr(player, '_twitch_search', None)
@@ -278,7 +292,9 @@ def open_twitch_search(player):
 
 
 class TwitchSearchDialog:
+    """Clase que representa twitchsearchdialog."""
     def __init__(self, player):
+        """Inicializa TwitchSearchDialog."""
         self.player = player
         self._results = []
         self._search_gen = 0
@@ -350,6 +366,7 @@ class TwitchSearchDialog:
         self.search_entry.focus_set()
 
     def close(self):
+        """Close."""
         if getattr(self.player, '_twitch_search', None) is self:
             self.player._twitch_search = None
         try:
@@ -358,6 +375,7 @@ class TwitchSearchDialog:
             pass
 
     def _set_loading(self, active, message=''):
+        """Uso interno: set loading."""
         if message:
             self.status_var.set(plain_ui_line(message))
         if active:
@@ -371,6 +389,7 @@ class TwitchSearchDialog:
                 pass
 
     def search(self):
+        """Search."""
         query = (self.search_var.get() or '').strip()
         if not query:
             messagebox.showinfo('Twitch', 'Introduce un término de búsqueda.', parent=self.window)
@@ -385,6 +404,7 @@ class TwitchSearchDialog:
         self._results = []
 
         def work():
+            """Work."""
             err = None
             items = []
             try:
@@ -393,6 +413,7 @@ class TwitchSearchDialog:
                 err = exc
 
             def done():
+                """Done."""
                 if gen != self._search_gen:
                     return
                 self._set_loading(False)
@@ -439,6 +460,7 @@ class TwitchSearchDialog:
         threading.Thread(target=work, daemon=True).start()
 
     def _selected_item(self):
+        """Uso interno: selected item."""
         try:
             index = self.listbox.curselection()[0]
         except IndexError:
@@ -448,6 +470,7 @@ class TwitchSearchDialog:
         return self._results[index]
 
     def _play_selected(self, _event=None):
+        """Uso interno: play selected."""
         item = self._selected_item()
         if not item:
             messagebox.showinfo('Twitch', 'Selecciona un resultado.', parent=self.window)
@@ -458,6 +481,7 @@ class TwitchSearchDialog:
         play(item['url'], title=item.get('title') or item.get('login') or 'Twitch')
 
     def _open_channel_vods(self):
+        """Uso interno: open canal vods."""
         item = self._selected_item()
         if not item:
             messagebox.showinfo('Twitch', 'Selecciona un canal o directo.', parent=self.window)

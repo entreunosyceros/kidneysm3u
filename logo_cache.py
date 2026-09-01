@@ -16,6 +16,7 @@ LOGO_PX = 20
 
 
 def cache_dir():
+    """Cache dir."""
     os.makedirs(CACHE_DIR, exist_ok=True)
     return CACHE_DIR
 
@@ -40,10 +41,12 @@ def clear_cache():
 
 
 def _key(url):
+    """Uso interno: key."""
     return hashlib.sha1((url or '').encode('utf-8', errors='replace')).hexdigest()[:20]
 
 
 def path_for(url):
+    """Path for."""
     url = (url or '').strip()
     if not url:
         return ''
@@ -51,6 +54,7 @@ def path_for(url):
 
 
 def _prune():
+    """Uso interno: prune."""
     folder = cache_dir()
     try:
         entries = [
@@ -71,6 +75,7 @@ def _prune():
 
 
 def _fetch_bytes(url):
+    """Uso interno: fetch bytes."""
     last_error = None
     for user_agent in (IPTV_USER_AGENT, 'Mozilla/5.0'):
         request = Request(
@@ -101,6 +106,7 @@ def _fetch_bytes(url):
 
 
 def _to_png(raw):
+    """Uso interno: to png."""
     from PIL import Image
     image = Image.open(BytesIO(raw))
     if image.mode not in ('RGB', 'RGBA'):
@@ -132,6 +138,7 @@ def load_photo(url, photos):
 
 
 def fetch_one(url):
+    """Obtiene one desde la red o el disco."""
     url = (url or '').strip()
     if not url:
         return ''
@@ -167,6 +174,7 @@ def fetch_many(urls, on_done=None):
         return
 
     def work():
+        """Work."""
         for url in pending[:120]:
             fetch_one(url)
             if on_done:

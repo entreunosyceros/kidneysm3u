@@ -24,6 +24,7 @@ _PREFS_WINDOW = None
 
 
 def _tk_root(widget):
+    """Uso interno: tk root."""
     try:
         return widget.winfo_toplevel()
     except tk.TclError:
@@ -34,12 +35,15 @@ class _PrefsSessionHost:
     """Anfitrión mínimo para reexportar cookies sin abrir el reproductor."""
 
     def __init__(self, window):
+        """Inicializa _PrefsSessionHost."""
         self.window = window
 
     def update_youtube_session_ui(self, info=None):
+        """Actualiza youtube session interfaz."""
         refresh_preferences_session_ui(self.window, youtube_info=info)
 
     def update_twitch_session_ui(self, info=None):
+        """Actualiza twitch session interfaz."""
         refresh_preferences_session_ui(self.window, twitch_info=info)
 
 
@@ -82,6 +86,7 @@ def refresh_preferences_session_ui(parent=None, youtube_info=None, twitch_info=N
 
 
 def _resolve_video_player(parent, explicit=None):
+    """Uso interno: resolve video player."""
     if explicit is not None:
         return explicit
     root = _tk_root(parent)
@@ -95,6 +100,7 @@ def _resolve_video_player(parent, explicit=None):
 
 
 def _reexport_youtube_cookies(parent, video_player=None):
+    """Uso interno: reexport youtube cookies."""
     player = _resolve_video_player(parent, video_player)
     handler = getattr(player, 'youtube_handler', None) if player else None
     if handler is None:
@@ -105,6 +111,7 @@ def _reexport_youtube_cookies(parent, video_player=None):
 
 
 def _reexport_twitch_cookies(parent, video_player=None):
+    """Uso interno: reexport twitch cookies."""
     player = _resolve_video_player(parent, video_player)
     handler = getattr(player, 'twitch_handler', None) if player else None
     if handler is None:
@@ -115,6 +122,7 @@ def _reexport_twitch_cookies(parent, video_player=None):
 
 
 def yt_dlp_installed_version():
+    """Youtube dlp installed version."""
     try:
         from yt_dlp.version import __version__
         return str(__version__ or '').strip()
@@ -123,6 +131,7 @@ def yt_dlp_installed_version():
 
 
 def yt_dlp_upgrade_cmd(python=None):
+    """Youtube dlp upgrade cmd."""
     return [
         python or sys.executable,
         '-m', 'pip',
@@ -134,6 +143,7 @@ def yt_dlp_upgrade_cmd(python=None):
 
 
 def parse_yt_dlp_pip_result(output, returncode=0):
+    """Interpreta YouTube dlp PiP result."""
     text = output or ''
     lower = text.lower()
     if returncode:
@@ -152,6 +162,7 @@ def parse_yt_dlp_pip_result(output, returncode=0):
 
 
 def run_yt_dlp_upgrade(timeout=180):
+    """Ejecuta YouTube dlp upgrade."""
     try:
         completed = subprocess.run(
             yt_dlp_upgrade_cmd(),
@@ -168,6 +179,7 @@ def run_yt_dlp_upgrade(timeout=180):
 
 
 def yt_dlp_update_message(ok, detail):
+    """Youtube dlp update message."""
     current = yt_dlp_installed_version()
     if ok and detail == 'already':
         version = current or 'instalada'
@@ -194,6 +206,7 @@ def yt_dlp_update_message(ok, detail):
 
 
 def start_yt_dlp_upgrade(parent, on_done=None, busy_widgets=None):
+    """Inicia YouTube dlp upgrade."""
     global _YT_DLP_UPDATING
     if _YT_DLP_UPDATING:
         messagebox.showinfo('yt-dlp', 'Ya hay una actualización en curso.', parent=parent)
@@ -206,9 +219,11 @@ def start_yt_dlp_upgrade(parent, on_done=None, busy_widgets=None):
             pass
 
     def work():
+        """Work."""
         ok, detail = run_yt_dlp_upgrade()
 
         def finish():
+            """Finish."""
             global _YT_DLP_UPDATING
             _YT_DLP_UPDATING = False
             for widget in busy_widgets or ():
@@ -236,6 +251,7 @@ def start_yt_dlp_upgrade(parent, on_done=None, busy_widgets=None):
 
 
 def show_preferences(parent, on_apply=None, video_player=None):
+    """Muestra preferences."""
     global _PREFS_WINDOW
     root = _tk_root(parent)
     existing = _PREFS_WINDOW or getattr(root, '_prefs_window', None)
@@ -341,6 +357,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     cache_row.pack(fill=tk.X, pady=(10, 0))
 
     def clear_logo_cache():
+        """Limpia logo cache."""
         import logo_cache
         removed = logo_cache.clear_cache()
         messagebox.showinfo(
@@ -358,6 +375,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     ).pack(anchor=tk.W, pady=(8, 0))
 
     def _sync_light_opts(*_args):
+        """Uso interno: sync light opts."""
         state = 'normal' if light_var.get() else 'disabled'
         try:
             hw_decode_check.configure(state=state)
@@ -395,6 +413,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     ttk.Label(vol_row, textvariable=volume_label_var, style='CardMuted.TLabel', width=6).pack(side=tk.RIGHT)
 
     def _on_volume(value):
+        """Callback interno para volume."""
         try:
             volume_label_var.set(f'{int(float(value))} %')
         except (TypeError, ValueError):
@@ -473,12 +492,14 @@ def show_preferences(parent, on_apply=None, video_player=None):
     ).pack(anchor=tk.W, pady=(0, 8))
 
     def _paint_swatch(swatch, var):
+        """Uso interno: paint swatch."""
         try:
             swatch.configure(bg=var.get())
         except tk.TclError:
             swatch.configure(bg='#FFFFFF')
 
     def _color_row(parent, text, var):
+        """Uso interno: color row."""
         row = ttk.Frame(parent, style='Card.TFrame')
         row.pack(fill=tk.X, pady=(0, 8))
         ttk.Label(row, text=text, style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
@@ -494,6 +515,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
         swatch.pack_propagate(False)
 
         def pick():
+            """Pick."""
             _rgb, chosen = colorchooser.askcolor(color=var.get(), parent=window, title=text)
             if chosen:
                 var.set(subtitle_style.normalize_hex_color(chosen, var.get()))
@@ -519,6 +541,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     ttk.Label(text_op_row, textvariable=sub_text_op_label, style='CardMuted.TLabel', width=6).pack(side=tk.RIGHT)
 
     def _on_text_op(value):
+        """Callback interno para text op."""
         try:
             sub_text_op_label.set(f'{int(float(value))} %')
         except (TypeError, ValueError):
@@ -545,6 +568,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     ttk.Label(bg_op_row, textvariable=sub_bg_op_label, style='CardMuted.TLabel', width=6).pack(side=tk.RIGHT)
 
     def _on_bg_op(value):
+        """Callback interno para bg op."""
         try:
             percent = int(float(value))
         except (TypeError, ValueError):
@@ -565,6 +589,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     ttk.Label(margin_row, textvariable=sub_margin_label, style='CardMuted.TLabel', width=6).pack(side=tk.RIGHT)
 
     def _on_margin(value):
+        """Callback interno para margin."""
         try:
             sub_margin_label.set(f'{int(float(value))} px')
         except (TypeError, ValueError):
@@ -581,6 +606,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     ttk.Label(delay_row, textvariable=sub_delay_label, style='CardMuted.TLabel', width=8).pack(side=tk.RIGHT)
 
     def _on_delay(value):
+        """Callback interno para delay."""
         try:
             tenths = int(round(float(value)))
         except (TypeError, ValueError):
@@ -635,6 +661,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     ttk.Entry(dest_row, textvariable=download_var).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
 
     def browse_dir():
+        """Browse dir."""
         folder = filedialog.askdirectory(
             parent=window,
             title='Carpeta de descargas',
@@ -720,6 +747,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     version_var = tk.StringVar()
 
     def _refresh_ytdlp_version(_ok=None, _detail=None):
+        """Uso interno: refresh ytdlp version."""
         if _ok and _detail and _detail not in ('already',):
             version_var.set(f'Versión instalada: {_detail} (reinicia el programa)')
             return
@@ -748,6 +776,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
     buttons.pack(fill=tk.X, pady=(12, 0))
 
     def close():
+        """Close."""
         global _PREFS_WINDOW
         if getattr(root, '_prefs_window', None) is window:
             root._prefs_window = None
@@ -756,6 +785,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
         window.destroy()
 
     def save():
+        """Save."""
         folder = download_var.get().strip()
         if folder and not os.path.isdir(folder):
             messagebox.showerror(

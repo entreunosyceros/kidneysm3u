@@ -5,6 +5,7 @@ MAX_ZAP_DIGITS = 5
 
 
 def zap_max_digits(count):
+    """Zap max digits."""
     if count <= 0:
         return 1
     return max(1, min(MAX_ZAP_DIGITS, len(str(int(count)))))
@@ -24,6 +25,7 @@ def zap_event_digit(event):
 
 
 def zap_buffer_append(buffer, digit, count=0):
+    """Zap buffer append."""
     if digit not in '0123456789':
         return str(buffer or '')
     text = str(buffer or '') + digit
@@ -34,10 +36,12 @@ def zap_buffer_append(buffer, digit, count=0):
 
 
 def zap_buffer_backspace(buffer):
+    """Zap buffer backspace."""
     return str(buffer or '')[:-1]
 
 
 def zap_number(buffer):
+    """Zap number."""
     text = str(buffer or '').strip()
     if not text.isdigit():
         return None

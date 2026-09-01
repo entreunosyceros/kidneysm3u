@@ -16,13 +16,16 @@ def pip_surface_ready(width, height, viewable):
 
 
 class PlayerPipMixin:
+    """Clase que representa playerpipmixin."""
     def _video_target_frame(self):
+        """Uso interno: video target marco."""
         frame = getattr(self, '_pip_frame', None)
         if self._widget_exists(frame):
             return frame
         return getattr(self, 'video_frame', None)
 
     def _apply_topmost(self):
+        """Uso interno: apply topmost."""
         on = bool(getattr(self, '_topmost_var', None) and self._topmost_var.get())
         for window in (getattr(self, 'window', None), getattr(self, '_pip_window', None)):
             if not self._widget_exists(window):
@@ -33,18 +36,22 @@ class PlayerPipMixin:
                 pass
 
     def toggle_always_on_top(self):
+        """Alterna always on top."""
         self._apply_topmost()
 
     def pip_is_open(self):
+        """Pip is open."""
         return self._widget_exists(getattr(self, '_pip_window', None))
 
     def toggle_pip(self):
+        """Alterna PiP."""
         if self.pip_is_open():
             self.close_pip()
         else:
             self.open_pip()
 
     def open_pip(self):
+        """Abre PiP."""
         if not self._widget_exists(self.window) or self.pip_is_open():
             return
         if getattr(self, 'is_fullscreen', False):
@@ -90,6 +97,7 @@ class PlayerPipMixin:
             pass
 
     def close_pip(self):
+        """Cierra PiP."""
         self._cancel_pip_embed()
         pip = getattr(self, '_pip_window', None)
         self._pip_window = None
@@ -103,6 +111,7 @@ class PlayerPipMixin:
         self._apply_topmost()
 
     def _cancel_pip_embed(self):
+        """Uso interno: cancel PiP embed."""
         job = getattr(self, '_pip_embed_job', None)
         self._pip_embed_job = None
         if not job:
@@ -116,6 +125,7 @@ class PlayerPipMixin:
             pass
 
     def _schedule_pip_embed(self, delay_ms=50):
+        """Uso interno: schedule PiP embed."""
         self._cancel_pip_embed()
         host = getattr(self, '_pip_window', None) or getattr(self, 'window', None)
         if not self._widget_exists(host):
@@ -130,6 +140,7 @@ class PlayerPipMixin:
             self._pip_embed_job = None
 
     def _pip_target_ready(self, target):
+        """Uso interno: PiP target ready."""
         if not self._widget_exists(target):
             return False
         if not self.pip_is_open():
@@ -144,6 +155,7 @@ class PlayerPipMixin:
             return False
 
     def _player_state_name(self):
+        """Uso interno: player state name."""
         try:
             state = self.player.get_state()
         except Exception:
@@ -155,6 +167,7 @@ class PlayerPipMixin:
         return text.rsplit('.', 1)[-1]
 
     def _reembed_vlc(self):
+        """Uso interno: reembed VLC."""
         self._pip_embed_job = None
         target = self._video_target_frame()
         if not self.player or not self._widget_exists(target):

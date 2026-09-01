@@ -33,6 +33,7 @@ _LAUNCHER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'twitc
 
 
 def twitch_popout_chat_url(channel):
+    """Twitch popout chat url."""
     channel = (channel or '').strip().lower()
     if not channel:
         return ''
@@ -40,6 +41,7 @@ def twitch_popout_chat_url(channel):
 
 
 def chat_embed_html(channel, parent_host='127.0.0.1'):
+    """Chat embed html."""
     channel = plain_display_text(channel, '').strip().lower()
     if not _CHANNEL_RE.match(channel):
         channel = 'twitch'
@@ -66,12 +68,14 @@ def twitch_chat_window_url(channel):
 
 
 def chat_local_embed_url(channel, host='127.0.0.1', port=0):
+    """Chat local embed url."""
     if port:
         return f'http://{host}:{port}/'
     return ''
 
 
 def pywebview_gtk_ready():
+    """Pywebview gtk ready."""
     if webview is None:
         return False
     try:
@@ -83,6 +87,7 @@ def pywebview_gtk_ready():
 
 
 def _python_has_gi(python_exe):
+    """Uso interno: python has gi."""
     if not python_exe or not os.path.isfile(python_exe):
         return False
     try:
@@ -121,6 +126,7 @@ def system_python_with_gi():
 
 
 def chat_backend_status():
+    """Chat backend status."""
     if pywebview_gtk_ready():
         return 'pywebview', ''
     system_py = system_python_with_gi()
@@ -136,13 +142,16 @@ def chat_backend_status():
 
 
 class _ChatHandler(BaseHTTPRequestHandler):
+    """Clase que representa chathandler."""
     channel = ''
     parent_host = '127.0.0.1'
 
     def log_message(self, format, *args):
+        """Log message."""
         pass
 
     def do_GET(self):
+        """Do get."""
         if self.path not in ('/', '/index.html'):
             self.send_error(404)
             return
@@ -155,12 +164,15 @@ class _ChatHandler(BaseHTTPRequestHandler):
 
 
 class _ChatServer:
+    """Clase que representa chatserver."""
     def __init__(self):
+        """Inicializa _ChatServer."""
         self.server = None
         self.port = 0
         self.thread = None
 
     def start(self, channel):
+        """Start."""
         self.stop()
         handler = type('_Handler', (_ChatHandler,), {'channel': channel})
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
@@ -170,6 +182,7 @@ class _ChatServer:
         return self.port
 
     def stop(self):
+        """Stop."""
         server = self.server
         self.server = None
         if not server:
@@ -185,6 +198,7 @@ class _ChatServer:
 
 
 def resolve_twitch_channel(handler):
+    """Resolve twitch canal."""
     from twitch_player import twitch_display_name_from_url
 
     stream = getattr(handler, '_current_stream', None) or {}
@@ -203,6 +217,7 @@ def resolve_twitch_channel(handler):
 
 
 def can_show_twitch_chat(handler=None, stream=None, url=''):
+    """Can show twitch chat."""
     if handler is not None:
         stream = getattr(handler, '_current_stream', None) or stream or {}
         url = getattr(handler, '_current_url', '') or url
@@ -215,6 +230,7 @@ def can_show_twitch_chat(handler=None, stream=None, url=''):
 
 
 def _channel_from_stream(stream, url=''):
+    """Uso interno: canal from stream."""
     from twitch_player import twitch_display_name_from_url
 
     channel = plain_display_text((stream or {}).get('channel') or '', '').strip()
@@ -231,6 +247,7 @@ def _channel_from_stream(stream, url=''):
 
 
 def _chat_window_size():
+    """Uso interno: chat ventana size."""
     raw = (app_config.load().get('windows') or {}).get('twitch_chat') or '380x640'
     match = _GEOM_RE.match(str(raw).strip())
     if not match:
@@ -241,6 +258,7 @@ def _chat_window_size():
 
 
 def _remember_chat_size(width, height):
+    """Uso interno: remember chat size."""
     try:
         width = max(280, min(900, int(width)))
         height = max(320, min(1200, int(height)))
@@ -250,7 +268,9 @@ def _remember_chat_size(width, height):
 
 
 class TwitchChatPanel:
+    """Clase que representa twitchchatpanel."""
     def __init__(self, handler):
+        """Inicializa TwitchChatPanel."""
         self.handler = handler
         self._server = _ChatServer()
         self._channel = ''
@@ -262,19 +282,23 @@ class TwitchChatPanel:
         self._lock = threading.Lock()
 
     def is_open(self):
+        """Indica si open."""
         with self._lock:
             return bool(self._open)
 
     def available(self):
+        """Available."""
         return can_show_twitch_chat(self.handler)
 
     def toggle(self):
+        """Toggle."""
         if self.is_open():
             self.close()
             return
         self.open()
 
     def open(self, channel=None):
+        """Open."""
         if not self.available():
             parent = getattr(getattr(self.handler, 'video_player', None), 'window', None)
             messagebox.showinfo(
@@ -332,6 +356,7 @@ class TwitchChatPanel:
         return self._open_browser(channel, reason=detail)
 
     def close(self, notify_ui=True):
+        """Close."""
         proc = self._helper_proc
         if proc is not None and proc.poll() is None:
             try:
@@ -356,10 +381,12 @@ class TwitchChatPanel:
             self._notify_ui()
 
     def close_if_not_live(self):
+        """Cierra if not live."""
         if not self.available():
             self.close()
 
     def _run_system_gtk(self, url, channel, width, height, python_exe):
+        """Uso interno: run system gtk."""
         if not os.path.isfile(_LAUNCHER_PATH):
             print(f'[TwitchChat] No se encontró {_LAUNCHER_PATH}')
             return False
@@ -402,6 +429,7 @@ class TwitchChatPanel:
         return True
 
     def _watch_helper_proc(self, proc):
+        """Uso interno: watch helper proc."""
         err = ''
         try:
             _, err = proc.communicate()
@@ -419,6 +447,7 @@ class TwitchChatPanel:
         self._notify_ui()
 
     def _open_browser(self, channel, reason='', integrated=True):
+        """Uso interno: open browser."""
         url = twitch_popout_chat_url(channel)
         if not url:
             return False
@@ -442,6 +471,7 @@ class TwitchChatPanel:
         return True
 
     def _run_pywebview(self, url, channel, width, height):
+        """Uso interno: run pywebview."""
         window = None
         try:
             window = webview.create_window(
@@ -456,6 +486,7 @@ class TwitchChatPanel:
                 self._webview_window = window
 
             def on_closed():
+                """Responde al evento closed."""
                 self._on_webview_closed(window)
 
             window.events.closed += on_closed
@@ -473,6 +504,7 @@ class TwitchChatPanel:
             self._server.stop()
 
     def _on_webview_closed(self, window):
+        """Callback interno para webview closed."""
         with self._lock:
             if not self._open:
                 return
@@ -490,6 +522,7 @@ class TwitchChatPanel:
         self._notify_ui()
 
     def _notify_ui(self):
+        """Uso interno: notify interfaz."""
         player = getattr(self.handler, 'video_player', None)
         if not player:
             return
@@ -506,5 +539,6 @@ class TwitchChatPanel:
 
 
 def start_chat_server(channel):
+    """Inicia chat server."""
     server = _ChatServer()
     return server.start(channel), server

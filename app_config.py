@@ -93,6 +93,7 @@ _cache = None
 
 
 def _deep_merge(base, incoming):
+    """Uso interno: deep merge."""
     merged = dict(base)
     for key, value in (incoming or {}).items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
@@ -103,6 +104,7 @@ def _deep_merge(base, incoming):
 
 
 def load():
+    """Load."""
     global _cache
     if _cache is not None:
         return _cache
@@ -125,6 +127,7 @@ def load():
 
 
 def save(updates=None):
+    """Save."""
     data = load()
     if updates:
         data = _deep_merge(data, updates)
@@ -140,15 +143,18 @@ def save(updates=None):
 
 
 def get_theme():
+    """Obtiene theme."""
     theme = str(load().get('theme') or 'dark').strip().lower()
     return 'dark' if theme in ('dark', 'equilux') else 'light'
 
 
 def set_theme(theme):
+    """Establece theme."""
     save({'theme': 'dark' if theme in ('dark', 'equilux', True) else 'light'})
 
 
 def get_volume():
+    """Obtiene volume."""
     try:
         return max(0, min(100, int(load().get('volume', 50))))
     except (TypeError, ValueError):
@@ -156,6 +162,7 @@ def get_volume():
 
 
 def set_volume(value):
+    """Establece volume."""
     try:
         save({'volume': max(0, min(100, int(value)))})
     except (TypeError, ValueError):
@@ -163,6 +170,7 @@ def set_volume(value):
 
 
 def suggested_download_dir():
+    """Suggested download dir."""
     candidates = [
         os.environ.get('XDG_DOWNLOAD_DIR'),
         os.path.expanduser('~/Descargas'),
@@ -177,6 +185,7 @@ def suggested_download_dir():
 
 
 def get_download_dir():
+    """Obtiene download dir."""
     stored = str(load().get('download_dir') or '').strip()
     if stored and os.path.isdir(stored):
         return stored
@@ -184,80 +193,99 @@ def get_download_dir():
 
 
 def set_download_dir(path):
+    """Establece download dir."""
     save({'download_dir': str(path or '').strip()})
 
 
 def get_open_folder_after_download():
+    """Obtiene open folder after download."""
     return bool(load().get('open_folder_after_download', True))
 
 
 def set_open_folder_after_download(value):
+    """Establece open folder after download."""
     save({'open_folder_after_download': bool(value)})
 
 
 def get_cookie_browser():
+    """Obtiene cookie browser."""
     value = str(load().get('cookie_browser') or 'auto').strip().lower()
     return value if value in COOKIE_BROWSERS else 'auto'
 
 
 def set_cookie_browser(name):
+    """Establece cookie browser."""
     value = str(name or 'auto').strip().lower()
     save({'cookie_browser': value if value in COOKIE_BROWSERS else 'auto'})
 
 
 def get_remember_last_list():
+    """Obtiene remember last list."""
     return bool(load().get('remember_last_list', True))
 
 
 def set_remember_last_list(value):
+    """Establece remember last list."""
     save({'remember_last_list': bool(value)})
 
 
 def get_show_channel_logos():
+    """Obtiene show canal logos."""
     return bool(load().get('show_channel_logos', True))
 
 
 def set_show_channel_logos(value):
+    """Establece show canal logos."""
     save({'show_channel_logos': bool(value)})
 
 
 def get_light_mode():
+    """Obtiene light mode."""
     return bool(load().get('light_mode', False))
 
 
 def set_light_mode(value):
+    """Establece light mode."""
     save({'light_mode': bool(value)})
 
 
 def get_light_mode_hw_decode():
+    """Obtiene light mode hw decode."""
     return bool(load().get('light_mode_hw_decode', True))
 
 
 def set_light_mode_hw_decode(value):
+    """Establece light mode hw decode."""
     save({'light_mode_hw_decode': bool(value)})
 
 
 def get_show_cpu_monitor():
+    """Obtiene show cpu monitor."""
     return bool(load().get('show_cpu_monitor', False))
 
 
 def set_show_cpu_monitor(value):
+    """Establece show cpu monitor."""
     save({'show_cpu_monitor': bool(value)})
 
 
 def light_mode_session_max():
+    """Light mode session max."""
     return LIGHT_MODE_SESSION_MAX
 
 
 def effective_show_channel_logos():
+    """Effective show canal logos."""
     return get_show_channel_logos() and not get_light_mode()
 
 
 def iptv_use_hw_decode():
+    """Iptv use hw decode."""
     return get_light_mode() and get_light_mode_hw_decode()
 
 
 def effective_youtube_quality(value=None):
+    """Effective youtube quality."""
     height = normalize_youtube_quality(
         get_youtube_quality() if value is None else value
     )
@@ -269,6 +297,7 @@ def effective_youtube_quality(value=None):
 
 
 def effective_twitch_quality(value=None):
+    """Effective twitch quality."""
     height = normalize_twitch_quality(
         get_twitch_quality() if value is None else value
     )
@@ -280,18 +309,21 @@ def effective_twitch_quality(value=None):
 
 
 def effective_yt_cache_max_bytes():
+    """Effective youtube cache max bytes."""
     if get_light_mode():
         return LIGHT_MODE_YT_CACHE_BYTES
     return 500 * 1024 * 1024
 
 
 def epg_reload_interval_ms():
+    """Guía epg reload interval ms."""
     if get_light_mode():
         return 0
     return 30 * 60 * 1000
 
 
 def epg_tick_interval_ms():
+    """Guía epg tick interval ms."""
     if get_light_mode():
         return LIGHT_MODE_EPG_TICK_MS
     return 60 * 1000
@@ -314,22 +346,27 @@ def should_skip_session_restore(session):
 
 
 def get_epg_url():
+    """Obtiene guía EPG URL."""
     return str(load().get('epg_url') or '').strip()
 
 
 def set_epg_url(url):
+    """Establece guía EPG URL."""
     save({'epg_url': str(url or '').strip()})
 
 
 def get_check_app_updates():
+    """Obtiene check app updates."""
     return bool(load().get('check_app_updates', True))
 
 
 def set_check_app_updates(value):
+    """Establece check app updates."""
     save({'check_app_updates': bool(value)})
 
 
 def get_app_update_checked_at():
+    """Obtiene app update checked at."""
     try:
         return max(0, int(load().get('app_update_checked_at') or 0))
     except (TypeError, ValueError):
@@ -337,6 +374,7 @@ def get_app_update_checked_at():
 
 
 def get_app_update_cache():
+    """Obtiene app update cache."""
     cached = load().get('app_update_cache')
     if not isinstance(cached, dict):
         return None
@@ -347,6 +385,7 @@ def get_app_update_cache():
 
 
 def set_app_update_cache(payload):
+    """Establece app update cache."""
     import time
     data = payload if isinstance(payload, dict) else {}
     save({
@@ -384,6 +423,7 @@ def normalize_youtube_quality(value):
 
 
 def youtube_quality_label(value=None):
+    """Youtube quality label."""
     height = normalize_youtube_quality(
         get_youtube_quality() if value is None else value
     )
@@ -393,6 +433,7 @@ def youtube_quality_label(value=None):
 
 
 def youtube_quality_cache_key(value=None):
+    """Youtube quality cache key."""
     height = normalize_youtube_quality(
         get_youtube_quality() if value is None else value
     )
@@ -400,26 +441,32 @@ def youtube_quality_cache_key(value=None):
 
 
 def get_youtube_quality():
+    """Obtiene youtube quality."""
     return normalize_youtube_quality(load().get('youtube_quality', 720))
 
 
 def set_youtube_quality(height):
+    """Establece youtube quality."""
     save({'youtube_quality': normalize_youtube_quality(height)})
 
 
 def get_youtube_auto_subtitles():
+    """Obtiene youtube auto subtitles."""
     return bool(load().get('youtube_auto_subtitles', True))
 
 
 def set_youtube_auto_subtitles(enabled):
+    """Establece youtube auto subtitles."""
     save({'youtube_auto_subtitles': bool(enabled)})
 
 
 def normalize_twitch_quality(value):
+    """Normaliza twitch quality."""
     return normalize_youtube_quality(value)
 
 
 def twitch_quality_label(value=None):
+    """Twitch quality label."""
     height = normalize_twitch_quality(
         get_twitch_quality() if value is None else value
     )
@@ -429,40 +476,49 @@ def twitch_quality_label(value=None):
 
 
 def get_twitch_quality():
+    """Obtiene twitch quality."""
     return normalize_twitch_quality(load().get('twitch_quality', 720))
 
 
 def set_twitch_quality(height):
+    """Establece twitch quality."""
     save({'twitch_quality': normalize_twitch_quality(height)})
 
 
 def get_twitch_chat_auto_open():
+    """Obtiene twitch chat auto open."""
     return bool(load().get('twitch_chat_auto_open', False))
 
 
 def set_twitch_chat_auto_open(value):
+    """Establece twitch chat auto open."""
     save({'twitch_chat_auto_open': bool(value)})
 
 
 def get_iptv_buffer():
+    """Obtiene IPTV buffer."""
     return normalize_iptv_buffer_profile(load().get('iptv_buffer', 'balanced'))
 
 
 def set_iptv_buffer(value):
+    """Establece IPTV buffer."""
     save({'iptv_buffer': normalize_iptv_buffer_profile(value)})
 
 
 def get_subtitle_style():
+    """Obtiene subtitle style."""
     from subtitle_style import normalize_subtitle_style
     return normalize_subtitle_style(load())
 
 
 def set_subtitle_style(values):
+    """Establece subtitle style."""
     from subtitle_style import normalize_subtitle_style
     save(normalize_subtitle_style(values))
 
 
 def remember_playlist(path, kind='file'):
+    """Remember lista de reproducción."""
     if not path:
         return
     path = str(path).strip()
@@ -479,6 +535,7 @@ def remember_playlist(path, kind='file'):
 
 
 def _clean_download_url_entry(raw):
+    """Uso interno: clean download URL entry."""
     if isinstance(raw, str):
         url = raw.strip()
         return {'url': url, 'name': ''} if url else None
@@ -494,6 +551,7 @@ def _clean_download_url_entry(raw):
 
 
 def download_url_history():
+    """Descarga URL historial."""
     items = []
     seen = set()
     for raw in load().get('recent_download_urls') or []:
@@ -506,6 +564,7 @@ def download_url_history():
 
 
 def remember_download_url(url, name=''):
+    """Remember download url."""
     url = str(url or '').strip()
     if not url:
         return
@@ -536,6 +595,7 @@ YT_SEARCH_SORTS = ('Relevancia', 'Fecha', 'Vistas', 'Valoración')
 
 
 def _clean_youtube_search_entry(raw):
+    """Uso interno: clean youtube search entry."""
     if isinstance(raw, str):
         query = raw.strip()
         raw = {'query': query} if query else None
@@ -558,6 +618,7 @@ def _clean_youtube_search_entry(raw):
 
 
 def youtube_search_key(entry):
+    """Youtube search key."""
     item = _clean_youtube_search_entry(entry)
     if not item:
         return None
@@ -571,6 +632,7 @@ def youtube_search_key(entry):
 
 
 def youtube_search_label(entry):
+    """Youtube search label."""
     item = _clean_youtube_search_entry(entry)
     if not item:
         return ''
@@ -589,6 +651,7 @@ def youtube_search_label(entry):
 
 
 def youtube_search_history():
+    """Youtube search historial."""
     items = []
     seen = set()
     for raw in load().get('youtube_searches') or []:
@@ -602,6 +665,7 @@ def youtube_search_history():
 
 
 def remember_youtube_search(query, type_name='Vídeos', date='Cualquier fecha', duration='Cualquier duración', sort='Relevancia'):
+    """Remember youtube search."""
     entry = _clean_youtube_search_entry({
         'query': query,
         'type': type_name,
@@ -618,6 +682,7 @@ def remember_youtube_search(query, type_name='Vídeos', date='Cualquier fecha', 
 
 
 def remember_sidebar(items, source='', kind='items', groups=None, tvg_ids=None, epg_urls=None, logos=None):
+    """Remember barra lateral."""
     if not get_remember_last_list():
         return
     snapshot = []
@@ -673,6 +738,7 @@ def remember_sidebar(items, source='', kind='items', groups=None, tvg_ids=None, 
 
 
 def clear_session_list():
+    """Limpia session list."""
     save({
         'session': {
             'playlist': '',
@@ -686,6 +752,7 @@ def clear_session_list():
 
 
 def remember_channel(index, name, url):
+    """Remember canal."""
     if not get_remember_last_list():
         return
     save({
@@ -698,6 +765,7 @@ def remember_channel(index, name, url):
 
 
 def _yt_resume_seconds_value(entry):
+    """Uso interno: YouTube resume seconds value."""
     if isinstance(entry, (int, float)):
         return float(entry)
     if isinstance(entry, dict):
@@ -709,6 +777,7 @@ def _yt_resume_seconds_value(entry):
 
 
 def _yt_resume_near_end(seconds, duration_s):
+    """Uso interno: YouTube resume near end."""
     try:
         duration_s = float(duration_s or 0)
     except (TypeError, ValueError):
@@ -720,6 +789,7 @@ def _yt_resume_near_end(seconds, duration_s):
 
 
 def youtube_resume_seconds(video_id, duration_s=None):
+    """Youtube resume seconds."""
     video_id = str(video_id or '').strip()
     if len(video_id) != 11:
         return 0.0
@@ -733,6 +803,7 @@ def youtube_resume_seconds(video_id, duration_s=None):
 
 
 def remember_youtube_position(video_id, seconds, duration_s=None, title=None, url=None):
+    """Remember youtube position."""
     video_id = str(video_id or '').strip()
     if len(video_id) != 11:
         return
@@ -771,6 +842,7 @@ def remember_youtube_position(video_id, seconds, duration_s=None, title=None, ur
 
 
 def clear_youtube_position(video_id):
+    """Limpia youtube position."""
     video_id = str(video_id or '').strip()
     if not video_id:
         return
@@ -796,6 +868,7 @@ def clear_youtube_position(video_id):
 
 
 def _clean_youtube_history_entry(item):
+    """Uso interno: clean youtube historial entry."""
     if not isinstance(item, dict):
         return None
     video_id = str(item.get('id') or '').strip()
@@ -825,6 +898,7 @@ def _clean_youtube_history_entry(item):
 
 
 def _upsert_youtube_history(data, video_id, title=None, url=None, seconds=None, duration=None):
+    """Uso interno: upsert youtube historial."""
     video_id = str(video_id or '').strip()
     if len(video_id) != 11:
         return
@@ -867,6 +941,7 @@ def _upsert_youtube_history(data, video_id, title=None, url=None, seconds=None, 
 
 
 def remember_youtube_watch(video_id, title='', url=''):
+    """Remember youtube watch."""
     video_id = str(video_id or '').strip()
     if len(video_id) != 11:
         return
@@ -876,6 +951,7 @@ def remember_youtube_watch(video_id, title='', url=''):
 
 
 def youtube_history():
+    """Youtube historial."""
     items = []
     seen = set()
     for raw in load().get('youtube_history') or []:
@@ -888,6 +964,7 @@ def youtube_history():
 
 
 def youtube_history_item(video_id):
+    """Youtube historial item."""
     video_id = str(video_id or '').strip()
     if len(video_id) != 11:
         return None
@@ -898,6 +975,7 @@ def youtube_history_item(video_id):
 
 
 def youtube_history_item_by_url(url):
+    """Youtube historial item by url."""
     url = str(url or '').strip()
     if not url:
         return None
@@ -908,6 +986,7 @@ def youtube_history_item_by_url(url):
 
 
 def youtube_history_label(item, with_time=False, limit=46):
+    """Youtube historial label."""
     name = str((item or {}).get('name') or 'YouTube').strip() or 'YouTube'
     name = truncate_ui_text(name, limit)
     if not with_time:
@@ -929,6 +1008,7 @@ def youtube_history_label(item, with_time=False, limit=46):
 
 
 def youtube_continue_watching():
+    """Youtube continue watching."""
     found = []
     for item in youtube_history():
         seconds = int(item.get('s') or 0)
@@ -941,6 +1021,7 @@ def youtube_continue_watching():
 
 
 def remove_youtube_history(video_id):
+    """Quita youtube historial."""
     video_id = str(video_id or '').strip()
     if not video_id:
         return
@@ -957,6 +1038,7 @@ def remove_youtube_history(video_id):
 
 
 def clear_youtube_history():
+    """Limpia youtube historial."""
     data = load()
     changed = bool(data.get('youtube_history') or data.get('youtube_resume'))
     if not changed:
@@ -967,11 +1049,13 @@ def clear_youtube_history():
 
 
 def _is_twitch_url(url):
+    """Uso interno: is twitch URL."""
     text = (url or '').lower()
     return 'twitch.tv' in text
 
 
 def _clean_twitch_history_entry(item):
+    """Uso interno: clean twitch historial entry."""
     if not isinstance(item, dict):
         return None
     url = str(item.get('url') or '').strip()
@@ -1012,11 +1096,13 @@ def _clean_twitch_history_entry(item):
 
 
 def _is_twitch_vod_url(url):
+    """Uso interno: is twitch vod URL."""
     text = str(url or '').lower()
     return _is_twitch_url(text) and '/videos/' in text
 
 
 def remember_twitch_watch(url, title=''):
+    """Remember twitch watch."""
     url = str(url or '').strip()
     if not url or not _is_twitch_url(url):
         return
@@ -1050,6 +1136,7 @@ def remember_twitch_watch(url, title=''):
 
 
 def update_twitch_position(url, seconds, duration_s=None):
+    """Actualiza twitch position."""
     url = str(url or '').strip()
     if not url or not _is_twitch_vod_url(url):
         return
@@ -1087,6 +1174,7 @@ def update_twitch_position(url, seconds, duration_s=None):
 
 
 def twitch_resume_seconds(url, duration_s=None):
+    """Twitch resume seconds."""
     if not _is_twitch_vod_url(url):
         return 0.0
     item = twitch_history_item_by_url(url)
@@ -1102,6 +1190,7 @@ def twitch_resume_seconds(url, duration_s=None):
 
 
 def twitch_continue_watching():
+    """Twitch continue watching."""
     found = []
     for item in twitch_history():
         if item.get('kind') != 'vod':
@@ -1116,10 +1205,12 @@ def twitch_continue_watching():
 
 
 def clear_twitch_position(url):
+    """Limpia twitch position."""
     update_twitch_position(url, 0, 0)
 
 
 def twitch_history():
+    """Twitch historial."""
     items = []
     seen = set()
     for raw in load().get('twitch_history') or []:
@@ -1132,6 +1223,7 @@ def twitch_history():
 
 
 def twitch_history_item_by_url(url):
+    """Twitch historial item by url."""
     wanted = str(url or '').strip()
     if not wanted:
         return None
@@ -1142,6 +1234,7 @@ def twitch_history_item_by_url(url):
 
 
 def twitch_history_label(item, limit=46, with_time=False):
+    """Twitch historial label."""
     name = str((item or {}).get('name') or 'Twitch').strip()
     name = truncate_ui_text(name, limit)
     base = f'Twitch · {name}'
@@ -1159,6 +1252,7 @@ def twitch_history_label(item, limit=46, with_time=False):
 
 
 def clear_twitch_history():
+    """Limpia twitch historial."""
     data = load()
     if not data.get('twitch_history'):
         return
@@ -1167,6 +1261,7 @@ def clear_twitch_history():
 
 
 def _clean_youtube_queue_item(item):
+    """Uso interno: clean youtube cola item."""
     if isinstance(item, (tuple, list)) and len(item) >= 2:
         name, url = item[0], item[1]
         item = {'name': name, 'url': url}
@@ -1182,6 +1277,7 @@ def _clean_youtube_queue_item(item):
 
 
 def youtube_queue():
+    """Youtube cola."""
     items = []
     seen = set()
     for raw in load().get('youtube_queue') or []:
@@ -1194,6 +1290,7 @@ def youtube_queue():
 
 
 def enqueue_youtube_queue(items):
+    """Enqueue youtube cola."""
     queue = youtube_queue()
     existing = {entry['url'] for entry in queue}
     added = 0
@@ -1212,6 +1309,7 @@ def enqueue_youtube_queue(items):
 
 
 def pop_youtube_queue(index=0):
+    """Pop youtube cola."""
     queue = youtube_queue()
     if not (0 <= index < len(queue)):
         return None
@@ -1223,6 +1321,7 @@ def pop_youtube_queue(index=0):
 
 
 def move_youtube_queue(index, delta):
+    """Mueve youtube cola."""
     queue = youtube_queue()
     dest = index + int(delta or 0)
     if not (0 <= index < len(queue) and 0 <= dest < len(queue)):
@@ -1236,10 +1335,12 @@ def move_youtube_queue(index, delta):
 
 
 def remove_youtube_queue(index):
+    """Quita youtube cola."""
     return pop_youtube_queue(index) is not None
 
 
 def clear_youtube_queue():
+    """Limpia youtube cola."""
     data = load()
     if not data.get('youtube_queue'):
         return
@@ -1248,11 +1349,13 @@ def clear_youtube_queue():
 
 
 def _is_youtube_url(url):
+    """Uso interno: is youtube URL."""
     text = (url or '').lower()
     return 'youtube.com' in text or 'youtu.be' in text
 
 
 def format_iptv_clock(seconds):
+    """Formatea IPTV clock."""
     try:
         total = max(0, int(float(seconds or 0)))
     except (TypeError, ValueError):
@@ -1265,6 +1368,7 @@ def format_iptv_clock(seconds):
 
 
 def _clean_iptv_history_entry(item):
+    """Uso interno: clean IPTV historial entry."""
     if not isinstance(item, dict):
         return None
     url = str(item.get('url') or '').strip()
@@ -1298,6 +1402,7 @@ def _clean_iptv_history_entry(item):
 
 
 def iptv_history():
+    """Iptv historial."""
     items = []
     seen = set()
     for raw in load().get('iptv_history') or []:
@@ -1310,6 +1415,7 @@ def iptv_history():
 
 
 def iptv_history_item(url):
+    """Iptv historial item."""
     url = str(url or '').strip()
     if not url:
         return None
@@ -1320,6 +1426,7 @@ def iptv_history_item(url):
 
 
 def iptv_history_label(item, with_time=False, limit=46):
+    """Iptv historial label."""
     name = str((item or {}).get('name') or 'Sin nombre').strip() or 'Sin nombre'
     name = truncate_ui_text(name, limit)
     if not with_time or (item or {}).get('kind') != 'vod':
@@ -1341,6 +1448,7 @@ def iptv_history_label(item, with_time=False, limit=46):
 
 
 def iptv_continue_watching():
+    """Iptv continue watching."""
     found = []
     for item in iptv_history():
         if item.get('kind') != 'vod':
@@ -1355,6 +1463,7 @@ def iptv_continue_watching():
 
 
 def remember_iptv_history(name, url, group=''):
+    """Remember iptv historial."""
     url = str(url or '').strip()
     if not url or _is_youtube_url(url):
         return
@@ -1386,6 +1495,7 @@ def remember_iptv_history(name, url, group=''):
 
 
 def update_iptv_position(url, seconds, duration_s=None):
+    """Actualiza IPTV position."""
     url = str(url or '').strip()
     if not url or _is_youtube_url(url) or not is_iptv_vod(url):
         return
@@ -1423,6 +1533,7 @@ def update_iptv_position(url, seconds, duration_s=None):
 
 
 def iptv_resume_seconds(url, duration_s=None):
+    """Iptv resume seconds."""
     item = iptv_history_item(url)
     if not item or item.get('kind') != 'vod':
         return 0.0
@@ -1436,6 +1547,7 @@ def iptv_resume_seconds(url, duration_s=None):
 
 
 def remove_iptv_history(url):
+    """Quita IPTV historial."""
     url = str(url or '').strip()
     if not url:
         return
@@ -1449,6 +1561,7 @@ def remove_iptv_history(url):
 
 
 def clear_iptv_history():
+    """Limpia IPTV historial."""
     data = load()
     if not data.get('iptv_history'):
         return
@@ -1457,12 +1570,14 @@ def clear_iptv_history():
 
 
 def remember_window(name, geometry):
+    """Remember ventana."""
     if not geometry:
         return
     save({'windows': {name: geometry}})
 
 
 def apply_geometry(window, name, fallback=None):
+    """Aplica geometry."""
     geometry = (load().get('windows') or {}).get(name) or fallback
     if not geometry:
         return False
@@ -1482,6 +1597,7 @@ def apply_geometry(window, name, fallback=None):
 
 
 def capture_geometry(window):
+    """Capture geometry."""
     try:
         if window.state() == 'zoomed':
             return None

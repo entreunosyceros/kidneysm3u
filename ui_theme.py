@@ -84,10 +84,12 @@ PALETTES = {
 
 
 def is_dark():
+    """Indica si dark."""
     return _DARK
 
 
 def get_colors():
+    """Obtiene colors."""
     return PALETTES['dark' if _DARK else 'light']
 
 
@@ -419,6 +421,7 @@ def apply_theme(root, dark=False):
 
 
 def _configure_button(style, name, bg, fg, border, hover, disabled_bg, disabled_fg):
+    """Uso interno: configure button."""
     style.configure(
         name,
         background=bg,
@@ -444,6 +447,7 @@ def _configure_button(style, name, bg, fg, border, hover, disabled_bg, disabled_
 
 
 def style_window(window):
+    """Style ventana."""
     colors = get_colors()
     try:
         window.configure(bg=colors['bg'])
@@ -454,6 +458,7 @@ def style_window(window):
 
 
 def style_listbox(listbox):
+    """Style lista."""
     colors = get_colors()
     listbox.configure(
         background=colors['list_bg'],
@@ -471,6 +476,7 @@ def style_listbox(listbox):
 
 
 def style_text(widget):
+    """Style text."""
     colors = get_colors()
     widget.configure(
         background=colors['entry_bg'],
@@ -488,6 +494,7 @@ def style_text(widget):
 
 
 def style_menu(menu):
+    """Style menu."""
     colors = get_colors()
     try:
         menu.configure(
@@ -504,6 +511,7 @@ def style_menu(menu):
 
 
 def style_menu_tree(menu):
+    """Style menu árbol."""
     if menu is None:
         return
     style_menu(menu)
@@ -522,6 +530,7 @@ def style_menu_tree(menu):
 
 
 def set_window_icon(window):
+    """Establece ventana icon."""
     global _ICON_REF
     try:
         window.tk.call('wm', 'class', window._w, APP_WM_CLASS, APP_WM_CLASS)
@@ -540,6 +549,7 @@ def set_window_icon(window):
 
 
 def _hex_to_rgba(color):
+    """Uso interno: hex to rgba."""
     color = color.lstrip('#')
     if len(color) == 3:
         color = ''.join(ch * 2 for ch in color)
@@ -553,15 +563,19 @@ def make_control_icons(color, size=20, record_color=None):
     fill = _hex_to_rgba(color)
 
     def blank():
+        """Blank."""
         return Image.new('RGBA', (size, size), (0, 0, 0, 0))
 
     def photo(img):
+        """Photo."""
         return ImageTk.PhotoImage(img)
 
     def triangle(draw, points):
+        """Triangle."""
         draw.polygon(points, fill=fill)
 
     def bar(draw, x0, y0, x1, y1):
+        """Bar."""
         draw.rectangle([x0, y0, x1, y1], fill=fill)
 
     p = max(2, size // 6)
@@ -704,6 +718,7 @@ def make_control_icons(color, size=20, record_color=None):
 
 
 def center_window(window, width=None, height=None):
+    """Center ventana."""
     window.update_idletasks()
     width = width or window.winfo_width()
     height = height or window.winfo_height()

@@ -1,3 +1,5 @@
+"""Módulo de test m3u and epg."""
+
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
@@ -64,44 +66,55 @@ SAMPLE_XMLTV = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 class TestExtm3uHeader:
+    """Clase que representa testextm3uheader."""
     def test_keeps_url_tvg(self):
+        """Prueba keeps URL tvg."""
         line = '#EXTM3U url-tvg="http://epg.example/guia.xml"\n'
         assert extm3u_header_line(line) == line
 
     def test_keeps_x_tvg_url_without_newline(self):
+        """Prueba keeps x tvg URL without newline."""
         line = '#EXTM3U x-tvg-url="https://backup.example/epg.xml"'
         assert extm3u_header_line(line) == line + '\n'
 
     def test_strips_bom(self):
+        """Prueba strips bom."""
         line = '\ufeff#EXTM3U url-tvg="http://epg.example/guia.xml"\n'
         assert extm3u_header_line(line) == '#EXTM3U url-tvg="http://epg.example/guia.xml"\n'
 
     def test_bare_header_when_first_line_is_extinf(self):
+        """Prueba bare header when first line is extinf."""
         assert extm3u_header_line('#EXTINF:-1,Canal\n') == '#EXTM3U\n'
 
     def test_empty_line(self):
+        """Prueba empty line."""
         assert extm3u_header_line('') == '#EXTM3U\n'
 
 
 class TestParseEpgUrls:
+    """Clase que representa testparseepgurls."""
     def test_reads_url_tvg_from_header(self):
+        """Prueba reads URL tvg from header."""
         assert parse_m3u_epg_urls(SAMPLE_M3U) == [
             'http://epg.example/guia.xml',
             'https://backup.example/epg.xml',
         ]
 
     def test_header_only_extm3u_loses_guide(self):
+        """Prueba header only extm3u loses guide."""
         filtered = extm3u_header_line('#EXTINF:-1,Canal\n') + (
             '#EXTINF:-1 tvg-id="es.la1",La 1\nhttp://x\n'
         )
         assert parse_m3u_epg_urls(filtered) == []
 
     def test_preserved_header_keeps_guide_after_filter(self):
+        """Prueba preserved header keeps guide after filter."""
         original = '#EXTM3U url-tvg="http://epg.example/guia.xml"\n'
         out = extm3u_header_line(original) + '#EXTINF:-1 tvg-id="es.la1",La 1\nhttp://x\n'
         assert parse_m3u_epg_urls(out) == ['http://epg.example/guia.xml']
 
     def test_tvg_url_on_extinf_if_no_header(self):
+        """Prueba tvg URL on extinf if no header."""
         text = (
             '#EXTM3U\n'
             '#EXTINF:-1 tvg-url="http://from-inf.example/epg.xml" tvg-id="a",A\n'
@@ -111,7 +124,9 @@ class TestParseEpgUrls:
 
 
 class TestParseChannels:
+    """Clase que representa testparsechannels."""
     def test_name_group_tvg_id_and_skips_images(self):
+        """Prueba name group tvg id and skips images."""
         channels = parse_m3u_channels(SAMPLE_M3U)
         assert channels == [
             ('La 1 HD', 'http://panel.example/live/1.ts', 'España', 'es.la1', ''),
@@ -120,6 +135,7 @@ class TestParseChannels:
         ]
 
     def test_entries_drop_group_and_id(self):
+        """Prueba entries drop group and id."""
         assert parse_m3u_entries(SAMPLE_M3U) == [
             ('La 1 HD', 'http://panel.example/live/1.ts'),
             ('La 2', 'http://panel.example/live/2.m3u8'),
@@ -127,6 +143,7 @@ class TestParseChannels:
         ]
 
     def test_skips_comments_between_extinf_and_url(self):
+        """Prueba skips comments between extinf and URL."""
         text = (
             '#EXTINF:-1 tvg-id="a",Canal\n'
             '#EXTVLCOPT:http-user-agent=VLC\n'
@@ -137,21 +154,25 @@ class TestParseChannels:
         ]
 
     def test_unquoted_group_and_tvg_id(self):
+        """Prueba unquoted group and tvg id."""
         text = '#EXTINF:-1 tvg-id=es.one group-title=Deportes,Gol\nhttp://x\n'
         name, url, group, tvg_id, logo = parse_m3u_channels(text)[0]
         assert (name, url, group, tvg_id, logo) == ('Gol', 'http://x', 'Deportes', 'es.one', '')
 
     def test_channel_id_attribute(self):
+        """Prueba canal id attribute."""
         text = '#EXTINF:-1 channel-id="MTVEsp.sp",ES| MTV SD\nhttp://x\n'
         assert parse_m3u_channels(text)[0][3] == 'MTVEsp.sp'
 
     def test_bytes_and_latin1(self):
+        """Prueba bytes and latin1."""
         raw = '#EXTINF:-1,Cañón\nhttp://x\n'.encode('latin-1')
         decoded = decode_m3u_bytes(raw)
         assert 'Cañón' in decoded
         assert parse_m3u_entries(raw)[0][0] == 'Cañón'
 
     def test_on_progress_starts_and_ends(self):
+        """Prueba on progress starts and ends."""
         ticks = []
         text = ''.join(f'#EXTINF:-1,C{i}\nhttp://x/{i}\n' for i in range(80))
         channels = parse_m3u_channels(text, on_progress=ticks.append)
@@ -163,18 +184,22 @@ class TestParseChannels:
 
 
 class TestClassifyIptv:
+    """Clase que representa testclassifyiptv."""
     def test_hls_container_mpegts(self):
+        """Prueba hls container mpegts."""
         assert classify_iptv_url('http://x/live/1.m3u8') == 'hls'
         assert classify_iptv_url('http://x/movie/a.mkv?token=1') == 'container'
         assert classify_iptv_url('http://x/live/1.ts') == 'mpegts'
         assert classify_iptv_url('http://x/live/1') == 'mpegts'
 
     def test_describe_does_not_echo_host(self):
+        """Prueba describe does not echo host."""
         summary = describe_iptv_url('http://secret.example/live/canal.ts')
         assert 'secret.example' not in summary
         assert summary == 'live/ts'
 
     def test_vod_vs_live(self):
+        """Prueba vod vs live."""
         assert is_iptv_vod('http://x/movie/u/p/1.mkv')
         assert is_iptv_vod('http://x/series/u/p/1.m3u8')
         assert is_iptv_vod('http://x/film.mp4')
@@ -183,18 +208,23 @@ class TestClassifyIptv:
 
 
 class TestXmltvDatetime:
+    """Clase que representa testxmltvdatetime."""
     def test_with_offset(self):
+        """Prueba with offset."""
         ts = parse_xmltv_datetime('20260824100000 +0200')
         expected = datetime(2026, 8, 24, 10, 0, tzinfo=MADRID).timestamp()
         assert ts == expected
 
     def test_invalid(self):
+        """Prueba invalid."""
         assert parse_xmltv_datetime('') is None
         assert parse_xmltv_datetime('no-es-fecha') is None
 
 
 class TestParseXmltv:
+    """Clase que representa testparsexmltv."""
     def test_now_next_spanish_title(self):
+        """Prueba now next spanish title."""
         guide = parse_xmltv(BytesIO(SAMPLE_XMLTV.encode()), ['es.la1'], now=NOW)
         current, nxt = guide.now_next('es.la1', now=NOW)
         assert current.title == 'Telediario'
@@ -202,12 +232,14 @@ class TestParseXmltv:
         assert guide.now_next('otros.id', now=NOW) == (None, None)
 
     def test_case_insensitive_id(self):
+        """Prueba case insensitive id."""
         guide = parse_xmltv(BytesIO(SAMPLE_XMLTV.encode()), ['ES.LA1'], now=NOW)
         current, nxt = guide.now_next('es.la1', now=NOW)
         assert current is not None
         assert nxt is not None
 
     def test_load_guide_from_text(self):
+        """Prueba load guide from text."""
         guide = load_guide_from_text(SAMPLE_XMLTV, ['es.la1'], now=NOW)
         text = format_now_next(*guide.now_next('es.la1', now=NOW))
         assert 'Ahora:' in text
@@ -216,14 +248,17 @@ class TestParseXmltv:
         assert 'Informativo' in text
 
     def test_empty_wanted(self):
+        """Prueba empty wanted."""
         assert parse_xmltv(BytesIO(SAMPLE_XMLTV.encode()), [], now=NOW).channel_count() == 0
 
     def test_broken_xml_returns_empty_guide(self):
+        """Prueba broken xml returns empty guide."""
         guide = parse_xmltv(BytesIO(b'<tv><programme>'), ['es.la1'], now=NOW)
         assert isinstance(guide, Guide)
         assert guide.now_next('es.la1', now=NOW) == (None, None)
 
     def test_grid_window_and_icon(self):
+        """Prueba grid ventana and icon."""
         guide = parse_xmltv(BytesIO(SAMPLE_XMLTV.encode()), ['es.la1'], now=NOW)
         assert guide.icon('es.la1') == 'http://cdn.example/la1.png'
         assert guide.now_title('es.la1', now=NOW) == 'Telediario'
@@ -234,6 +269,7 @@ class TestParseXmltv:
         assert 'Ya pasó' not in titles
 
     def test_matches_display_name_when_no_tvg_id(self):
+        """Prueba matches display name when no tvg id."""
         guide = parse_xmltv(
             BytesIO(SAMPLE_XMLTV.encode()),
             [],
@@ -249,29 +285,35 @@ class TestParseXmltv:
 
 
 class TestNormalizeEpgSource:
+    """Clase que representa testnormalizeepgsource."""
     def test_http_and_host(self):
+        """Prueba http and host."""
         assert normalize_epg_source('https://epg.example/xml') == 'https://epg.example/xml'
         assert normalize_epg_source('epg.example/xml') == 'https://epg.example/xml'
         assert normalize_epg_source('  "http://epg.example/a"  ') == 'http://epg.example/a'
 
     def test_get_php_port_80_stays_http(self):
+        """Prueba get php port 80 stays http."""
         raw = 'panel.example.cc:80/get.php?username=user&password=secret'
         assert normalize_epg_source(raw) == 'http://' + raw
         with_scheme = 'http://panel.example.cc:80/xmltv.php?username=user&password=secret'
         assert normalize_epg_source(with_scheme) == with_scheme
 
     def test_empty(self):
+        """Prueba empty."""
         assert normalize_epg_source('') == ''
         assert normalize_epg_source(None) == ''
 
 
 def test_programme_clock():
+    """Prueba programme clock."""
     start = datetime(2026, 8, 24, 10, 0).timestamp()
     prog = Programme(start, start + 3600, 'X')
     assert prog.clock == '10:00'
 
 
 def test_logo_cache_path_and_png(tmp_path, monkeypatch):
+    """Prueba logo cache path and png."""
     import logo_cache
     from PIL import Image
 
@@ -293,6 +335,7 @@ def test_logo_cache_path_and_png(tmp_path, monkeypatch):
 
 
 def test_show_channel_logos_pref(tmp_path, monkeypatch):
+    """Prueba show canal logos pref."""
     import app_config
 
     previous = app_config._cache

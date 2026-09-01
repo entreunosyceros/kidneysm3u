@@ -1,7 +1,10 @@
+"""Módulo de test light mode."""
+
 import app_config
 
 
 def _isolate_config(tmp_path, monkeypatch):
+    """Uso interno: isolate configuración."""
     previous = app_config._cache
     cfg = tmp_path / 'config.json'
     monkeypatch.setattr(app_config, 'CONFIG_PATH', str(cfg))
@@ -10,6 +13,7 @@ def _isolate_config(tmp_path, monkeypatch):
 
 
 def test_light_mode_defaults_off(tmp_path, monkeypatch):
+    """Prueba light mode defaults off."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         assert app_config.get_light_mode() is False
@@ -26,6 +30,7 @@ def test_light_mode_defaults_off(tmp_path, monkeypatch):
 
 
 def test_light_mode_effective_settings(tmp_path, monkeypatch):
+    """Prueba light mode effective settings."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         app_config.save({
@@ -53,6 +58,7 @@ def test_light_mode_effective_settings(tmp_path, monkeypatch):
 
 
 def test_should_skip_session_restore(tmp_path, monkeypatch):
+    """Prueba should skip session restore."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
         app_config.set_light_mode(False)
@@ -68,6 +74,7 @@ def test_should_skip_session_restore(tmp_path, monkeypatch):
 
 
 def test_logo_cache_clear(tmp_path, monkeypatch):
+    """Prueba logo cache clear."""
     import logo_cache
 
     previous = app_config._cache

@@ -15,11 +15,13 @@ import app_config
 
 
 def _safe_filename(name):
+    """Uso interno: safe filename."""
     text = re.sub(r'[\\/*?:"<>|]', '', name or 'canal').strip() or 'canal'
     return text[:80]
 
 
 def _ffmpeg_copy_cmd(ffmpeg, source, dest, headers=None):
+    """Uso interno: ffmpeg copy cmd."""
     cmd = [
         ffmpeg, '-hide_banner', '-loglevel', 'error',
         '-user_agent', IPTV_USER_AGENT,
@@ -37,6 +39,7 @@ def _ffmpeg_copy_cmd(ffmpeg, source, dest, headers=None):
 
 
 def default_recording_path(name, folder=None, when=None, ext='.ts'):
+    """Default recording path."""
     folder = folder or app_config.get_download_dir() or app_config.suggested_download_dir()
     when = when or time.strftime('%Y%m%d-%H%M%S')
     ext = ext if str(ext).startswith('.') else f'.{ext}'
@@ -44,7 +47,9 @@ def default_recording_path(name, folder=None, when=None, ext='.ts'):
 
 
 class StreamRecorder:
+    """Clase que representa streamrecorder."""
     def __init__(self, player):
+        """Inicializa StreamRecorder."""
         self.player = player
         self.proc = None
         self.path = ''
@@ -52,10 +57,12 @@ class StreamRecorder:
         self.started = 0
 
     def is_recording(self):
+        """Indica si recording."""
         proc = self.proc
         return bool(proc) and proc.poll() is None
 
     def current_source(self):
+        """Current source."""
         player = self.player
         if getattr(player, '_playing_youtube', False):
             handler = getattr(player, 'youtube_handler', None)
@@ -68,6 +75,7 @@ class StreamRecorder:
         return url, {}, name
 
     def start(self, dest):
+        """Start."""
         if self.is_recording():
             return False, 'Ya hay una grabación en curso.'
         ffmpeg = shutil.which('ffmpeg')
@@ -101,6 +109,7 @@ class StreamRecorder:
         return True, dest
 
     def stop(self):
+        """Stop."""
         proc = self.proc
         self.proc = None
         if not proc:
@@ -123,6 +132,7 @@ class StreamRecorder:
 
 
 def show_recordings(player):
+    """Muestra recordings."""
     existing = getattr(player, '_recordings_win', None)
     if existing is not None:
         try:
@@ -137,7 +147,9 @@ def show_recordings(player):
 
 
 class RecordingsWindow:
+    """Clase que representa recordingswindow."""
     def __init__(self, player):
+        """Inicializa RecordingsWindow."""
         self.player = player
         player._recordings_win = self
         colors = get_colors()
@@ -188,6 +200,7 @@ class RecordingsWindow:
         self.refresh()
 
     def close(self):
+        """Close."""
         if getattr(self.player, '_recordings_win', None) is self:
             self.player._recordings_win = None
         try:
@@ -196,6 +209,7 @@ class RecordingsWindow:
             pass
 
     def refresh(self):
+        """Refresh."""
         if not self.player._widget_exists(self.window):
             return
         try:
@@ -220,18 +234,21 @@ class RecordingsWindow:
             self.tree.insert('', 'end', iid=iid, text=item.get('name') or os.path.basename(path), values=(status,))
 
     def _record_current(self):
+        """Uso interno: grabación current."""
         start = getattr(self.player, 'start_stream_recording', None)
         if start:
             start()
         self.refresh()
 
     def _stop(self):
+        """Uso interno: stop."""
         stop = getattr(self.player, 'stop_stream_recording', None)
         if stop:
             stop()
         self.refresh()
 
     def _selected_path(self):
+        """Uso interno: selected path."""
         try:
             selection = self.tree.selection()
         except tk.TclError:
@@ -241,6 +258,7 @@ class RecordingsWindow:
         return self._paths.get(selection[0], '')
 
     def _play_selected(self, event=None):
+        """Uso interno: play selected."""
         path = self._selected_path()
         if not path or not os.path.isfile(path):
             return
@@ -249,6 +267,7 @@ class RecordingsWindow:
             play(path, show_progress=True, local_file=True, fail_after_s=20)
 
     def _open_folder(self):
+        """Uso interno: open folder."""
         path = self._selected_path() or app_config.get_download_dir()
         folder = path if os.path.isdir(path) else os.path.dirname(path)
         if not folder:
