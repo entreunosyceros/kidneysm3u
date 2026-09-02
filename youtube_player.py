@@ -834,6 +834,7 @@ class YouTubeHandler:
             return
         self.video_player._playing_youtube = True
         self.video_player._playing_twitch = False
+        self.video_player._playing_kick = False
         twitch = getattr(self.video_player, 'twitch_handler', None)
         if twitch:
             twitch.close_chat()

@@ -37,6 +37,7 @@ import yt_dlp
 import traceback
 from youtube_player import YouTubeHandler, youtube_ydl_opts
 from twitch_player import TwitchHandler, is_twitch_url, is_twitch_vod_url, twitch_default_title
+from kick_player import KickHandler, is_kick_url, is_kick_vod_url, kick_default_title
 from youtube_search import (
     YouTubeSearchDialog,
     fetch_youtube_channel_videos,
@@ -228,9 +229,12 @@ class VideoPlayer(
         self._yt_resume_s = 0
         self._last_yt_resume_save = 0
         self._last_twitch_resume_save = 0
+        self._last_kick_resume_save = 0
         self._tw_end_handled = False
+        self._kick_end_handled = False
         self._playing_youtube = False
         self._playing_twitch = False
+        self._playing_kick = False
         self._pipe_ready = False
         self._playlist_source = ''
         self._playlist_kind = ''
@@ -279,6 +283,7 @@ class VideoPlayer(
         # Inicializar el manejador de YouTube
         self.youtube_handler = YouTubeHandler(self)
         self.twitch_handler = TwitchHandler(self)
+        self.kick_handler = KickHandler(self)
 
         # Inicializar el manejador de favoritos
         self.favorites_manager = FavoritesManager(self)
@@ -473,6 +478,7 @@ class VideoPlayer(
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.youtube_handler.notify_session()
         self.twitch_handler.notify_session()
+        self.kick_handler.notify_session()
         self.setup_keyboard_shortcuts()
         self._ensure_player_status_bar()
         self.window.after_idle(self.refresh_ffmpeg_status_hint)
@@ -658,6 +664,20 @@ class VideoPlayer(
         self._tw_session_menu_index = twitch_menu.index('end')
         twitch_menu.add_command(label="Reexportar cookies", command=self.reexport_twitch_cookies)
         self._twitch_menu = twitch_menu
+        kick_menu = tk.Menu(self.menubar, tearoff=0)
+        kick_menu.add_command(label="Cargar URL de Kick", command=self.kick_handler.prompt_kick_url)
+        kick_menu.add_command(
+            label=plain_ui_line("Añadir a favoritos"),
+            command=self.add_kick_to_favorites,
+        )
+        self._kick_recent_menu = tk.Menu(kick_menu, tearoff=0)
+        self._kick_recent_menu.configure(postcommand=self._fill_kick_recent_menu)
+        kick_menu.add_cascade(label=plain_ui_line("Recientes"), menu=self._kick_recent_menu)
+        kick_menu.add_separator()
+        kick_menu.add_command(label=plain_ui_line("Sesión Kick: …"), state='disabled')
+        self._kick_session_menu_index = kick_menu.index('end')
+        kick_menu.add_command(label="Reexportar cookies", command=self.reexport_kick_cookies)
+        self._kick_menu = kick_menu
         favoritos_menu = tk.Menu(self.menubar, tearoff=0)
         favoritos_menu.add_command(label="Mostrar Favoritos", command=self.show_favorites)
         favoritos_menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
@@ -676,6 +696,7 @@ class VideoPlayer(
         self.menubar.add_cascade(label="Reproducir", menu=reproducir_menu)
         self.menubar.add_cascade(label="Youtube", menu=youtube_menu)
         self.menubar.add_cascade(label="Twitch", menu=twitch_menu)
+        self.menubar.add_cascade(label="Kick", menu=kick_menu)
         self.menubar.add_cascade(label="Favoritos", menu=favoritos_menu)
         self.menubar.add_cascade(label="Calidad / audio", menu=self.audio_menu)
         self.menubar.add_cascade(label="Subtítulos", menu=self.subs_menu)
@@ -1971,6 +1992,7 @@ class VideoPlayer(
             self.save_youtube_resume()
             self.save_iptv_resume()
             self.save_twitch_resume()
+            self.save_kick_resume()
             self._save_window_geometry()
             app_config.set_volume(self.volume)
             self.save_favorites()
@@ -2366,13 +2388,16 @@ class VideoPlayer(
         url = ask_string(
             self.window,
             "Cargar URL",
-            "Introduce la URL (lista M3U, YouTube o Twitch):",
+            "Introduce la URL (lista M3U, YouTube, Twitch o Kick):",
         )
         if not url:
             return
         url = url.strip()
         if is_twitch_url(url):
             self.play_twitch_url(url)
+            return
+        if is_kick_url(url):
+            self.play_kick_url(url)
             return
         if app_config._is_youtube_url(url):
             self.youtube_handler.prompt_youtube_url(url)
@@ -3183,6 +3208,49 @@ class VideoPlayer(
             except tk.TclError:
                 pass
         self._fill_twitch_recent_menu()
+        self._fill_kick_recent_menu()
+
+    def _fill_kick_recent_menu(self):
+        """Uso interno: fill kick recent menu."""
+        menu = getattr(self, '_kick_recent_menu', None)
+        if menu is None:
+            return
+        try:
+            menu.delete(0, 'end')
+        except tk.TclError:
+            return
+        items = app_config.kick_history()
+        if not items:
+            menu.add_command(label="Sin recientes", state='disabled')
+            return
+        for item in items[:12]:
+            url = item['url']
+            name = item.get('name') or 'Kick'
+            menu.add_command(
+                label=app_config.kick_history_label(
+                    item,
+                    with_time=bool(item.get('s') and item.get('kind') == 'vod'),
+                ),
+                command=lambda u=url, n=name: self.play_kick_url(u, title=n, add_to_list=False),
+            )
+        menu.add_separator()
+        menu.add_command(
+            label=plain_ui_line("Vaciar recientes de Kick"),
+            command=self.clear_kick_history_prompt,
+        )
+
+    def clear_kick_history_prompt(self):
+        """Limpia kick historial prompt."""
+        if not app_config.kick_history():
+            return
+        if not messagebox.askyesno(
+            'Kick',
+            '¿Quitar el historial reciente de Kick?',
+            parent=self.window,
+        ):
+            return
+        app_config.clear_kick_history()
+        self._refresh_history_ui()
 
     def _fill_twitch_recent_menu(self):
         """Uso interno: fill twitch recent menu."""
@@ -3241,6 +3309,8 @@ class VideoPlayer(
         yt_recent = app_config.youtube_history()
         tw_watching = app_config.twitch_continue_watching()
         tw_recent = app_config.twitch_history()
+        kick_watching = app_config.kick_continue_watching()
+        kick_recent = app_config.kick_history()
         menu.add_command(label=plain_ui_line("Ver historial…"), command=self.open_iptv_history)
         if watching:
             menu.add_separator()
@@ -3271,8 +3341,18 @@ class VideoPlayer(
                     label=app_config.twitch_history_label(item, with_time=True),
                     command=lambda u=url, n=name: self.play_twitch_url(u, title=n, add_to_list=False),
                 )
+        if kick_watching:
+            menu.add_separator()
+            menu.add_command(label="Kick a medio ver", state='disabled')
+            for item in kick_watching[:8]:
+                url = item['url']
+                name = item.get('name') or 'Kick'
+                menu.add_command(
+                    label=app_config.kick_history_label(item, with_time=True),
+                    command=lambda u=url, n=name: self.play_kick_url(u, title=n, add_to_list=False),
+                )
         menu.add_separator()
-        if not recent and not yt_recent and not tw_recent:
+        if not recent and not yt_recent and not tw_recent and not kick_recent:
             menu.add_command(label="Sin recientes", state='disabled')
         else:
             for item in recent[:10]:
@@ -3306,22 +3386,36 @@ class VideoPlayer(
                     ),
                     command=lambda u=url, n=name: self.play_twitch_url(u, title=n, add_to_list=False),
                 )
+            if kick_recent:
+                menu.add_separator()
+                menu.add_command(label="Kick recientes", state='disabled')
+            for item in kick_recent[:10]:
+                url = item['url']
+                name = item.get('name') or 'Kick'
+                menu.add_command(
+                    label=app_config.kick_history_label(
+                        item,
+                        with_time=bool(item.get('s') and item.get('kind') == 'vod'),
+                    ),
+                    command=lambda u=url, n=name: self.play_kick_url(u, title=n, add_to_list=False),
+                )
         menu.add_separator()
         menu.add_command(label="Vaciar historial", command=self.clear_iptv_history_prompt)
 
     def clear_iptv_history_prompt(self):
         """Limpia IPTV historial prompt."""
-        if not app_config.iptv_history() and not app_config.youtube_history() and not app_config.twitch_history():
+        if not app_config.iptv_history() and not app_config.youtube_history() and not app_config.twitch_history() and not app_config.kick_history():
             return
         if not messagebox.askyesno(
             'Vaciar historial',
-            '¿Quitar el historial de IPTV, YouTube y Twitch?',
+            '¿Quitar el historial de IPTV, YouTube, Twitch y Kick?',
             parent=self.window,
         ):
             return
         app_config.clear_iptv_history()
         app_config.clear_youtube_history()
         app_config.clear_twitch_history()
+        app_config.clear_kick_history()
         self._refresh_history_ui()
 
     def play_history_url(self, url):
@@ -3337,6 +3431,11 @@ class VideoPlayer(
         if is_twitch_url(url):
             item = app_config.twitch_history_item_by_url(url) or {}
             self.play_twitch_url(url, title=item.get('name') or 'Twitch', add_to_list=False)
+            self._refresh_history_ui()
+            return
+        if is_kick_url(url):
+            item = app_config.kick_history_item_by_url(url) or {}
+            self.play_kick_url(url, title=item.get('name') or 'Kick', add_to_list=False)
             self._refresh_history_ui()
             return
         for index, (_name, item_url) in enumerate(self.channels):
@@ -3356,6 +3455,7 @@ class VideoPlayer(
         self.save_youtube_resume()
         self.save_iptv_resume()
         self.save_twitch_resume()
+        self.save_kick_resume()
         self.current_channel = None
         app_config.remember_iptv_history(name, url, group=item.get('group') or '')
         self._ensure_vlc_style_instance()
@@ -3524,6 +3624,7 @@ class VideoPlayer(
             self.save_youtube_resume()
             self.save_iptv_resume()
             self.save_twitch_resume()
+            self.save_kick_resume()
             self.current_channel = index
             self._refresh_epg_label(index)
             app_config.remember_channel(index, name, url)
@@ -3555,6 +3656,7 @@ class VideoPlayer(
             if "youtube.com" in url or "youtu.be" in url:
                 self._playing_youtube = True
                 self._playing_twitch = False
+                self._playing_kick = False
                 kind = getattr(self, '_playlist_kind', '') or ''
                 self._yt_standalone = not (
                     self.is_sequential_playback
@@ -3573,6 +3675,12 @@ class VideoPlayer(
                 self._refresh_epg_label(index)
                 app_config.remember_channel(index, name, url)
                 self.play_twitch_url(url, title=name, add_to_list=False)
+                return
+            if is_kick_url(url):
+                self.current_channel = index
+                self._refresh_epg_label(index)
+                app_config.remember_channel(index, name, url)
+                self.play_kick_url(url, title=name, add_to_list=False)
                 return
             self._iptv_resume_s = app_config.iptv_resume_seconds(url)
             try:
@@ -3811,6 +3919,37 @@ class VideoPlayer(
         if url and is_twitch_vod_url(url):
             app_config.clear_twitch_position(url)
 
+    def save_kick_resume(self):
+        """Guarda kick resume."""
+        if not getattr(self, '_playing_kick', False):
+            return
+        handler = getattr(self, 'kick_handler', None)
+        url = getattr(handler, '_current_url', '') if handler else ''
+        if not url or not is_kick_vod_url(url):
+            return
+        stream = getattr(handler, '_current_stream', None) or {}
+        if stream.get('is_live'):
+            return
+        elapsed_ms = self._playback_elapsed_ms()
+        duration_ms = self._media_length_ms()
+        duration_s = (duration_ms / 1000.0) if duration_ms else stream.get('duration')
+        app_config.update_kick_position(url, elapsed_ms / 1000.0, duration_s)
+        self._last_kick_resume_save = time.time()
+
+    def clear_kick_resume(self):
+        """Limpia kick resume."""
+        handler = getattr(self, 'kick_handler', None)
+        url = getattr(handler, '_current_url', '') if handler else ''
+        if url and is_kick_vod_url(url):
+            app_config.clear_kick_position(url)
+
+    def _on_kick_vod_ended(self):
+        """Callback interno para kick vod ended."""
+        if getattr(self, '_kick_end_handled', False):
+            return
+        self._kick_end_handled = True
+        self.clear_kick_resume()
+
     def _on_twitch_vod_ended(self):
         """Callback interno para twitch vod ended."""
         if getattr(self, '_tw_end_handled', False):
@@ -3979,6 +4118,7 @@ class VideoPlayer(
                     if (
                         getattr(self, '_playing_youtube', False)
                         or getattr(self, '_playing_twitch', False)
+                        or getattr(self, '_playing_kick', False)
                         or self._iptv_has_real_media()
                     ):
                         started = getattr(self, '_media_started', False)
@@ -3986,6 +4126,7 @@ class VideoPlayer(
                         if started is False:
                             self._yt_end_handled = False
                             self._tw_end_handled = False
+                            self._kick_end_handled = False
                         if not started and not getattr(self, '_playing_youtube', False):
                             self._apply_pending_iptv_resume()
                 elif (
@@ -4002,8 +4143,22 @@ class VideoPlayer(
                     and not getattr(self, '_tw_end_handled', False)
                 ):
                     self._on_twitch_vod_ended()
+                elif (
+                    state == vlc.State.Ended
+                    and getattr(self, '_playing_kick', False)
+                    and self.progress_frame.winfo_ismapped()
+                    and not getattr(self, '_kick_end_handled', False)
+                ):
+                    self._on_kick_vod_ended()
                 if active and getattr(self, '_playing_youtube', False):
                     handler = getattr(self, 'youtube_handler', None)
+                    loading_alive = getattr(handler, '_loading_alive', None)
+                    if handler and callable(loading_alive) and loading_alive():
+                        handler.hide_loading()
+                        if hasattr(self, '_embed_vlc_in_frame'):
+                            self.window.after_idle(self._embed_vlc_in_frame)
+                if active and getattr(self, '_playing_kick', False):
+                    handler = getattr(self, 'kick_handler', None)
                     loading_alive = getattr(handler, '_loading_alive', None)
                     if handler and callable(loading_alive) and loading_alive():
                         handler.hide_loading()
@@ -4033,6 +4188,8 @@ class VideoPlayer(
                         self.save_iptv_resume()
                     if active and now - getattr(self, '_last_twitch_resume_save', 0) >= 20:
                         self.save_twitch_resume()
+                    if active and now - getattr(self, '_last_kick_resume_save', 0) >= 20:
+                        self.save_kick_resume()
         except Exception as e:
             print(f"Error actualizando tiempo: {e}")
         self.update_time_job = self.window.after(250, self.update_time)
@@ -4102,6 +4259,9 @@ class VideoPlayer(
         if is_twitch_url(url):
             group = 'Twitch'
             title = twitch_default_title(url, name)
+        elif is_kick_url(url):
+            group = 'Kick'
+            title = kick_default_title(url, name)
         else:
             group = 'YouTube'
             title = (name or '').strip() or 'YouTube'
@@ -4258,6 +4418,8 @@ class VideoPlayer(
             elif not existing:
                 self.add_channel_to_list(title or 'YouTube', url)
         self._playing_youtube = True
+        self._playing_twitch = False
+        self._playing_kick = False
         self._yt_standalone = bool(standalone) and not self.is_sequential_playback
         self.youtube_handler.play_youtube_url(
             url,
@@ -4295,10 +4457,38 @@ class VideoPlayer(
             elif not existing:
                 self.add_channel_to_list(label, url)
         self._playing_youtube = False
+        self._playing_kick = False
         self._playing_twitch = True
         self._yt_standalone = True
         self.twitch_handler.play_twitch_url(url, title=twitch_default_title(url, title))
         self._refresh_history_ui()
+
+    def play_kick_url(self, url, title=None, add_to_list=True):
+        """Reproduce un directo, VOD o clip de Kick."""
+        self.ensure_window()
+        url = (url or '').strip()
+        if not is_kick_url(url):
+            messagebox.showerror('Kick', 'La URL no parece ser de Kick.', parent=self.window)
+            return
+        if add_to_list:
+            label = kick_default_title(url, title)
+            existing = next((name for name, item_url in self.all_channels if item_url == url), None)
+            if existing and existing not in ('Kick', url):
+                label = title or existing
+            elif not existing:
+                self.add_channel_to_list(label, url)
+        self._playing_youtube = False
+        self._playing_twitch = False
+        self._playing_kick = True
+        self._yt_standalone = True
+        self.kick_handler.play_kick_url(url, title=kick_default_title(url, title))
+        self._refresh_history_ui()
+
+    def add_kick_to_favorites(self):
+        """Añade kick to favoritos."""
+        handler = getattr(self, 'kick_handler', None)
+        if handler:
+            handler.add_current_to_favorites()
 
     def add_twitch_to_favorites(self):
         """Añade twitch to favoritos."""
@@ -4472,6 +4662,21 @@ class VideoPlayer(
         from preferences import refresh_preferences_session_ui
         refresh_preferences_session_ui(twitch_info=info)
 
+    def update_kick_session_ui(self, info=None):
+        """Actualiza kick session interfaz."""
+        info = info or self.kick_handler.session_view()
+        ok = bool(info.get('ok'))
+        text = f"Sesión Kick: {'OK' if ok else 'caducada'}"
+        menu = getattr(self, '_kick_menu', None)
+        index = getattr(self, '_kick_session_menu_index', None)
+        if menu is not None and index is not None:
+            try:
+                menu.entryconfigure(index, label=text)
+            except tk.TclError:
+                pass
+        from preferences import refresh_preferences_session_ui
+        refresh_preferences_session_ui(kick_info=info)
+
     def open_preferences(self):
         """Abre preferences."""
         from preferences import show_preferences
@@ -4526,6 +4731,17 @@ class VideoPlayer(
                 self.twitch_handler.play_twitch_url(tw_url)
         else:
             self._twitch_quality_applied = tw_height
+        kick_height = app_config.effective_kick_quality()
+        prev_kick = getattr(self, '_kick_quality_applied', None)
+        if prev_kick is None:
+            self._kick_quality_applied = kick_height
+        elif prev_kick != kick_height and getattr(self, '_playing_kick', False):
+            self._kick_quality_applied = kick_height
+            kick_url = getattr(getattr(self, 'kick_handler', None), '_current_url', '')
+            if kick_url:
+                self.kick_handler.play_kick_url(kick_url)
+        else:
+            self._kick_quality_applied = kick_height
         self._logo_photos = {}
         style_changed = fingerprint() != getattr(self, '_vlc_style_key', None)
         self._ensure_vlc_style_instance()
@@ -4674,6 +4890,9 @@ class VideoPlayer(
         twitch = getattr(self, 'twitch_handler', None)
         if twitch:
             twitch.notify_session()
+        kick = getattr(self, 'kick_handler', None)
+        if kick:
+            kick.notify_session()
 
     def reexport_youtube_cookies(self):
         """Reexport youtube cookies."""
@@ -4682,6 +4901,10 @@ class VideoPlayer(
     def reexport_twitch_cookies(self):
         """Reexport twitch cookies."""
         self.twitch_handler.reexport_twitch_cookies()
+
+    def reexport_kick_cookies(self):
+        """Reexport kick cookies."""
+        self.kick_handler.reexport_kick_cookies()
 
     def update_yt_dlp(self):
         """Actualiza YouTube dlp."""

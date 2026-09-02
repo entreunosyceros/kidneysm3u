@@ -11,3 +11,4 @@ shadowcopy; sys_platform == "win32"
 pystray
 pywebview>=4.0
 pythonnet; sys_platform == "win32"
+curl-cffi

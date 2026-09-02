@@ -115,7 +115,9 @@ def _python_has_gi(python_exe):
             timeout=8,
             check=False,
         )
-        return completed.returncode == 0
+        if completed.returncode != 0:
+            return False
+        return True
     except (OSError, subprocess.SubprocessError):
         return False
 

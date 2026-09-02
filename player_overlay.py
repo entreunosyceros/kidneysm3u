@@ -26,6 +26,34 @@ class YoutubeTitleOverlayMixin:
                 except (IndexError, TypeError):
                     title = ''
             return plain_display_text(title, '')
+        if getattr(self, '_playing_kick', False):
+            handler = getattr(self, 'kick_handler', None)
+            stream = getattr(handler, '_current_stream', None) if handler else None
+            title = ''
+            if stream:
+                title = (stream.get('title') or '').strip()
+            if not title and handler:
+                url = getattr(handler, '_current_url', '') or ''
+                from kick_player import kick_default_title
+                title = kick_default_title(url, '')
+            if (not title or title == 'Kick') and self.current_channel is not None:
+                try:
+                    title = self.channels[self.current_channel][0]
+                except (IndexError, TypeError):
+                    title = ''
+            return plain_display_text(title, '')
+        if getattr(self, '_playing_twitch', False):
+            handler = getattr(self, 'twitch_handler', None)
+            stream = getattr(handler, '_current_stream', None) if handler else None
+            title = ''
+            if stream:
+                title = (stream.get('title') or '').strip()
+            if (not title or title == 'Twitch') and self.current_channel is not None:
+                try:
+                    title = self.channels[self.current_channel][0]
+                except (IndexError, TypeError):
+                    title = ''
+            return plain_display_text(title, '')
         if self.current_channel is not None and getattr(self, '_media_started', False):
             try:
                 return plain_display_text(self.channels[self.current_channel][0], '')
@@ -43,6 +71,8 @@ class YoutubeTitleOverlayMixin:
             return False
         if getattr(self, '_playing_youtube', False):
             return True
+        if getattr(self, '_playing_kick', False) or getattr(self, '_playing_twitch', False):
+            return getattr(self, '_media_started', False)
         return (
             self.current_channel is not None
             and getattr(self, '_media_started', False)

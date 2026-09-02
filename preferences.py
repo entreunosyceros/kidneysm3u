@@ -48,8 +48,12 @@ class _PrefsSessionHost:
         """Actualiza twitch session interfaz."""
         refresh_preferences_session_ui(self.window, twitch_info=info)
 
+    def update_kick_session_ui(self, info=None):
+        """Actualiza kick session interfaz."""
+        refresh_preferences_session_ui(self.window, kick_info=info)
 
-def refresh_preferences_session_ui(parent=None, youtube_info=None, twitch_info=None):
+
+def refresh_preferences_session_ui(parent=None, youtube_info=None, twitch_info=None, kick_info=None):
     """Actualiza las etiquetas de sesión en Preferencias si la ventana está abierta."""
     window = _PREFS_WINDOW
     if window is None:
@@ -83,6 +87,19 @@ def refresh_preferences_session_ui(parent=None, youtube_info=None, twitch_info=N
         style = 'SessionOk.TLabel' if ok else 'SessionBad.TLabel'
         try:
             tw_label.configure(text=text, style=style)
+        except tk.TclError:
+            pass
+
+    if kick_info is None:
+        from kick_player import inspect_kick_session
+        kick_info = inspect_kick_session()
+    kick_label = getattr(window, '_prefs_kick_session_label', None)
+    if kick_label is not None:
+        ok = bool(kick_info.get('ok'))
+        text = f"Sesión Kick: {'OK' if ok else 'caducada'}"
+        style = 'SessionOk.TLabel' if ok else 'SessionBad.TLabel'
+        try:
+            kick_label.configure(text=text, style=style)
         except tk.TclError:
             pass
 
@@ -120,6 +137,17 @@ def _reexport_twitch_cookies(parent, video_player=None):
         from twitch_player import TwitchHandler
         handler = TwitchHandler(_PrefsSessionHost(_tk_root(parent)))
     handler.reexport_twitch_cookies()
+    refresh_preferences_session_ui(parent)
+
+
+def _reexport_kick_cookies(parent, video_player=None):
+    """Uso interno: reexport kick cookies."""
+    player = _resolve_video_player(parent, video_player)
+    handler = getattr(player, 'kick_handler', None) if player else None
+    if handler is None:
+        from kick_player import KickHandler
+        handler = KickHandler(_PrefsSessionHost(_tk_root(parent)))
+    handler.reexport_kick_cookies()
     refresh_preferences_session_ui(parent)
 
 
@@ -285,6 +313,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     download_var = tk.StringVar(value=app_config.get_download_dir())
     quality_var = tk.StringVar(value=str(app_config.get_youtube_quality()))
     twitch_quality_var = tk.StringVar(value=str(app_config.get_twitch_quality()))
+    kick_quality_var = tk.StringVar(value=str(app_config.get_kick_quality()))
     twitch_chat_auto_var = tk.BooleanVar(value=app_config.get_twitch_chat_auto_open())
     buffer_var = tk.StringVar(value=app_config.get_iptv_buffer())
     cookie_var = tk.StringVar(value=app_config.get_cookie_browser())
@@ -376,6 +405,8 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
                 quality_var.set(str(settings['youtube_quality']))
             if 'twitch_quality' in settings:
                 twitch_quality_var.set(str(settings['twitch_quality']))
+            if 'kick_quality' in settings:
+                kick_quality_var.set(str(settings['kick_quality']))
             _sync_light_opts()
         finally:
             _applying_profile = False
@@ -400,6 +431,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
         buffer_var,
         quality_var,
         twitch_quality_var,
+        kick_quality_var,
         remember_var,
     ):
         _tracked.trace_add('write', _mark_profile_custom)
@@ -647,6 +679,20 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     ttk.Label(
         playback,
         text='Tope de altura para directos y VOD de Twitch. Si cambias la calidad con un directo en marcha, se vuelve a pedir el stream.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(8, 0))
+
+    kick_quality_row = ttk.Frame(playback, style='Card.TFrame')
+    kick_quality_row.pack(fill=tk.X, pady=(12, 0))
+    ttk.Label(kick_quality_row, text='Calidad Kick', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 16))
+    ttk.Radiobutton(kick_quality_row, text='360p', variable=kick_quality_var, value='360').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(kick_quality_row, text='720p', variable=kick_quality_var, value='720').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(kick_quality_row, text='1080p', variable=kick_quality_var, value='1080').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(kick_quality_row, text='Mejor', variable=kick_quality_var, value='0').pack(side=tk.LEFT)
+    ttk.Label(
+        playback,
+        text='Tope de altura para directos y VOD de Kick. Los VOD pueden requerir cookies o curl-cffi si Kick devuelve 403.',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
@@ -980,7 +1026,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     cookie_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
     ttk.Label(
         cookies_browser,
-        text='Lo fiable es Firefox con sesión en YouTube o Twitch: ciérralo y pulsa Reexportar cookies abajo. Automático prueba Firefox y, si el sistema lo permite, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer.',
+        text='Lo fiable es Firefox con sesión en YouTube, Twitch o Kick: ciérralo y pulsa Reexportar cookies abajo. Automático prueba Firefox y, si el sistema lo permite, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer.',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
@@ -1021,6 +1067,26 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     ttk.Label(
         tw_cookies,
         text='Exporta twitch_cookies.txt. Sirve para directos o VOD solo suscriptores o restringidos que ya puedes ver logueado en twitch.tv.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(8, 0))
+
+    kick_cookies = ttk.LabelFrame(cookies_main, text=' KICK ', padding=12)
+    kick_cookies.pack(fill=tk.X, pady=(0, 10))
+    window._prefs_kick_session_label = ttk.Label(
+        kick_cookies,
+        text=plain_ui_line('Sesión Kick: …'),
+        style='Muted.TLabel',
+    )
+    window._prefs_kick_session_label.pack(anchor=tk.W)
+    ttk.Button(
+        kick_cookies,
+        text='Reexportar cookies',
+        command=lambda: _reexport_kick_cookies(window, video_player),
+    ).pack(anchor=tk.W, pady=(8, 0))
+    ttk.Label(
+        kick_cookies,
+        text='Exporta kick_cookies.txt. Mejora la extracción de VOD y directos restringidos en kick.com.',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
@@ -1104,6 +1170,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
             'check_app_updates': bool(updates_var.get()),
             'youtube_quality': app_config.normalize_youtube_quality(quality),
             'twitch_quality': app_config.normalize_twitch_quality(twitch_quality_var.get()),
+            'kick_quality': app_config.normalize_kick_quality(kick_quality_var.get()),
             'twitch_chat_auto_open': bool(twitch_chat_auto_var.get()),
             'youtube_auto_subtitles': bool(yt_auto_subs_var.get()),
             'iptv_buffer': app_config.normalize_iptv_buffer_profile(buffer_var.get()),

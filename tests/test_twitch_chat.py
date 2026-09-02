@@ -1,6 +1,10 @@
 """Módulo de test twitch chat."""
 
+import os
+import sys
 import urllib.request
+
+import pytest
 
 from twitch_chat import (
     _ChatServer,
@@ -14,6 +18,13 @@ from twitch_chat import (
     system_python_with_gi,
     twitch_chat_window_url,
     twitch_popout_chat_url,
+)
+
+_LINUX_CI = os.environ.get('CI', '').lower() in ('1', 'true', 'yes') and sys.platform.startswith('linux')
+
+skip_linux_ci_native_gui = pytest.mark.skipif(
+    _LINUX_CI,
+    reason='Imports GTK/WebKit nativos no fiables en el runner CI de Linux',
 )
 
 
@@ -79,12 +90,14 @@ def test_chat_server_serves_embed_page():
         server.stop()
 
 
+@skip_linux_ci_native_gui
 def test_chat_backend_status_has_fallback():
     """Prueba chat backend status has fallback."""
     backend, _detail = chat_backend_status()
     assert backend in ('pywebview', 'system_gtk', 'browser')
 
 
+@skip_linux_ci_native_gui
 def test_system_python_with_gi_finds_ubuntu_python():
     """Prueba system python with gi finds ubuntu python."""
     py = system_python_with_gi()
@@ -92,11 +105,13 @@ def test_system_python_with_gi_finds_ubuntu_python():
         assert py.endswith('python3') or 'python3' in py
 
 
+@skip_linux_ci_native_gui
 def test_pywebview_gtk_ready_is_bool():
     """Prueba pywebview gtk ready is bool."""
     assert isinstance(pywebview_gtk_ready(), bool)
 
 
+@skip_linux_ci_native_gui
 def test_pywebview_integrated_ready_is_bool():
     """Prueba pywebview integrated ready is bool."""
     assert isinstance(pywebview_integrated_ready(), bool)

@@ -9,6 +9,8 @@ jobs:
   test-linux:
     name: pytest (Linux)
     runs-on: ubuntu-latest
+    env:
+      CI: true
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +38,8 @@ jobs:
   test-windows:
     name: pytest + build (Windows)
     runs-on: windows-latest
+    env:
+      CI: true
     steps:
       - uses: actions/checkout@v4
 

@@ -4,6 +4,7 @@ import json
 import os
 import time
 import tkinter as tk
+from urllib.parse import urlparse
 
 from app_paths import data_dir
 from display_text import truncate_ui_text
@@ -16,6 +17,7 @@ MAX_DOWNLOAD_URLS = 12
 MAX_YT_RESUME = 80
 MAX_YT_HISTORY = 40
 MAX_TWITCH_HISTORY = 20
+MAX_KICK_HISTORY = 20
 MAX_YT_QUEUE = 80
 MAX_YT_SEARCHES = 5
 MAX_IPTV_HISTORY = 25
@@ -58,12 +60,14 @@ _DEFAULTS = {
     'youtube_resume': {},
     'youtube_history': [],
     'twitch_history': [],
+    'kick_history': [],
     'youtube_queue': [],
     'youtube_searches': [],
     'iptv_history': [],
     'youtube_quality': 720,
     'youtube_auto_subtitles': True,
     'twitch_quality': 720,
+    'kick_quality': 720,
     'twitch_chat_auto_open': False,
     'iptv_buffer': 'balanced',
     'subtitle_size': 0,
@@ -382,6 +386,18 @@ def effective_twitch_quality(value=None):
     return height
 
 
+def effective_kick_quality(value=None):
+    """Effective kick quality."""
+    height = normalize_kick_quality(
+        get_kick_quality() if value is None else value
+    )
+    if not effective_light_mode():
+        return height
+    if height <= 0 or height > LIGHT_MODE_YT_QUALITY_CAP:
+        return LIGHT_MODE_YT_QUALITY_CAP
+    return height
+
+
 def effective_yt_cache_max_bytes():
     """Effective youtube cache max bytes."""
     if effective_light_mode():
@@ -557,6 +573,31 @@ def get_twitch_quality():
 def set_twitch_quality(height):
     """Establece twitch quality."""
     save({'twitch_quality': normalize_twitch_quality(height)})
+
+
+def normalize_kick_quality(value):
+    """Normaliza kick quality."""
+    return normalize_youtube_quality(value)
+
+
+def kick_quality_label(value=None):
+    """Etiqueta de calidad Kick."""
+    height = normalize_kick_quality(
+        get_kick_quality() if value is None else value
+    )
+    if height <= 0:
+        return 'Mejor disponible'
+    return f'{height}p'
+
+
+def get_kick_quality():
+    """Obtiene kick quality."""
+    return normalize_kick_quality(load().get('kick_quality', 720))
+
+
+def set_kick_quality(height):
+    """Establece kick quality."""
+    save({'kick_quality': normalize_kick_quality(height)})
 
 
 def get_twitch_chat_auto_open():
@@ -1331,6 +1372,225 @@ def clear_twitch_history():
     if not data.get('twitch_history'):
         return
     data['twitch_history'] = []
+    save()
+
+
+def _is_kick_url(url):
+    """Uso interno: is kick URL."""
+    text = (url or '').lower()
+    return 'kick.com' in text
+
+
+def _clean_kick_history_entry(item):
+    """Uso interno: clean kick historial entry."""
+    if not isinstance(item, dict):
+        return None
+    url = str(item.get('url') or '').strip()
+    if not url or not _is_kick_url(url):
+        return None
+    name = str(item.get('name') or '').strip() or 'Kick'
+    try:
+        seen_at = float(item.get('at') or 0)
+    except (TypeError, ValueError):
+        seen_at = 0
+    try:
+        updated = int(item.get('updated') or seen_at or 0)
+    except (TypeError, ValueError):
+        updated = int(seen_at or 0)
+    kind = str(item.get('kind') or '').strip().lower()
+    if not kind:
+        lower = url.lower()
+        kind = 'vod' if '/videos/' in lower or '/video/' in lower else 'live'
+    try:
+        seconds = int(item.get('s') or 0)
+    except (TypeError, ValueError):
+        seconds = 0
+    try:
+        duration = int(item.get('duration') or 0)
+    except (TypeError, ValueError):
+        duration = 0
+    if kind != 'vod':
+        seconds = 0
+        duration = 0
+    return {
+        'url': url,
+        'name': name,
+        'at': seen_at,
+        'updated': updated,
+        'kind': kind,
+        's': seconds,
+        'duration': duration,
+    }
+
+
+def _is_kick_vod_url(url):
+    """Uso interno: is kick vod URL."""
+    text = str(url or '').lower()
+    if not _is_kick_url(text):
+        return False
+    if '/videos/' in text:
+        return True
+    parsed = urlparse(text) if text else None
+    parts = [segment for segment in ((parsed.path if parsed else '') or '').strip('/').split('/') if segment]
+    return len(parts) >= 2 and parts[0] == 'video'
+
+
+def remember_kick_watch(url, title=''):
+    """Remember kick watch."""
+    url = str(url or '').strip()
+    if not url or not _is_kick_url(url):
+        return
+    data = load()
+    items = []
+    now = time.time()
+    name = str(title or '').strip() or 'Kick'
+    previous = None
+    for raw in data.get('kick_history') or []:
+        entry = _clean_kick_history_entry(raw)
+        if not entry:
+            continue
+        if entry['url'] == url:
+            previous = entry
+            continue
+        items.append(entry)
+    kind = 'vod' if _is_kick_vod_url(url) else 'live'
+    seconds = int((previous or {}).get('s') or 0) if kind == 'vod' else 0
+    duration = int((previous or {}).get('duration') or 0) if kind == 'vod' else 0
+    items.insert(0, {
+        'url': url,
+        'name': name,
+        'at': now,
+        'updated': int(now),
+        'kind': kind,
+        's': seconds,
+        'duration': duration,
+    })
+    data['kick_history'] = items[:MAX_KICK_HISTORY]
+    save()
+
+
+def update_kick_position(url, seconds, duration_s=None):
+    """Actualiza kick position."""
+    url = str(url or '').strip()
+    if not url or not _is_kick_vod_url(url):
+        return
+    try:
+        seconds = float(seconds or 0)
+    except (TypeError, ValueError):
+        return
+    data = load()
+    items = []
+    current = None
+    for raw in data.get('kick_history') or []:
+        entry = _clean_kick_history_entry(raw)
+        if not entry:
+            continue
+        if entry['url'] == url:
+            current = entry
+            continue
+        items.append(entry)
+    if current is None:
+        return
+    if seconds < IPTV_RESUME_MIN_S or _yt_resume_near_end(seconds, duration_s):
+        current['s'] = 0
+        current['duration'] = 0
+    else:
+        current['s'] = int(seconds)
+        try:
+            current['duration'] = max(0, int(float(duration_s or 0)))
+        except (TypeError, ValueError):
+            current['duration'] = int(current.get('duration') or 0)
+    current['updated'] = int(time.time())
+    current['kind'] = 'vod'
+    items.insert(0, current)
+    data['kick_history'] = items[:MAX_KICK_HISTORY]
+    save()
+
+
+def kick_resume_seconds(url, duration_s=None):
+    """Kick resume seconds."""
+    if not _is_kick_vod_url(url):
+        return 0.0
+    item = kick_history_item_by_url(url)
+    if not item or item.get('kind') != 'vod':
+        return 0.0
+    seconds = float(item.get('s') or 0)
+    if seconds < IPTV_RESUME_MIN_S:
+        return 0.0
+    if _yt_resume_near_end(seconds, duration_s if duration_s is not None else item.get('duration')):
+        update_kick_position(url, 0, 0)
+        return 0.0
+    return seconds
+
+
+def kick_continue_watching():
+    """Kick continue watching."""
+    found = []
+    for item in kick_history():
+        if item.get('kind') != 'vod':
+            continue
+        seconds = int(item.get('s') or 0)
+        if seconds < IPTV_RESUME_MIN_S:
+            continue
+        if _yt_resume_near_end(seconds, item.get('duration') or 0):
+            continue
+        found.append(item)
+    return found
+
+
+def clear_kick_position(url):
+    """Limpia kick position."""
+    update_kick_position(url, 0, 0)
+
+
+def kick_history():
+    """Kick historial."""
+    items = []
+    seen = set()
+    for raw in load().get('kick_history') or []:
+        entry = _clean_kick_history_entry(raw)
+        if not entry or entry['url'] in seen:
+            continue
+        seen.add(entry['url'])
+        items.append(entry)
+    return items[:MAX_KICK_HISTORY]
+
+
+def kick_history_item_by_url(url):
+    """Kick historial item by url."""
+    wanted = str(url or '').strip()
+    if not wanted:
+        return None
+    for item in kick_history():
+        if item.get('url') == wanted:
+            return item
+    return None
+
+
+def kick_history_label(item, limit=46, with_time=False):
+    """Kick historial label."""
+    name = str((item or {}).get('name') or 'Kick').strip()
+    name = truncate_ui_text(name, limit)
+    base = f'Kick · {name}'
+    seconds = int((item or {}).get('s') or 0)
+    if not with_time or seconds < IPTV_RESUME_MIN_S or (item or {}).get('kind') != 'vod':
+        return base
+    stamp = format_iptv_clock(seconds)
+    try:
+        duration = int((item or {}).get('duration') or 0)
+    except (TypeError, ValueError):
+        duration = 0
+    if duration > 0:
+        return f'{base}  ·  {stamp} / {format_iptv_clock(duration)}'
+    return f'{base}  ·  {stamp}'
+
+
+def clear_kick_history():
+    """Limpia kick historial."""
+    data = load()
+    if not data.get('kick_history'):
+        return
+    data['kick_history'] = []
     save()
 
 

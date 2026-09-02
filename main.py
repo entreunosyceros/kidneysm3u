@@ -25,6 +25,7 @@ from app_paths import data_dir
 from app_update import start_startup_update_check, start_manual_update_check
 from display_text import plain_ui_line, truncate_ui_text
 from twitch_player import is_twitch_url
+from kick_player import is_kick_url
 import sys
 
 class M3UProcessor:
@@ -512,7 +513,7 @@ class M3UProcessor:
         url = ask_string(
             self.root,
             "Cargar URL",
-            "Introduce la URL (lista M3U, YouTube o Twitch):",
+            "Introduce la URL (lista M3U, YouTube, Twitch o Kick):",
         )
         if not url:
             return
@@ -523,6 +524,8 @@ class M3UProcessor:
         player.run()
         if is_twitch_url(url):
             player.play_twitch_url(url)
+        elif is_kick_url(url):
+            player.play_kick_url(url)
         elif app_config._is_youtube_url(url):
             player.youtube_handler.prompt_youtube_url(url)
         else:

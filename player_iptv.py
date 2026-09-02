@@ -65,6 +65,7 @@ class IptvPlaybackMixin:
         self._media_started = False
         self._playing_youtube = False
         self._playing_twitch = False
+        self._playing_kick = False
         twitch = getattr(self, 'twitch_handler', None)
         if twitch:
             twitch.close_chat()

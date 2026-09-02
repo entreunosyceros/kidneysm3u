@@ -171,7 +171,11 @@ class PlayerControlsMixin:
             if twitch:
                 twitch.cancel_pending_play()
                 twitch.close_chat()
+            kick = getattr(self, 'kick_handler', None)
+            if kick:
+                kick.cancel_pending_play()
             self._playing_twitch = False
+            self._playing_kick = False
             self._hide_youtube_title_overlay()
             self._hide_channel_status()
         except Exception as e:
