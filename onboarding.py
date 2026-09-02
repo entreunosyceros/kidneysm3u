@@ -308,7 +308,13 @@ def check_twitch_chat_linux():
     if not sys.platform.startswith('linux'):
         return None
     try:
-        from twitch_chat import pywebview_integrated_ready
+        from twitch_chat import linux_ci_runner, pywebview_integrated_ready
+        if linux_ci_runner():
+            return _status_warn(
+                'Chat Twitch (Linux)',
+                'Comprobación omitida en CI.',
+                'Opcional: sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1',
+            )
         if pywebview_integrated_ready():
             return _status_ok(
                 'Chat Twitch',

@@ -32,6 +32,15 @@ _GI_CHECK = (
 _LAUNCHER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'twitch_chat_launcher.py')
 
 
+def linux_ci_runner():
+    """True en runners Linux de CI (p. ej. GitHub Actions) sin GUI nativa fiable."""
+    if not sys.platform.startswith('linux'):
+        return False
+    if os.environ.get('GITHUB_ACTIONS', '').lower() == 'true':
+        return True
+    return os.environ.get('CI', '').lower() in ('1', 'true', 'yes')
+
+
 def twitch_popout_chat_url(channel):
     """Twitch popout chat url."""
     channel = (channel or '').strip().lower()
@@ -76,6 +85,8 @@ def chat_local_embed_url(channel, host='127.0.0.1', port=0):
 
 def pywebview_integrated_ready():
     """True si pywebview puede abrir ventanas en esta plataforma (GTK, WebView2, Cocoa…)."""
+    if linux_ci_runner():
+        return False
     if webview is None:
         return False
     try:
@@ -91,6 +102,8 @@ def pywebview_integrated_ready():
 
 def pywebview_gtk_ready():
     """Compatibilidad: en Linux comprueba GTK; en el resto, cualquier backend de pywebview."""
+    if linux_ci_runner():
+        return False
     if sys.platform.startswith('linux'):
         if webview is None:
             return False
@@ -124,7 +137,7 @@ def _python_has_gi(python_exe):
 
 def system_python_with_gi():
     """Python del sistema con gi/WebKit, para lanzar la ventana en subprocess (solo Linux)."""
-    if not sys.platform.startswith('linux'):
+    if not sys.platform.startswith('linux') or linux_ci_runner():
         return ''
     if pywebview_integrated_ready():
         return ''

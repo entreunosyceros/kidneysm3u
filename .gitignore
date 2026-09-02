@@ -6,14 +6,13 @@ debian-package/
 packaging/
 *.deb
 
-# Empaquetado Windows (local; no va al repositorio)
+# Empaquetado Windows (local; no va al repositorio salvo el .spec, necesario para CI)
 dist/
 build/
 .sign/
 img/logo.ico
 *.exe
 build-windows.sh
-kidneysm3u.spec
 kidneysm3u.iss
 file_version_info.txt
 installer-windows.txt

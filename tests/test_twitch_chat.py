@@ -1,7 +1,6 @@
 """Módulo de test twitch chat."""
 
 import os
-import sys
 import urllib.request
 
 import pytest
@@ -12,6 +11,7 @@ from twitch_chat import (
     can_show_twitch_chat,
     chat_backend_status,
     chat_embed_html,
+    linux_ci_runner,
     pywebview_gtk_ready,
     pywebview_integrated_ready,
     resolve_twitch_channel,
@@ -20,12 +20,22 @@ from twitch_chat import (
     twitch_popout_chat_url,
 )
 
-_LINUX_CI = os.environ.get('CI', '').lower() in ('1', 'true', 'yes') and sys.platform.startswith('linux')
+_LINUX_CI = linux_ci_runner()
 
 skip_linux_ci_native_gui = pytest.mark.skipif(
     _LINUX_CI,
     reason='Imports GTK/WebKit nativos no fiables en el runner CI de Linux',
 )
+
+
+def test_linux_ci_runner_detects_github_actions(monkeypatch):
+    """Prueba linux ci runner detects github actions."""
+    monkeypatch.setattr('twitch_chat.sys.platform', 'linux')
+    monkeypatch.delenv('GITHUB_ACTIONS', raising=False)
+    monkeypatch.delenv('CI', raising=False)
+    assert linux_ci_runner() is False
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    assert linux_ci_runner() is True
 
 
 class _FakeHandler:
