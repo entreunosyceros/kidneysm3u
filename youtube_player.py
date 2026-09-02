@@ -1421,7 +1421,7 @@ class YouTubeHandler:
         """Si hay URL, VLC la prueba. Los filtros antiguos mandaban todo al relevo y YouTube lo cortaba."""
         return bool((stream or {}).get('url'))
 
-    def _play_local_video(self, path, force_pulse, show_progress, is_sequential, duration=None, start_s=0):
+    def _play_local_video(self, path, force_pulse, show_progress, is_sequential, duration=None, start_s=0, subtitle_path=None):
         """Uso interno: play local video."""
         print(f"[YouTubeHandler] Reproduciendo archivo local (sin remux): {path}")
         self.video_player._yt_via_pipe = False
@@ -1434,20 +1434,21 @@ class YouTubeHandler:
             local_file=True,
             duration_s=duration,
             start_s=start_s,
+            subtitle_path=subtitle_path,
         )
 
-    def _play_playable_file(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None, start_s=0):
+    def _play_playable_file(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None, start_s=0, subtitle_path=None):
         """Usa la caché si el formato ya es jugable. No remuxea a MPEG-TS."""
         path = find_cached_youtube_video(self.extract_youtube_id(youtube_url))
         if not path:
             return False
         self._play_local_video(
             path, force_pulse, show_progress, is_sequential,
-            duration=duration, start_s=start_s,
+            duration=duration, start_s=start_s, subtitle_path=subtitle_path,
         )
         return True
 
-    def replay_from(self, start_s):
+    def replay_from(self, start_s, subtitle_path=None):
         """Reinicia la retransmisión local desde un instante (el MPEG-TS no admite seek)."""
         url = self._current_url
         if not url:
@@ -1461,6 +1462,8 @@ class YouTubeHandler:
         except (TypeError, ValueError):
             duration = None
         if float(start_s or 0) < 0.5 and int(getattr(self.video_player, '_yt_start_offset_ms', 0) or 0) < 500:
+            if subtitle_path:
+                return bool(self.video_player._attach_youtube_subtitle_file(subtitle_path))
             return False
         if self._play_playable_file(
             url,
@@ -1469,6 +1472,7 @@ class YouTubeHandler:
             kwargs.get('is_sequential', False),
             duration=duration,
             start_s=max(0.0, float(start_s or 0)),
+            subtitle_path=subtitle_path,
         ):
             return True
         self.video_player._yt_via_pipe = True
@@ -1481,16 +1485,17 @@ class YouTubeHandler:
             start_s=max(0.0, float(start_s or 0)),
             source_url=self._direct_url,
             http_headers=self._direct_headers,
+            subtitle_path=subtitle_path,
         )
 
-    def _play_via_pipe(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None, start_s=0, source_url=None, http_headers=None):
+    def _play_via_pipe(self, youtube_url, force_pulse, show_progress, is_sequential, duration=None, start_s=0, source_url=None, http_headers=None, subtitle_path=None):
         """Retransmite a MPEG-TS solo si hace falta. Un MP4/MKV local se abre tal cual."""
         source_url = source_url or self._direct_url
         http_headers = http_headers or self._direct_headers
         if is_playable_local_video(source_url):
             self._play_local_video(
                 source_url, force_pulse, show_progress, is_sequential,
-                duration=duration, start_s=start_s,
+                duration=duration, start_s=start_s, subtitle_path=subtitle_path,
             )
             return True
         ffmpeg = shutil.which('ffmpeg')
@@ -1610,6 +1615,7 @@ class YouTubeHandler:
                     local_file=True,
                     fail_after_s=25,
                     duration_s=duration,
+                    subtitle_path=subtitle_path,
                     on_fail=lambda: self._show_playback_error(youtube_url),
                 )
 

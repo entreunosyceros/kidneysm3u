@@ -26,6 +26,14 @@ _VLC_OUTLINE_THICKNESS = {
     1: 2,
     2: 6,
 }
+# Escala global de subtítulos (--sub-text-scale, 10–500). Complemento en Windows.
+_VLC_TEXT_SCALE = {
+    0: 0,
+    18: 85,
+    24: 100,
+    32: 130,
+    44: 165,
+}
 # Paleta fija de VLC freetype-color (RGB 0xRRGGBB).
 _VLC_COLOR_PALETTE = (
     0,
@@ -105,6 +113,15 @@ def vlc_rel_fontsize(size):
     return _VLC_REL_FONT_SIZES.get(value, 0)
 
 
+def vlc_text_scale(size):
+    """Escala global de subtítulos para --sub-text-scale."""
+    allowed = tuple(item[0] for item in SUBTITLE_SIZES)
+    value = _clamp_int(size, 0, 64, 0)
+    if value not in allowed:
+        value = min(allowed, key=lambda item: abs(item - value))
+    return _VLC_TEXT_SCALE.get(value, 0)
+
+
 def vlc_outline_thickness(outline):
     """Vlc outline thickness."""
     value = _clamp_int(outline, 0, 2, 1)
@@ -174,10 +191,16 @@ def fingerprint(style=None):
 
 
 def vlc_option_pairs(style=None):
-    """Vlc option pairs."""
+    """Pares nombre=valor para libvlc_new (freetype solo en la instancia, no en media)."""
     cfg = normalize_subtitle_style(style if style is not None else get_subtitle_style())
-    pairs = [
-        ('freetype-rel-fontsize', str(vlc_rel_fontsize(cfg['subtitle_size']))),
+    pairs = []
+    rel = vlc_rel_fontsize(cfg['subtitle_size'])
+    if rel:
+        pairs.append(('freetype-rel-fontsize', str(rel)))
+    scale = vlc_text_scale(cfg['subtitle_size'])
+    if scale:
+        pairs.append(('sub-text-scale', str(scale)))
+    pairs.extend([
         ('freetype-color', str(nearest_vlc_palette_color(cfg['subtitle_color']))),
         ('freetype-opacity', str(cfg['subtitle_opacity'])),
         (
@@ -190,7 +213,7 @@ def vlc_option_pairs(style=None):
             'freetype-outline-color',
             str(nearest_vlc_palette_color(cfg['subtitle_outline_color'], '#000000')),
         ),
-    ]
+    ])
     return pairs
 
 
@@ -200,9 +223,8 @@ def vlc_instance_args(style=None):
 
 
 def vlc_media_options(style=None, prefix=':'):
-    """Vlc media options."""
-    prefix = prefix or ''
-    return [f'{prefix}{name}={value}' for name, value in vlc_option_pairs(style)]
+    """Reservado: el estilo freetype va en libvlc_new, no en add_option del media."""
+    return []
 
 
 def apply_spu_delay(player, style=None):

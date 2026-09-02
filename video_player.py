@@ -145,7 +145,7 @@ class Tooltip:
 
 
 def _make_vlc_instance():
-    """Instancia VLC; en modo normal sin VA-API (NVIDIA). Opcional GPU en modo ligero."""
+    """Instancia VLC; freetype/sub-text-scale solo en libvlc_new (no en media)."""
     os.environ['LIBVA_MESSAGING_LEVEL'] = '0'
     use_hw = app_config.iptv_use_hw_decode()
     core = [
@@ -161,15 +161,33 @@ def _make_vlc_instance():
     if not use_hw:
         core.insert(2, "--avcodec-hw=none")
     core.extend(vlc_aout_instance_args())
-    attempts = (
-        core + vlc_instance_args(),
-        list(core),
-    )
+    freetype = vlc_instance_args()
+    attempts = []
+    seen = set()
+
+    def _add(args):
+        key = tuple(args)
+        if key not in seen:
+            seen.add(key)
+            attempts.append(list(args))
+
+    if freetype:
+        _add(core + freetype)
+        lite = [arg for arg in freetype if 'background' not in arg]
+        if lite != freetype:
+            _add(core + lite)
+    _add(core)
     if not use_hw:
-        attempts = attempts + (["--quiet", "--avcodec-hw=none"],)
+        if freetype:
+            _add(["--quiet", "--avcodec-hw=none"] + freetype)
+        _add(["--quiet", "--avcodec-hw=none"])
     else:
-        attempts = attempts + (["--quiet"],)
+        if freetype:
+            _add(["--quiet"] + freetype)
+        _add(["--quiet"])
+
     last_error = None
+    styled = bool(freetype)
     for args in attempts:
         try:
             instance = vlc.Instance(*args)
@@ -177,6 +195,14 @@ def _make_vlc_instance():
             last_error = exc
             continue
         if instance is not None:
+            if styled and freetype and not any(
+                arg.startswith('--freetype-') or arg.startswith('--sub-text-scale=')
+                for arg in args
+            ):
+                print(
+                    '[VLC] Aviso: no se pudo activar el estilo de subtítulos en libVLC; '
+                    'comprueba que VLC 3 esté instalado.'
+                )
             return instance
     detail = f' ({last_error})' if last_error else ''
     raise RuntimeError(
@@ -1279,16 +1305,20 @@ class VideoPlayer(
         self._apply_youtube_subtitle(item)
 
     def _attach_youtube_subtitle_file(self, path, item=None):
-        """Uso interno: attach youtube subtitle file."""
+        """Carga un SRT externo en el reproductor en curso (sin recrear libVLC)."""
         if not path or not os.path.isfile(path) or not self.player:
             return False
-        self._ensure_vlc_style_instance()
+        from youtube_subs import prepare_subtitle_for_vlc
+        ready = prepare_subtitle_for_vlc(path) or path
         try:
-            self.player.video_set_subtitle_file(path)
+            self.player.video_set_subtitle_file(ready)
             self._active_spu_id = -1
             if item:
                 self._mark_active_youtube_subtitle(item.get('kind'), item.get('lang'))
-            print(f"[VLC] Subtítulo cargado: {path}")
+            apply_spu_delay(self.player)
+            if self._widget_exists(self.window):
+                self.window.after(400, self._select_external_spu)
+            print(f"[VLC] Subtítulo cargado: {ready}")
             return True
         except Exception as exc:
             print(f"[VLC] No se pudo cargar subtítulo: {exc}")
@@ -3516,8 +3546,10 @@ class VideoPlayer(
                 options.append(aout)
                 print(f"[AUDIO] Salida de audio: {aout}")
             if subtitle_path and os.path.isfile(subtitle_path):
-                options.append(f':sub-file={subtitle_path}')
-                print(f"[VLC] sub-file={subtitle_path}")
+                from youtube_subs import prepare_subtitle_for_vlc
+                ready = prepare_subtitle_for_vlc(subtitle_path) or subtitle_path
+                options.append(f':sub-file={ready}')
+                print(f"[VLC] sub-file={ready}")
             if self._yt_resume_s:
                 options.append(f':start-time={self._yt_resume_s:.1f}')
                 print(f"[VLC] start-time={self._yt_resume_s:.1f}s")
@@ -3528,6 +3560,8 @@ class VideoPlayer(
             self._embed_vlc_in_frame()
             self.player.play()
             self.adjust_video_settings()
+            if subtitle_path and os.path.isfile(subtitle_path):
+                self.window.after(500, self._select_external_spu)
             self.start_update_time()
             self._schedule_track_refresh()
             self._youtube_fail_cb = on_fail
@@ -4476,11 +4510,8 @@ class VideoPlayer(
     def _reload_youtube_with_subtitle_style(self):
         """Vuelve a abrir el stream de YouTube con la instancia VLC del estilo actual."""
         handler = getattr(self, 'youtube_handler', None)
-        direct = getattr(handler, '_direct_url', '') or '' if handler else ''
-        if not handler:
-            self._ensure_vlc_style_instance()
-            return
         keep_ms = self._playback_elapsed_ms()
+        keep_s = keep_ms / 1000.0
         sub_path = None
         active = getattr(self, '_active_yt_sub', None)
         active_item = None
@@ -4499,22 +4530,38 @@ class VideoPlayer(
                         item['path'] = ready
                         break
         self._ensure_vlc_style_instance()
-        if getattr(self, '_yt_via_pipe', False) or not direct:
-            if sub_path and os.path.isfile(sub_path):
-                self._attach_youtube_subtitle_file(sub_path, active_item)
+        if not handler:
             return
-        kwargs = dict(getattr(handler, '_play_kwargs', {}) or {})
-        self.play_video_url(
-            direct,
-            force_pulse=kwargs.get('force_pulse', True),
-            show_progress=kwargs.get('show_progress', True),
-            is_sequential=kwargs.get('is_sequential', False),
-            http_headers=getattr(handler, '_direct_headers', None),
-            duration_s=(self._known_duration_ms / 1000.0) if self._known_duration_ms else None,
-            subtitle_path=sub_path if sub_path and os.path.isfile(sub_path) else None,
-            start_s=keep_ms / 1000.0,
-            fail_after_s=20,
-        )
+        url = getattr(handler, '_current_url', '') or ''
+        direct = getattr(handler, '_direct_url', '') or ''
+        via_pipe = getattr(self, '_yt_via_pipe', False)
+        if url and (via_pipe or not direct):
+            if handler.replay_from(keep_s, subtitle_path=sub_path):
+                if active_item:
+                    self._mark_active_youtube_subtitle(
+                        active_item.get('kind'), active_item.get('lang'),
+                    )
+                return
+        if direct:
+            kwargs = dict(getattr(handler, '_play_kwargs', {}) or {})
+            self.play_video_url(
+                direct,
+                force_pulse=kwargs.get('force_pulse', True),
+                show_progress=kwargs.get('show_progress', True),
+                is_sequential=kwargs.get('is_sequential', False),
+                http_headers=getattr(handler, '_direct_headers', None),
+                duration_s=(self._known_duration_ms / 1000.0) if self._known_duration_ms else None,
+                subtitle_path=sub_path if sub_path and os.path.isfile(sub_path) else None,
+                start_s=keep_s,
+                fail_after_s=20,
+            )
+            if active_item:
+                self._mark_active_youtube_subtitle(
+                    active_item.get('kind'), active_item.get('lang'),
+                )
+            return
+        if sub_path and os.path.isfile(sub_path):
+            self._attach_youtube_subtitle_file(sub_path, active_item)
 
     def refresh_theme(self):
         """Refresca theme."""

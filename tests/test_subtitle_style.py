@@ -12,6 +12,7 @@ from subtitle_style import (
     vlc_media_options,
     vlc_outline_thickness,
     vlc_rel_fontsize,
+    vlc_text_scale,
 )
 
 
@@ -43,7 +44,7 @@ def test_normalize_snaps_size_and_clamps_delay():
 
 
 def test_vlc_media_options_use_vlc3_freetype_names():
-    """Prueba VLC media options use vlc3 freetype names."""
+    """El estilo freetype va en libvlc_new; sub-text-scale complementa el tamaño."""
     style = normalize_subtitle_style({
         'subtitle_size': 32,
         'subtitle_color': '#FFFF00',
@@ -51,17 +52,13 @@ def test_vlc_media_options_use_vlc3_freetype_names():
         'subtitle_outline': 2,
         'subtitle_margin': 20,
     })
-    options = vlc_media_options(style)
-    assert ':freetype-rel-fontsize=12' in options
-    assert ':freetype-color=16776960' in options
-    assert ':freetype-background-opacity=128' in options
-    assert ':freetype-outline-thickness=6' in options
-    assert ':sub-margin=' not in ' '.join(options)
-    assert ':sub-delay=' not in ' '.join(options)
+    assert vlc_media_options(style) == []
     instance = vlc_instance_args(style)
     assert '--freetype-rel-fontsize=12' in instance
-    local = vlc_media_options(style, prefix='')
-    assert 'freetype-rel-fontsize=12' in local
+    assert '--sub-text-scale=130' in instance
+    assert '--freetype-color=16776960' in instance
+    assert '--freetype-background-opacity=128' in instance
+    assert '--freetype-outline-thickness=6' in instance
 
 
 def test_vlc_rel_fontsize_and_outline_mapping():
@@ -74,6 +71,8 @@ def test_vlc_rel_fontsize_and_outline_mapping():
     assert vlc_outline_thickness(0) == 0
     assert vlc_outline_thickness(1) == 2
     assert vlc_outline_thickness(2) == 6
+    assert vlc_text_scale(32) == 130
+    assert vlc_text_scale(0) == 0
 
 
 def test_nearest_vlc_palette_color():
