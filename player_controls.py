@@ -101,12 +101,19 @@ class PlayerControlsMixin:
 
     def add_volume_control(self):
         """Añade volume control."""
+        host = getattr(self, 'controls_buttons_frame', None) or self.controls_frame
+        wrap = ttk.Frame(host)
+        wrap.pack(side=tk.LEFT, padx=(22, 10), pady=2)
         self.volume_scale = ttk.Scale(
-            self.controls_frame, from_=0, to=100,
-            orient='horizontal', command=self.set_volume
+            wrap,
+            from_=0,
+            to=100,
+            orient='horizontal',
+            length=118,
+            command=self.set_volume,
         )
         self.volume_scale.set(self.volume)
-        self.volume_scale.pack(side=tk.LEFT, padx=5)
+        self.volume_scale.pack(side=tk.LEFT)
 
         # SOLUCIÓN TIMEOUT: Solo clics en control de volumen, no <Motion>
         # que causaba reinicio constante del timer

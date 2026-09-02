@@ -35,6 +35,34 @@ SOFT_REBUFFER_NEED = 3
 SOFT_REBUFFER_WINDOW_S = 30
 SOFT_REBUFFER_EXTRA_MS = 3000
 
+_OVERLAY_MESSAGES = {
+    'connecting': (
+        'Conectando…',
+        'Esperando imagen del canal.',
+    ),
+    'buffering': (
+        'Bufferizando…',
+        'Recuperando el directo.',
+    ),
+    'reconnect': (
+        'Reconectando…',
+        'El directo se ha quedado sin datos; volvemos a abrir el enlace.',
+    ),
+    'buffer_bump': (
+        'Ampliando buffer…',
+        'Varios microcortes; subimos la caché de reproducción.',
+    ),
+    'retry_ts': (
+        'Reintentando…',
+        'Probando como MPEG-TS.',
+    ),
+}
+
+
+def iptv_overlay_message(event):
+    """Título y detalle breves para el overlay de reintento IPTV."""
+    return _OVERLAY_MESSAGES.get(str(event or '').strip(), _OVERLAY_MESSAGES['reconnect'])
+
 _PROFILE_ALIASES = {
     'rapido': 'fast',
     'rápido': 'fast',

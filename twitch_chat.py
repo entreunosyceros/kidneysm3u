@@ -74,16 +74,33 @@ def chat_local_embed_url(channel, host='127.0.0.1', port=0):
     return ''
 
 
-def pywebview_gtk_ready():
-    """Pywebview gtk ready."""
+def pywebview_integrated_ready():
+    """True si pywebview puede abrir ventanas en esta plataforma (GTK, WebView2, Cocoa…)."""
     if webview is None:
         return False
     try:
-        from webview.guilib import import_gtk
-        import_gtk()
-        return True
+        import webview.guilib as guilib_module
+
+        if guilib_module.guilib is not None:
+            return True
+        guilib_module.initialize()
+        return guilib_module.guilib is not None
     except Exception:
         return False
+
+
+def pywebview_gtk_ready():
+    """Compatibilidad: en Linux comprueba GTK; en el resto, cualquier backend de pywebview."""
+    if sys.platform.startswith('linux'):
+        if webview is None:
+            return False
+        try:
+            from webview.guilib import import_gtk
+            import_gtk()
+            return True
+        except Exception:
+            return False
+    return pywebview_integrated_ready()
 
 
 def _python_has_gi(python_exe):
@@ -104,8 +121,10 @@ def _python_has_gi(python_exe):
 
 
 def system_python_with_gi():
-    """Python del sistema con gi/WebKit, para lanzar la ventana en subprocess."""
-    if pywebview_gtk_ready():
+    """Python del sistema con gi/WebKit, para lanzar la ventana en subprocess (solo Linux)."""
+    if not sys.platform.startswith('linux'):
+        return ''
+    if pywebview_integrated_ready():
         return ''
     seen = set()
     for candidate in ('/usr/bin/python3', '/usr/local/bin/python3'):
@@ -125,20 +144,38 @@ def system_python_with_gi():
     return ''
 
 
-def chat_backend_status():
-    """Chat backend status."""
-    if pywebview_gtk_ready():
-        return 'pywebview', ''
-    system_py = system_python_with_gi()
-    if system_py:
-        return 'system_gtk', system_py
+def _browser_fallback_reason():
+    """Mensaje al abrir el chat en el navegador por falta de ventana integrada."""
     if webview is None:
-        return 'browser', 'Falta instalar pywebview en el entorno virtual (run_app.py).'
-    return 'browser', (
+        return 'Falta instalar pywebview en el entorno virtual (run_app.py).'
+    if sys.platform == 'win32':
+        return (
+            'No se pudo abrir la ventana integrada con pywebview.\n'
+            'Reinstala dependencias desde la carpeta del programa:\n'
+            '  .venv\\Scripts\\pip install pywebview pythonnet\n'
+            'También necesitas Microsoft Edge WebView2 Runtime (habitual en Windows 10/11).'
+        )
+    if sys.platform == 'darwin':
+        return (
+            'No se pudo abrir la ventana integrada.\n'
+            'Reinstala dependencias: pip install pywebview'
+        )
+    return (
         'PyGObject (gi) no está disponible para este Python.\n'
         'En Ubuntu: sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1\n'
         'Si usaste otro Python (p. ej. Conda), borra .venv y arranca con: /usr/bin/python3 run_app.py'
     )
+
+
+def chat_backend_status():
+    """Chat backend status."""
+    if pywebview_integrated_ready():
+        return 'pywebview', ''
+    if sys.platform.startswith('linux'):
+        system_py = system_python_with_gi()
+        if system_py:
+            return 'system_gtk', system_py
+    return 'browser', _browser_fallback_reason()
 
 
 class _ChatHandler(BaseHTTPRequestHandler):
@@ -462,10 +499,7 @@ class TwitchChatPanel:
             if reason:
                 lines.append(reason)
             else:
-                lines.append(
-                    'No se pudo abrir la ventana integrada. '
-                    'Comprueba python3-gi y WebKitGTK (véase docs/instalacion.md).'
-                )
+                lines.append(_browser_fallback_reason())
             messagebox.showinfo('Chat de Twitch', '\n'.join(lines), parent=parent)
         self._notify_ui()
         return True

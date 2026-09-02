@@ -970,6 +970,7 @@ class YouTubeHandler:
                 ):
                     return
                 print("[YouTubeHandler] Retransmitiendo la URL ya extraída")
+                self._notify_player_status('Releyendo YouTube…')
                 if not self._play_via_pipe(
                     url, force_pulse, show_progress, is_sequential,
                     duration=stream.get('duration'),
@@ -996,6 +997,7 @@ class YouTubeHandler:
 
         if stream:
             print("[YouTubeHandler] Retransmitiendo la URL extraída (sin volver a pedir el vídeo a YouTube)")
+            self._notify_player_status('Releyendo YouTube…')
         duration = (stream or {}).get('duration')
         if self._play_playable_file(
             url, force_pulse, show_progress, is_sequential,
@@ -1087,8 +1089,16 @@ class YouTubeHandler:
             except tk.TclError:
                 pass
 
+    def _notify_player_status(self, text, *, timeout_ms=12000, sticky=False):
+        """Refleja el estado de YouTube en la barra del reproductor."""
+        player = self.video_player
+        setter = getattr(player, 'set_player_status', None)
+        if callable(setter):
+            setter(text, timeout_ms=timeout_ms, sticky=sticky)
+
     def _show_status(self, text):
         """Uso interno: show status."""
+        self._notify_player_status(text)
         if self._loading_alive():
             self._set_loading_status(text)
             return
@@ -1112,20 +1122,18 @@ class YouTubeHandler:
         self._loading_video_id = video_id
 
         player = self.video_player
-        parent = getattr(player, 'player_frame', None) or getattr(player, 'video_frame', None)
         video_frame = getattr(player, 'video_frame', None)
-        if not parent or not video_frame:
+        if not video_frame:
             return
 
         self.hide_loading()
         colors = get_colors()
-        overlay = tk.Frame(parent, bg='#000000', highlightthickness=0)
-        place_opts = {'relx': 0, 'rely': 0, 'relwidth': 1, 'relheight': 1}
+        overlay = tk.Frame(video_frame, bg='#000000', highlightthickness=0)
+        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
         try:
-            overlay.place(in_=video_frame, **place_opts)
-            overlay.lift(video_frame)
+            overlay.lift()
         except tk.TclError:
-            overlay.place(**place_opts)
+            pass
         self._loading_frame = overlay
 
         card = tk.Frame(
@@ -1500,6 +1508,7 @@ class YouTubeHandler:
             return True
         ffmpeg = shutil.which('ffmpeg')
         if not ffmpeg:
+            self._notify_player_status('Sin ffmpeg · descargando sin relevo en directo', timeout_ms=12000)
             return self._play_via_download(
                 youtube_url, force_pulse, show_progress, is_sequential,
                 duration=duration, start_s=start_s,
@@ -1512,7 +1521,8 @@ class YouTubeHandler:
             'is_sequential': is_sequential,
         }
         self.stop_pipeline()
-        self._show_status("Preparando vídeo…" if start_s < 0.5 else "Saltando al punto elegido…")
+        relay_text = 'Releyendo YouTube…' if start_s < 0.5 else 'Releyendo YouTube desde el punto elegido…'
+        self._show_status(relay_text)
         tmpdir = tempfile.mkdtemp(prefix='kidneys_yt_')
         ts_path = os.path.join(tmpdir, 'stream.ts')
         self._yt_tmpdir = tmpdir

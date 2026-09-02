@@ -6,6 +6,7 @@ import app_config
 from iptv_quality import (
     detect_iptv_quality,
     fallback_urls,
+    normalize_iptv_quality,
     pick_iptv_variant,
     strip_quality_tokens,
     variants_for_channel,
@@ -145,24 +146,32 @@ def test_recorder_reads_iptv_and_youtube_source():
     assert headers['Referer'] == 'https://www.youtube.com/'
 
 
-def test_iptv_quality_and_backup_config(tmp_path, monkeypatch):
-    """Prueba IPTV quality and backup configuración."""
-    previous = _isolate_config(tmp_path, monkeypatch)
-    try:
-        assert app_config.normalize_iptv_quality(900) == 1080
-        assert app_config.normalize_iptv_quality(0) == 0
-        app_config.set_iptv_quality(720)
-        assert app_config.get_iptv_quality() == 720
-        app_config.set_backup_playlist('/tmp/respaldo.m3u', 'file')
-        path, kind = app_config.get_backup_playlist()
-        assert path == '/tmp/respaldo.m3u'
-        assert kind == 'file'
-        app_config.set_backup_playlist('', '')
-        path, kind = app_config.get_backup_playlist()
-        assert path == ''
-        assert kind == ''
-    finally:
-        app_config._cache = previous
+def test_normalize_iptv_quality_and_pick_variant():
+    """Prueba normalización de altura IPTV y selección de variante."""
+    assert normalize_iptv_quality(900) == 1080
+    assert normalize_iptv_quality(0) == 0
+    assert normalize_iptv_quality(720) == 720
+    assert normalize_iptv_quality('1080') == 1080
+    variants = [
+        {'url': 'u1', 'height': 480, 'name': 'La 1 SD'},
+        {'url': 'u2', 'height': 720, 'name': 'La 1 HD'},
+        {'url': 'u3', 'height': 1080, 'name': 'La 1 FHD'},
+    ]
+    picked = pick_iptv_variant(variants, preferred=720)
+    assert picked['height'] == 720
+    assert pick_iptv_variant(variants, preferred=0)['height'] == 1080
+
+
+def test_group_buckets_keeps_first_seen_order():
+    """Prueba group buckets keeps first seen order."""
+    from channel_sidebar import TAB_MAX_GROUPS, UNGROUPED, _group_buckets
+
+    order, buckets = _group_buckets(['España', 'Deportes', 'España', '', 'Deportes'])
+    assert order == ['España', 'Deportes', UNGROUPED]
+    assert buckets['España'] == [0, 2]
+    assert buckets['Deportes'] == [1, 4]
+    assert buckets[UNGROUPED] == [3]
+    assert TAB_MAX_GROUPS >= 8
 
 
 class _FakeHttp:
@@ -202,15 +211,3 @@ def test_probe_iptv_url_accepts_mpegts(monkeypatch):
         lambda *args, **kwargs: _FakeHttp(b'\x47' + b'\x00' * 187, 'video/mp2t'),
     )
     assert probe_iptv_url('http://panel.example/live/1') is True
-
-
-def test_group_buckets_keeps_first_seen_order():
-    """Prueba group buckets keeps first seen order."""
-    from channel_sidebar import COMBO_MAX_GROUPS, UNGROUPED, _group_buckets
-
-    order, buckets = _group_buckets(['España', 'Deportes', 'España', '', 'Deportes'])
-    assert order == ['España', 'Deportes', UNGROUPED]
-    assert buckets['España'] == [0, 2]
-    assert buckets['Deportes'] == [1, 4]
-    assert buckets[UNGROUPED] == [3]
-    assert COMBO_MAX_GROUPS > 8

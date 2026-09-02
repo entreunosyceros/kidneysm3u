@@ -1,16 +1,22 @@
 """Módulo de test subtitle style."""
 
 from subtitle_style import (
+    blend_over_background,
     delay_label,
+    draw_subtitle_preview,
     hex_to_vlc_color,
     nearest_vlc_palette_color,
     normalize_hex_color,
     normalize_subtitle_style,
     opacity_percent,
     percent_to_opacity,
+    preview_font_family,
+    preview_font_size,
+    preview_outline_offsets,
     vlc_instance_args,
     vlc_media_options,
     vlc_outline_thickness,
+    vlc_palette_hex,
     vlc_rel_fontsize,
     vlc_text_scale,
 )
@@ -94,3 +100,51 @@ def test_fingerprint_changes_with_size():
     assert delay_label(0) == '0,0 s'
     assert delay_label(12) == '+1,2 s'
     assert delay_label(-8) == '-0,8 s'
+
+
+def test_preview_font_size_mapping():
+    """La vista previa escala tamaños legibles en Linux y Windows."""
+    assert preview_font_size(24) == 16
+    assert preview_font_size(44) == 26
+    assert preview_font_family()
+
+
+def test_vlc_palette_hex_matches_nearest_color():
+    """La vista previa usa la misma aproximación de paleta que VLC."""
+    assert vlc_palette_hex('#FFFFFF') == '#FFFFFF'
+    assert vlc_palette_hex('#FF0000') == '#FF0000'
+
+
+def test_blend_over_background_respects_opacity():
+    """Opacidad mezcla el color sobre el fondo oscuro del vídeo."""
+    solid = blend_over_background('#FFFFFF', '#101010', 255)
+    faint = blend_over_background('#FFFFFF', '#101010', 64)
+    assert solid != faint
+
+
+def test_preview_outline_offsets():
+    """Contorno fino y grueso generan más desplazamientos."""
+    assert preview_outline_offsets(0) == ()
+    assert len(preview_outline_offsets(1)) >= 4
+    assert len(preview_outline_offsets(2)) > len(preview_outline_offsets(1))
+
+
+def test_draw_subtitle_preview_on_canvas():
+    """El canvas de vista previa se pinta sin error (Tk oculto)."""
+    import tkinter as tk
+
+    root = tk.Tk()
+    root.withdraw()
+    canvas = tk.Canvas(root, width=420, height=112, bg='#101010')
+    canvas.pack()
+    root.update_idletasks()
+    style = normalize_subtitle_style({
+        'subtitle_size': 32,
+        'subtitle_color': '#FFFF00',
+        'subtitle_outline': 2,
+        'subtitle_bg_opacity': 180,
+    })
+    draw_subtitle_preview(canvas, style)
+    root.update_idletasks()
+    assert canvas.find_all()
+    root.destroy()

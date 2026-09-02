@@ -6,6 +6,7 @@ from iptv_buffer import (
     SOFT_REBUFFER_EXTRA_MS,
     iptv_cache_ms,
     iptv_deadman_should_fail,
+    iptv_overlay_message,
     iptv_rebuffer_decision,
     iptv_soft_rebuffer_note,
     iptv_soft_rebuffer_should_bump,
@@ -145,6 +146,17 @@ def test_iptv_deadman_extends_if_data_arrives():
     assert iptv_deadman_should_fail(
         decoded=False, bytes_now=9000, bytes_prev=1000, elapsed_s=16, kind='mpegts',
     ) is True
+
+
+def test_iptv_overlay_messages():
+    """Prueba IPTV overlay messages."""
+    title, detail = iptv_overlay_message('reconnect')
+    assert title == 'Reconectando…'
+    assert 'sin datos' in detail
+    title, _detail = iptv_overlay_message('buffer_bump')
+    assert title == 'Ampliando buffer…'
+    title, _detail = iptv_overlay_message('unknown')
+    assert title == 'Reconectando…'
 
 
 def test_iptv_rebuffer_reconnects_once_then_fails():

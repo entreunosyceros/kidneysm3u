@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test-linux:
+    name: pytest (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Instalar dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb vlc
+
+      - name: Instalar dependencias Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: pytest
+        run: xvfb-run -a python -m pytest -q
+
+  test-windows:
+    name: pytest + build (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Instalar dependencias Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt pyinstaller
+
+      - name: pytest
+        run: python -m pytest -q
+
+      - name: Instalar VLC (libvlc para PyInstaller)
+        run: choco install vlc -y
+
+      - name: Generar icono Windows
+        run: |
+          python -c "from PIL import Image; Image.open('img/icono.png').save('img/icono.ico', format='ICO', sizes=[(256,256),(48,48),(32,32),(16,16)])"
+
+      - name: PyInstaller (kidneysm3u.exe)
+        run: python -m PyInstaller --noconfirm --clean kidneysm3u.spec
+
+      - name: Comprobar ejecutable
+        run: |
+          if (-not (Test-Path dist\kidneysm3u\kidneysm3u.exe)) {
+            Write-Error 'No se generó dist\kidneysm3u\kidneysm3u.exe'
+            exit 1
+          }
+          Get-Item dist\kidneysm3u\kidneysm3u.exe | Format-List FullName, Length

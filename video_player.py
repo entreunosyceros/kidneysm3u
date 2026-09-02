@@ -49,11 +49,10 @@ from ui_theme import (
 )
 from ui_clipboard import ask_string
 import app_config
-from iptv_buffer import vlc_aout_instance_args, vlc_aout_option
-from subtitle_style import apply_spu_delay, fingerprint, vlc_instance_args, vlc_media_options
+from iptv_buffer import vlc_aout_option
+from subtitle_style import apply_spu_delay, fingerprint, vlc_media_options
 from m3u_parse import (
     parse_m3u_channels, parse_m3u_epg_urls, decode_m3u_bytes,
-    IPTV_USER_AGENT,
 )
 from channel_sidebar import ChannelSidebar
 import epg
@@ -64,8 +63,24 @@ from youtube_queue import show_youtube_queue
 from player_controls import PlayerControlsMixin
 from player_iptv import IptvPlaybackMixin
 from player_overlay import ChannelNoticeMixin, YoutubeTitleOverlayMixin
+from player_status import PlayerStatusMixin
 from player_pip import PlayerPipMixin
 from iptv_record import StreamRecorder, default_recording_path, show_recordings
+from keyboard import (
+    bind_question_mark_help,
+    hide_player_shortcuts_overlay,
+    show_keyboard_shortcuts,
+    show_player_shortcuts_overlay,
+    shortcuts_overlay_visible,
+    toggle_player_shortcuts_overlay,
+)
+from vlc_check import (
+    make_vlc_instance,
+    mark_vlc_subtitle_style_warn_shown,
+    should_warn_subtitle_style,
+    show_vlc_subtitle_style_dialog,
+)
+import light_mode_auto
 
 
 def popup_menu_origin(btn_x, btn_y, btn_h, menu_w, menu_h, area_x, area_y, area_w, area_h, pad=4):
@@ -144,79 +159,13 @@ class Tooltip:
                 pass
 
 
-def _make_vlc_instance():
-    """Instancia VLC; freetype/sub-text-scale solo en libvlc_new (no en media)."""
-    os.environ['LIBVA_MESSAGING_LEVEL'] = '0'
-    use_hw = app_config.iptv_use_hw_decode()
-    core = [
-        "--quiet",
-        "--verbose=0",
-        "--audio-resampler=soxr",
-        "--network-caching=3000",
-        "--live-caching=3000",
-        "--file-caching=3000",
-        "--sout-mux-caching=3000",
-        f"--http-user-agent={IPTV_USER_AGENT}",
-    ]
-    if not use_hw:
-        core.insert(2, "--avcodec-hw=none")
-    core.extend(vlc_aout_instance_args())
-    freetype = vlc_instance_args()
-    attempts = []
-    seen = set()
-
-    def _add(args):
-        key = tuple(args)
-        if key not in seen:
-            seen.add(key)
-            attempts.append(list(args))
-
-    if freetype:
-        _add(core + freetype)
-        lite = [arg for arg in freetype if 'background' not in arg]
-        if lite != freetype:
-            _add(core + lite)
-    _add(core)
-    if not use_hw:
-        if freetype:
-            _add(["--quiet", "--avcodec-hw=none"] + freetype)
-        _add(["--quiet", "--avcodec-hw=none"])
-    else:
-        if freetype:
-            _add(["--quiet"] + freetype)
-        _add(["--quiet"])
-
-    last_error = None
-    styled = bool(freetype)
-    for args in attempts:
-        try:
-            instance = vlc.Instance(*args)
-        except Exception as exc:
-            last_error = exc
-            continue
-        if instance is not None:
-            if styled and freetype and not any(
-                arg.startswith('--freetype-') or arg.startswith('--sub-text-scale=')
-                for arg in args
-            ):
-                print(
-                    '[VLC] Aviso: no se pudo activar el estilo de subtítulos en libVLC; '
-                    'comprueba que VLC 3 esté instalado.'
-                )
-            return instance
-    detail = f' ({last_error})' if last_error else ''
-    raise RuntimeError(
-        'VLC no pudo crear el reproductor. Comprueba que libvlc está instalado.'
-        + detail
-    )
-
-
 def should_offer_youtube_replay(playing_youtube, standalone, sequential, queue_pending):
     """True solo si acaba un vídeo de YouTube suelto, no una cola, playlist o secuencia."""
     return bool(playing_youtube and standalone and not sequential and not queue_pending)
 
 
 class VideoPlayer(
+    PlayerStatusMixin,
     PlayerControlsMixin,
     IptvPlaybackMixin,
     YoutubeTitleOverlayMixin,
@@ -227,10 +176,8 @@ class VideoPlayer(
     def __init__(self):
         """Inicializa el reproductor, la instancia VLC y el estado de la sesión."""
         self.window = None
-        self.instance = _make_vlc_instance()
+        self._init_vlc_instance(force_subtitle_warn=False)
         self.player = self.instance.media_player_new()
-        self._vlc_style_key = fingerprint()
-        self._vlc_hw_decode_key = app_config.iptv_use_hw_decode()
         self.channels = []
         self.current_channel = None
         self.channels_listbox = None
@@ -397,6 +344,14 @@ class VideoPlayer(
         ttk.Button(
             search_row, text='★ Añadir', style='Compact.TButton', command=self.add_to_favorites,
         ).pack(side=tk.LEFT, padx=(6, 0))
+        search_hint_row = ttk.Frame(self.channels_frame)
+        search_hint_row.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 4))
+        self._search_hint_var = tk.StringVar(value='Ctrl+F · filtra el grupo activo')
+        ttk.Label(
+            search_hint_row,
+            textvariable=self._search_hint_var,
+            style='Muted.TLabel',
+        ).pack(anchor=tk.W)
         self._zap_side_label = ttk.Label(self.channels_frame, text='', style='PageTitle.TLabel')
 
         self._epg_label = ttk.Label(
@@ -519,6 +474,43 @@ class VideoPlayer(
         self.youtube_handler.notify_session()
         self.twitch_handler.notify_session()
         self.setup_keyboard_shortcuts()
+        self._ensure_player_status_bar()
+        self.window.after_idle(self.refresh_ffmpeg_status_hint)
+        self.window.after_idle(self._maybe_show_vlc_subtitle_warning)
+
+    def _init_vlc_instance(self, force_subtitle_warn=False):
+        """Crea libVLC y guarda el resultado para avisos de subtítulos."""
+        result = make_vlc_instance()
+        self.instance = result.instance
+        self._vlc_instance_result = result
+        self._vlc_subtitle_warn_force = force_subtitle_warn
+        self._vlc_style_key = fingerprint()
+        self._vlc_hw_decode_key = app_config.iptv_use_hw_decode()
+        return result
+
+    def _maybe_show_vlc_subtitle_warning(self):
+        """Muestra el diálogo si libVLC arrancó sin estilo freetype de subtítulos."""
+        result = getattr(self, '_vlc_instance_result', None)
+        force = getattr(self, '_vlc_subtitle_warn_force', False)
+        if not should_warn_subtitle_style(result, force=force):
+            self._vlc_subtitle_warn_force = False
+            return
+        if not self._widget_exists(self.window):
+            return
+        show_vlc_subtitle_style_dialog(self.window, result=result)
+        mark_vlc_subtitle_style_warn_shown()
+        self._vlc_subtitle_warn_force = False
+
+    def _cpu_sampling_enabled(self):
+        """True si hay que muestrear CPU (monitor visible o modo ligero auto)."""
+        return (
+            app_config.get_show_cpu_monitor()
+            or (
+                app_config.get_light_mode_auto()
+                and app_config.get_light_mode_auto_cpu()
+                and not app_config.get_light_mode()
+            )
+        )
 
     def setup_performance_monitoring(self):
         """Monitor de CPU opcional (muestreo cada ~8 s)."""
@@ -530,27 +522,51 @@ class VideoPlayer(
                 except tk.TclError:
                     pass
                 self.cpu_label = None
-            return
-        if label is None or not self._widget_exists(label):
+        elif label is None or not self._widget_exists(label):
             self.cpu_label = ttk.Label(self.controls_frame, text=plain_ui_line('CPU: …'))
             self.cpu_label.pack(side=tk.RIGHT, padx=5)
-        self.update_performance_stats()
+        if self._cpu_sampling_enabled():
+            self.update_performance_stats()
 
     def update_performance_stats(self):
         """Actualiza las estadísticas de rendimiento."""
-        label = getattr(self, 'cpu_label', None)
-        if not app_config.get_show_cpu_monitor() or not self._widget_exists(label):
-            return
+        cpu_percent = None
         try:
             cpu_percent = psutil.cpu_percent()
-            label.config(text=f'CPU: {cpu_percent:.0f} %')
         except Exception:
             pass
-        if self._widget_exists(self.window):
+        if app_config.get_light_mode_auto() and app_config.get_light_mode_auto_cpu():
+            self._sync_auto_light_mode(cpu_percent=cpu_percent)
+        label = getattr(self, 'cpu_label', None)
+        if app_config.get_show_cpu_monitor() and self._widget_exists(label) and cpu_percent is not None:
+            try:
+                label.config(text=f'CPU: {cpu_percent:.0f} %')
+            except tk.TclError:
+                pass
+        if self._widget_exists(self.window) and self._cpu_sampling_enabled():
             self.window.after(
                 app_config.CPU_MONITOR_INTERVAL_MS,
                 self.update_performance_stats,
             )
+
+    def _sync_auto_light_mode(self, cpu_percent=None):
+        """Activa o desactiva el modo ligero automático según lista y CPU."""
+        count = len(getattr(self, 'all_channels', None) or self.channels or [])
+        active, reasons, changed = light_mode_auto.update_auto_light_mode(count, cpu_percent)
+        if not changed:
+            return active
+        if active:
+            setter = getattr(self, 'set_player_status', None)
+            if callable(setter) and self._widget_exists(getattr(self, 'window', None)):
+                setter(light_mode_auto.status_message(reasons), timeout_ms=12000)
+        self._apply_logo_pref()
+        self._apply_light_mode_runtime()
+        try:
+            from youtube_player import enforce_youtube_cache_limit
+            enforce_youtube_cache_limit(max_bytes=app_config.effective_yt_cache_max_bytes())
+        except Exception:
+            pass
+        return active
         
     def create_menu(self):
         """Crea menu."""
@@ -663,6 +679,10 @@ class VideoPlayer(
         self.menubar.add_cascade(label="Favoritos", menu=favoritos_menu)
         self.menubar.add_cascade(label="Calidad / audio", menu=self.audio_menu)
         self.menubar.add_cascade(label="Subtítulos", menu=self.subs_menu)
+        ayuda_menu = tk.Menu(self.menubar, tearoff=0)
+        ayuda_menu.add_command(label="Atajos de teclado", command=self.show_keyboard_shortcuts_dialog)
+        ayuda_menu.add_command(label="Atajos rápidos (F1)", command=self.show_shortcuts_overlay)
+        self.menubar.add_cascade(label="Ayuda", menu=ayuda_menu)
         self.window.config(menu=self.menubar)
         style_menu_tree(self.menubar)
         self._rebuild_track_menus()
@@ -673,7 +693,11 @@ class VideoPlayer(
         """Configura keyboard shortcuts."""
         # Atajos generales
         self.window.bind('<space>', self._on_space_toggle_play)
-        self.window.bind('<F1>', lambda e: self.toggle_fullscreen())
+        self.window.bind('<F1>', self._on_shortcuts_help_key)
+        self.window.bind('<F11>', self._on_fullscreen_key)
+        bind_question_mark_help(self.window, self._on_shortcuts_help_key)
+        self.window.bind('<Control-f>', self._focus_channel_search)
+        self.window.bind('<Control-F>', self._focus_channel_search)
         self.window.bind('<m>', lambda e: self.toggle_mute())
         self.window.bind('<Left>', lambda e: self.seek_relative(-2))
         self.window.bind('<Right>', lambda e: self.seek_relative(2))
@@ -742,6 +766,105 @@ class VideoPlayer(
                 ('<B>', self._on_last_channel_key),
             ):
                 video.bind(sequence, handler, add='+')
+            video.bind('<F1>', self._on_shortcuts_help_key, add='+')
+            video.bind('<F11>', self._on_fullscreen_key, add='+')
+            bind_question_mark_help(video, self._on_shortcuts_help_key, add=True)
+            video.bind('<Control-f>', self._focus_channel_search, add='+')
+            video.bind('<Control-F>', self._focus_channel_search, add='+')
+        self.window.after(900, self._maybe_show_shortcuts_hint)
+
+    def _focus_channel_search(self, event=None):
+        """Enfoca el buscador de canales del grupo activo."""
+        entry = getattr(self, 'search_entry', None)
+        if not self._widget_exists(entry):
+            return 'break'
+        try:
+            entry.focus_set()
+            entry.select_range(0, tk.END)
+            entry.icursor(tk.END)
+        except tk.TclError:
+            pass
+        return 'break'
+
+    def _update_search_hint(self, count=None):
+        """Actualiza el texto auxiliar bajo el buscador."""
+        hint = getattr(self, '_search_hint_var', None)
+        if hint is None:
+            return
+        term = ''
+        if getattr(self, 'search_var', None):
+            try:
+                term = (self.search_var.get() or '').strip()
+            except tk.TclError:
+                term = ''
+        if not term:
+            hint.set('Ctrl+F · filtra el grupo activo')
+            return
+        sidebar = getattr(self, 'sidebar', None)
+        if sidebar and sidebar.mode == 'catalog':
+            hint.set('Elige un grupo para buscar · Ctrl+F')
+            return
+        if count is None:
+            if sidebar and sidebar.mode != 'catalog':
+                count = sidebar._view_count()
+            else:
+                count = 0
+        hint.set(f'{count} canal(es) · Ctrl+F')
+
+    def _apply_sidebar_search(self):
+        """Aplica la búsqueda sobre el grupo activo sin tocar la lista completa."""
+        sidebar = getattr(self, 'sidebar', None)
+        if sidebar is None:
+            return
+        term = ''
+        if getattr(self, 'search_var', None):
+            try:
+                term = (self.search_var.get() or '').strip()
+            except tk.TclError:
+                term = ''
+        count = sidebar.set_search_term(term)
+        self._update_search_hint(count)
+
+    def show_keyboard_shortcuts_dialog(self):
+        """Abre el diálogo completo de atajos."""
+        if self._widget_exists(self.window):
+            show_keyboard_shortcuts(self.window)
+
+    def show_shortcuts_overlay(self):
+        """Muestra el panel breve de atajos sobre el vídeo."""
+        show_player_shortcuts_overlay(
+            self,
+            mark_seen=app_config.set_player_shortcuts_hint_shown,
+        )
+
+    def _maybe_show_shortcuts_hint(self):
+        """Overlay de atajos la primera vez que se abre el reproductor."""
+        if not app_config.needs_player_shortcuts_hint():
+            return
+        if not self._widget_exists(self.window):
+            return
+        show_player_shortcuts_overlay(
+            self,
+            first_time=True,
+            mark_seen=app_config.set_player_shortcuts_hint_shown,
+        )
+
+    def _on_shortcuts_help_key(self, event=None):
+        """Alterna el overlay breve de atajos (F1 o ?)."""
+        if self._event_in_text_field(event):
+            return
+        toggle_player_shortcuts_overlay(
+            self,
+            mark_seen=app_config.set_player_shortcuts_hint_shown,
+        )
+        return 'break'
+
+    def _on_fullscreen_key(self, event=None):
+        """Pantalla completa con F11."""
+        if self._event_in_text_field(event):
+            return
+        self.toggle_fullscreen()
+        return 'break'
 
     def _on_channel_prev_key(self, event=None):
         """Callback interno para canal prev key."""
@@ -809,6 +932,9 @@ class VideoPlayer(
 
     def _on_escape_key(self, event=None):
         """Callback interno para escape key."""
+        if shortcuts_overlay_visible(self):
+            hide_player_shortcuts_overlay(self)
+            return 'break'
         if self._zap_digits:
             self._clear_zap()
             return 'break'
@@ -1823,6 +1949,7 @@ class VideoPlayer(
     def close(self):
         """Cierra la ventana y libera recursos."""
         self._clear_zap()
+        hide_player_shortcuts_overlay(self)
         try:
             # Desactivar los manejadores de eventos
             if hasattr(self, 'video_frame') and self.video_frame:
@@ -1927,14 +2054,15 @@ class VideoPlayer(
         ):
             return False
         self._cleanup_vlc_player()
-        self.instance = _make_vlc_instance()
+        style_changed = getattr(self, '_vlc_style_key', None) != key
+        self._init_vlc_instance(force_subtitle_warn=style_changed)
         self.player = self.instance.media_player_new()
         try:
             self.player.audio_set_volume(getattr(self, 'volume', 50))
         except Exception:
             pass
-        self._vlc_style_key = key
-        self._vlc_hw_decode_key = app_config.iptv_use_hw_decode()
+        if self._widget_exists(self.window):
+            self.window.after_idle(self._maybe_show_vlc_subtitle_warning)
         return True
 
     def _cleanup_vlc_player(self):
@@ -1990,7 +2118,7 @@ class VideoPlayer(
         self.window = None
         self.channels_listbox = None
         if not self.player or not self.instance:
-            self.instance = _make_vlc_instance()
+            self._init_vlc_instance(force_subtitle_warn=False)
             self.player = self.instance.media_player_new()
             self.volume = app_config.get_volume()
         self.create_window()
@@ -2108,6 +2236,7 @@ class VideoPlayer(
             self._logos = list(logos)
         self._logos_all = list(self._logos)
         self._rebuild_sidebar()
+        self._sync_auto_light_mode()
 
     def _persist_sidebar(self):
         """Uso interno: persist barra lateral."""
@@ -2122,7 +2251,7 @@ class VideoPlayer(
         if kind in ('file', 'url') and source:
             app_config.remember_playlist(source, kind)
             return
-        session_max = app_config.light_mode_session_max() if app_config.get_light_mode() else 1500
+        session_max = app_config.light_mode_session_max() if app_config.effective_light_mode() else 1500
         if len(items) > session_max:
             if source:
                 app_config.remember_playlist(source, kind or 'file')
@@ -2216,15 +2345,9 @@ class VideoPlayer(
             messagebox.showinfo("Favoritos", "Por el momento no hay favoritos añadidos.")
             return
         self._showing_favorites = True
-        if getattr(self, 'search_var', None):
-            try:
-                if (self.search_var.get() or '').strip():
-                    self._apply_channel_filter()
-                    return
-            except tk.TclError:
-                pass
         self.channels, self._groups, self._tvg_ids, self._logos = self._favorite_rows()
         self._rebuild_sidebar()
+        self._apply_sidebar_search()
         self._set_epg_label('')
 
     def restore_all_channels(self):
@@ -2234,14 +2357,8 @@ class VideoPlayer(
         self._groups = list(self._groups_all)
         self._tvg_ids = list(self._tvg_ids_all) if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
         self._logos = list(self._logos_all) if len(getattr(self, '_logos_all', [])) == len(self.all_channels) else [''] * len(self.all_channels)
-        if getattr(self, 'search_var', None):
-            try:
-                if (self.search_var.get() or '').strip():
-                    self._apply_channel_filter()
-                    return
-            except tk.TclError:
-                pass
         self._rebuild_sidebar()
+        self._apply_sidebar_search()
 
     def prompt_url(self):
         """Prompt url."""
@@ -2677,6 +2794,7 @@ class VideoPlayer(
         self._start_epg(epg_urls)
         self._persist_sidebar()
         self._clear_busy()
+        self._sync_auto_light_mode()
         if notify:
             messagebox.showinfo("Éxito", f"Lista M3U cargada correctamente: {len(self.channels)} canales encontrados")
 
@@ -2701,7 +2819,7 @@ class VideoPlayer(
         self._epg_urls = self._merged_epg_urls()
         wanted_ids = [item for item in (self._tvg_ids_all or []) if item]
         wanted_names = [name for name, _url in (self.all_channels or self.channels or [])]
-        if app_config.get_light_mode():
+        if app_config.effective_light_mode():
             sidebar = getattr(self, 'sidebar', None)
             visible = sidebar.current_indices() if sidebar else []
             if visible:
@@ -2750,8 +2868,14 @@ class VideoPlayer(
                 index = self._selected_channel_index()
                 if index is None:
                     index = self.current_channel
-                if index is not None:
-                    self._refresh_epg_label(index)
+                if guide.channel_count():
+                    if index is not None:
+                        self._refresh_epg_label(index)
+                    else:
+                        self._set_epg_label('')
+                elif self._epg_urls:
+                    self._set_epg_label(plain_ui_line('EPG desactualizada'))
+                    self.set_player_status('EPG desactualizada', timeout_ms=20000)
                 else:
                     self._set_epg_label('')
                 self._refresh_sidebar_now()
@@ -2796,7 +2920,7 @@ class VideoPlayer(
         label = getattr(self, '_epg_label', None)
         if not self._widget_exists(label):
             return
-        if app_config.get_light_mode():
+        if app_config.effective_light_mode():
             try:
                 label.pack_forget()
             except tk.TclError:
@@ -2899,7 +3023,7 @@ class VideoPlayer(
 
     def channel_logos_enabled(self):
         """Canal logos enabled."""
-        if app_config.get_light_mode():
+        if app_config.effective_light_mode():
             return False
         return bool(getattr(self, '_show_logos', True))
 
@@ -2915,7 +3039,7 @@ class VideoPlayer(
         if enabled is None:
             enabled = app_config.effective_show_channel_logos()
         else:
-            enabled = bool(enabled) and not app_config.get_light_mode()
+            enabled = bool(enabled) and not app_config.effective_light_mode()
         self._show_logos = bool(enabled)
         var = getattr(self, '_logos_var', None)
         if var is not None:
@@ -2930,7 +3054,7 @@ class VideoPlayer(
     def _on_sidebar_view_change(self):
         """Callback interno para barra lateral view change."""
         self._prefetch_visible_logos()
-        if app_config.get_light_mode() and self._epg_urls:
+        if app_config.effective_light_mode() and self._epg_urls:
             self._start_epg(notify=False)
 
     def _prefetch_visible_logos(self):
@@ -3236,8 +3360,7 @@ class VideoPlayer(
         app_config.remember_iptv_history(name, url, group=item.get('group') or '')
         self._ensure_vlc_style_instance()
         if self.instance is None:
-            self.instance = _make_vlc_instance()
-            self._vlc_style_key = fingerprint()
+            self._init_vlc_instance(force_subtitle_warn=False)
         self.clear_youtube_subtitles()
         self._reset_vlc_tracks()
         self._hide_channel_status()
@@ -3409,8 +3532,7 @@ class VideoPlayer(
             self._refresh_history_ui()
             self._ensure_vlc_style_instance()
             if self.instance is None:
-                self.instance = _make_vlc_instance()
-                self._vlc_style_key = fingerprint()
+                self._init_vlc_instance(force_subtitle_warn=False)
             self.clear_youtube_subtitles()
             self._reset_vlc_tracks()
             self._hide_channel_status()
@@ -3467,6 +3589,9 @@ class VideoPlayer(
             self._media_started = False
             self._yt_end_handled = True
             self._ensure_vlc_style_instance()
+            yt_handler = getattr(self, 'youtube_handler', None)
+            if yt_handler and getattr(self, '_playing_youtube', False):
+                yt_handler.hide_loading()
             for widget in self.video_frame.winfo_children():
                 widget.destroy()
             if self.player is None:
@@ -3877,6 +4002,13 @@ class VideoPlayer(
                     and not getattr(self, '_tw_end_handled', False)
                 ):
                     self._on_twitch_vod_ended()
+                if active and getattr(self, '_playing_youtube', False):
+                    handler = getattr(self, 'youtube_handler', None)
+                    loading_alive = getattr(handler, '_loading_alive', None)
+                    if handler and callable(loading_alive) and loading_alive():
+                        handler.hide_loading()
+                        if hasattr(self, '_embed_vlc_in_frame'):
+                            self.window.after_idle(self._embed_vlc_in_frame)
                 if active and not self.is_seeking and self.progress_frame.winfo_ismapped():
                     elapsed = self._playback_elapsed_ms()
                     if holding:
@@ -3926,74 +4058,11 @@ class VideoPlayer(
         self._filter_job = self.window.after(80, self._apply_channel_filter)
 
     def _apply_channel_filter(self):
-        """Uso interno: apply canal filter."""
+        """Filtra la vista lateral del grupo activo (sin recortar la lista completa)."""
         self._filter_job = None
         if not self._widget_exists(getattr(self, 'channels_listbox', None)):
             return
-        search_term = ''
-        if getattr(self, 'search_var', None):
-            try:
-                search_term = (self.search_var.get() or '').strip().lower()
-            except tk.TclError:
-                search_term = ''
-        gen = self._filter_gen + 1
-        self._filter_gen = gen
-        if getattr(self, '_showing_favorites', False):
-            snapshot, groups_all, tvg_all, logos_all = self._favorite_rows()
-        else:
-            snapshot = list(self.all_channels)
-            groups_all = self._groups_all if len(self._groups_all) == len(self.all_channels) else [''] * len(self.all_channels)
-            tvg_all = self._tvg_ids_all if len(self._tvg_ids_all) == len(self.all_channels) else [''] * len(self.all_channels)
-            logos_all = self._logos_all if len(getattr(self, '_logos_all', [])) == len(self.all_channels) else [''] * len(self.all_channels)
-        if not search_term:
-            self.channels = list(snapshot)
-            self._groups = list(groups_all)
-            self._tvg_ids = list(tvg_all)
-            self._logos = list(logos_all)
-            self._rebuild_sidebar()
-            return
-        groups_snap = groups_all
-        tvg_snap = tvg_all
-        logos_snap = logos_all
-
-        def finish(filtered, filtered_groups, filtered_tvg, filtered_logos):
-            """Finish."""
-            if gen != self._filter_gen:
-                return
-            if not self._widget_exists(getattr(self, 'channels_listbox', None)):
-                return
-            self.channels = filtered
-            self._groups = filtered_groups
-            self._tvg_ids = filtered_tvg
-            self._logos = filtered_logos
-            self._rebuild_sidebar()
-
-        def scan():
-            """Scan."""
-            filtered = []
-            filtered_groups = []
-            filtered_tvg = []
-            filtered_logos = []
-            for (name, url), group, tvg_id, logo in zip(snapshot, groups_snap, tvg_snap, logos_snap):
-                if search_term in (name or '').lower() or search_term in (group or '').lower():
-                    filtered.append((name, url))
-                    filtered_groups.append(group)
-                    filtered_tvg.append(tvg_id)
-                    filtered_logos.append(logo)
-            return filtered, filtered_groups, filtered_tvg, filtered_logos
-
-        if len(snapshot) < 800:
-            finish(*scan())
-            return
-
-        window = self.window
-
-        def work():
-            """Work."""
-            result = scan()
-            self._after_window(window, lambda: finish(*result))
-
-        threading.Thread(target=work, daemon=True).start()
+        self._apply_sidebar_search()
 
     def seek_relative(self, seconds):
         """Avanza o retrocede el video en segundos"""
@@ -4051,12 +4120,16 @@ class VideoPlayer(
             except tk.TclError:
                 search = ''
         if search:
-            self.filter_channels()
+            if not self._showing_favorites:
+                self.channels = list(self.all_channels)
+            self._rebuild_sidebar()
+            self._apply_sidebar_search()
         else:
-            self.channels.append((title, url))
-            self._groups.append(group)
-            self._tvg_ids.append('')
-            self._logos.append('')
+            if not self._showing_favorites:
+                self.channels.append((title, url))
+                self._groups.append(group)
+                self._tvg_ids.append('')
+                self._logos.append('')
             self._rebuild_sidebar()
             if getattr(self, 'sidebar', None):
                 self.sidebar.see(len(self.channels) - 1)
@@ -4198,8 +4271,7 @@ class VideoPlayer(
         """Uso interno: prepare web stream player."""
         self._ensure_vlc_style_instance()
         if self.instance is None:
-            self.instance = _make_vlc_instance()
-            self._vlc_style_key = fingerprint()
+            self._init_vlc_instance(force_subtitle_warn=False)
         self._cleanup_vlc_player()
         self.player = self.instance.media_player_new()
         try:
@@ -4462,6 +4534,10 @@ class VideoPlayer(
         elif hasattr(self, '_rebuild_track_menus'):
             self._rebuild_track_menus()
         self._apply_logo_pref()
+        if not app_config.get_light_mode_auto():
+            light_mode_auto.reset_auto_light_mode()
+        else:
+            self._sync_auto_light_mode()
         self._apply_light_mode_runtime()
         self.setup_performance_monitoring()
         try:
@@ -4472,7 +4548,7 @@ class VideoPlayer(
 
     def _apply_light_mode_runtime(self):
         """Uso interno: apply light mode runtime."""
-        if app_config.get_light_mode():
+        if app_config.effective_light_mode():
             self._set_epg_label('')
             job = getattr(self, '_epg_reload_job', None)
             if job and self._widget_exists(self.window):
@@ -4487,7 +4563,7 @@ class VideoPlayer(
         index = self._selected_channel_index()
         if index is None:
             index = self.current_channel
-        if index is not None and not app_config.get_light_mode():
+        if index is not None and not app_config.effective_light_mode():
             self._refresh_epg_label(index)
 
     def _reload_current_subtitle_style(self):
@@ -5161,7 +5237,7 @@ class VideoPlayer(
         if removed:
             self.save_favorites()
             if getattr(self, '_showing_favorites', False):
-                self._apply_channel_filter()
+                self.show_favorites()
             else:
                 self._refresh_favorite_marks()
             if notify:

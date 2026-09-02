@@ -25,6 +25,31 @@ IPTV_QUALITY_CHOICES = (
 )
 
 
+def normalize_iptv_quality(value):
+    """0 = mejor disponible; el resto se ajusta a 480, 720, 1080 o 2160."""
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ('best', 'max', 'mejor', 'auto', '0'):
+            return 0
+        try:
+            value = int(text)
+        except (TypeError, ValueError):
+            return 720
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return 720
+    if value <= 0:
+        return 0
+    if value <= 480:
+        return 480
+    if value <= 720:
+        return 720
+    if value <= 1080:
+        return 1080
+    return 2160
+
+
 def detect_iptv_quality(name, group=''):
     """Devuelve (etiqueta, altura) o ('', 0) si no hay marca SD/HD/FHD."""
     text = f'{name or ''} {group or ''}'

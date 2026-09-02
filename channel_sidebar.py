@@ -84,6 +84,7 @@ class ChannelSidebar:
         self._updating_picker = False
         self._ignore_play_until = 0
         self._zap_numbers = {}
+        self._search_term = ''
         self.on_view_change = None
         self.now_text = None
         self.row_image = None
@@ -110,8 +111,68 @@ class ChannelSidebar:
                 foreground=colors['accent'],
                 background=colors.get('surface_alt') or colors['list_bg'],
             )
+            self.tree.tag_configure(
+                'search_match',
+                foreground=colors['accent'],
+            )
         except tk.TclError:
             pass
+
+    def set_search_term(self, term):
+        """Filtra la vista del grupo activo por nombre de canal."""
+        new_term = (term or '').strip()
+        if new_term == self._search_term:
+            return self._view_count()
+        self._search_term = new_term
+        if self._has_groups() and not self._active_group:
+            return 0
+        self._virtual_start = 0
+        self._selected = None
+        self._clear_tree()
+        self._render()
+        self._notify_view_change()
+        return self._view_count()
+
+    def search_term(self):
+        """Término de búsqueda actual."""
+        return self._search_term or ''
+
+    def _resolve_view_indices(self):
+        """Índices visibles según grupo activo y búsqueda."""
+        if self._has_groups() and not self._active_group:
+            return None
+        if self._active_group and self._active_group in self._buckets:
+            base = list(self._buckets[self._active_group])
+        else:
+            base = None
+        term = (self._search_term or '').strip().lower()
+        if not term:
+            return base
+        candidates = list(range(len(self.channels))) if base is None else base
+        return [
+            index for index in candidates
+            if term in plain_display_text(self.channels[index][0]).lower()
+        ]
+
+    def _index_matches_search(self, index):
+        """True si el canal coincide con la búsqueda actual."""
+        term = (self._search_term or '').strip().lower()
+        if not term or index is None or not (0 <= index < len(self.channels)):
+            return False
+        name = plain_display_text(self.channels[index][0]).lower()
+        return term in name
+
+    def _highlight_search_text(self, name):
+        """Resalta la coincidencia con «…» en el texto del canal."""
+        term = (self._search_term or '').strip()
+        if not term:
+            return name
+        lower = name.lower()
+        pos = lower.find(term.lower())
+        if pos < 0:
+            return name
+        end = pos + len(term)
+        return f'{name[:pos]}«{name[pos:end]}»{name[end:]}'
 
     def refresh_theme(self):
         """Refresca theme."""
@@ -226,6 +287,7 @@ class ChannelSidebar:
         if index is None or not (0 <= index < len(self.channels)):
             return ''
         name = plain_display_text(self.channels[index][0])
+        name = self._highlight_search_text(name)
         getter = self.now_text
         extra = getter(index) if callable(getter) else ''
         extra = plain_display_text(extra)
@@ -276,6 +338,8 @@ class ChannelSidebar:
             kwargs['image'] = image
         else:
             kwargs['image'] = ''
+        if self._index_matches_search(index):
+            kwargs['tags'] = ('search_match',)
         return kwargs
 
     def refresh_rows(self):
@@ -431,9 +495,8 @@ class ChannelSidebar:
             self._build_catalog()
             return
         if self._active_group and self._active_group in self._buckets:
-            self._view_indices = list(self._buckets[self._active_group])
-        else:
-            self._view_indices = None
+            pass
+        self._view_indices = self._resolve_view_indices()
         count = self._view_count()
         if count >= VIRTUAL_MIN:
             self.mode = 'virtual'

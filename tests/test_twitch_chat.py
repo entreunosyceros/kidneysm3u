@@ -4,10 +4,12 @@ import urllib.request
 
 from twitch_chat import (
     _ChatServer,
+    _browser_fallback_reason,
     can_show_twitch_chat,
     chat_backend_status,
     chat_embed_html,
     pywebview_gtk_ready,
+    pywebview_integrated_ready,
     resolve_twitch_channel,
     system_python_with_gi,
     twitch_chat_window_url,
@@ -93,3 +95,24 @@ def test_system_python_with_gi_finds_ubuntu_python():
 def test_pywebview_gtk_ready_is_bool():
     """Prueba pywebview gtk ready is bool."""
     assert isinstance(pywebview_gtk_ready(), bool)
+
+
+def test_pywebview_integrated_ready_is_bool():
+    """Prueba pywebview integrated ready is bool."""
+    assert isinstance(pywebview_integrated_ready(), bool)
+
+
+def test_browser_fallback_reason_platform_specific(monkeypatch):
+    """El aviso de respaldo no menciona paquetes de Linux en Windows."""
+    monkeypatch.setattr('twitch_chat.sys.platform', 'win32')
+    monkeypatch.setattr('twitch_chat.webview', object())
+    text = _browser_fallback_reason()
+    assert 'pythonnet' in text.lower()
+    assert 'ubuntu' not in text.lower()
+    assert 'python3-gi' not in text.lower()
+
+
+def test_system_python_with_gi_skips_non_linux(monkeypatch):
+    """En Windows no busca python3 del sistema con gi."""
+    monkeypatch.setattr('twitch_chat.sys.platform', 'win32')
+    assert system_python_with_gi() == ''

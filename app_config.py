@@ -80,7 +80,15 @@ _DEFAULTS = {
     'app_update_cache': {},
     'light_mode': False,
     'light_mode_hw_decode': True,
+    'light_mode_auto': True,
+    'light_mode_auto_channels': 1500,
+    'light_mode_auto_cpu': True,
+    'light_mode_auto_cpu_percent': 85,
     'show_cpu_monitor': False,
+    'onboarding_completed': False,
+    'player_shortcuts_hint_shown': False,
+    'vlc_subtitle_style_warn_shown': False,
+    'usage_profile': 'custom',
 }
 
 LIGHT_MODE_SESSION_MAX = 1500
@@ -259,6 +267,72 @@ def set_light_mode_hw_decode(value):
     save({'light_mode_hw_decode': bool(value)})
 
 
+def get_light_mode_auto():
+    """Obtiene si el modo ligero automático está habilitado."""
+    return bool(load().get('light_mode_auto', True))
+
+
+def set_light_mode_auto(value):
+    """Establece light mode auto."""
+    save({'light_mode_auto': bool(value)})
+
+
+def get_light_mode_auto_channels():
+    """Umbral de canales para activar modo ligero automático."""
+    try:
+        value = int(load().get('light_mode_auto_channels', LIGHT_MODE_SESSION_MAX))
+    except (TypeError, ValueError):
+        value = LIGHT_MODE_SESSION_MAX
+    return max(500, min(20000, value))
+
+
+def set_light_mode_auto_channels(value):
+    """Establece light mode auto channels."""
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        count = LIGHT_MODE_SESSION_MAX
+    save({'light_mode_auto_channels': max(500, min(20000, count))})
+
+
+def get_light_mode_auto_cpu():
+    """True si la CPU alta puede activar modo ligero automático."""
+    return bool(load().get('light_mode_auto_cpu', True))
+
+
+def set_light_mode_auto_cpu(value):
+    """Establece light mode auto cpu."""
+    save({'light_mode_auto_cpu': bool(value)})
+
+
+def get_light_mode_auto_cpu_percent():
+    """Porcentaje de CPU que dispara el modo ligero automático."""
+    try:
+        value = int(load().get('light_mode_auto_cpu_percent', 85))
+    except (TypeError, ValueError):
+        value = 85
+    return max(50, min(100, value))
+
+
+def set_light_mode_auto_cpu_percent(value):
+    """Establece light mode auto cpu percent."""
+    try:
+        percent = int(value)
+    except (TypeError, ValueError):
+        percent = 85
+    save({'light_mode_auto_cpu_percent': max(50, min(100, percent))})
+
+
+def effective_light_mode():
+    """Modo ligero manual o automático activo en esta sesión."""
+    if get_light_mode():
+        return True
+    if not get_light_mode_auto():
+        return False
+    from light_mode_auto import is_auto_light_mode_active
+    return is_auto_light_mode_active()
+
+
 def get_show_cpu_monitor():
     """Obtiene show cpu monitor."""
     return bool(load().get('show_cpu_monitor', False))
@@ -276,12 +350,12 @@ def light_mode_session_max():
 
 def effective_show_channel_logos():
     """Effective show canal logos."""
-    return get_show_channel_logos() and not get_light_mode()
+    return get_show_channel_logos() and not effective_light_mode()
 
 
 def iptv_use_hw_decode():
     """Iptv use hw decode."""
-    return get_light_mode() and get_light_mode_hw_decode()
+    return effective_light_mode() and get_light_mode_hw_decode()
 
 
 def effective_youtube_quality(value=None):
@@ -289,7 +363,7 @@ def effective_youtube_quality(value=None):
     height = normalize_youtube_quality(
         get_youtube_quality() if value is None else value
     )
-    if not get_light_mode():
+    if not effective_light_mode():
         return height
     if height <= 0 or height > LIGHT_MODE_YT_QUALITY_CAP:
         return LIGHT_MODE_YT_QUALITY_CAP
@@ -301,7 +375,7 @@ def effective_twitch_quality(value=None):
     height = normalize_twitch_quality(
         get_twitch_quality() if value is None else value
     )
-    if not get_light_mode():
+    if not effective_light_mode():
         return height
     if height <= 0 or height > LIGHT_MODE_YT_QUALITY_CAP:
         return LIGHT_MODE_YT_QUALITY_CAP
@@ -310,28 +384,28 @@ def effective_twitch_quality(value=None):
 
 def effective_yt_cache_max_bytes():
     """Effective youtube cache max bytes."""
-    if get_light_mode():
+    if effective_light_mode():
         return LIGHT_MODE_YT_CACHE_BYTES
     return 500 * 1024 * 1024
 
 
 def epg_reload_interval_ms():
     """Guía epg reload interval ms."""
-    if get_light_mode():
+    if effective_light_mode():
         return 0
     return 30 * 60 * 1000
 
 
 def epg_tick_interval_ms():
     """Guía epg tick interval ms."""
-    if get_light_mode():
+    if effective_light_mode():
         return LIGHT_MODE_EPG_TICK_MS
     return 60 * 1000
 
 
 def should_skip_session_restore(session):
     """En modo ligero no se restaura una lista enorme al arrancar."""
-    if not get_light_mode():
+    if not effective_light_mode():
         return False
     if not isinstance(session, dict):
         return False
@@ -1594,6 +1668,75 @@ def apply_geometry(window, name, fallback=None):
         return True
     except tk.TclError:
         return False
+
+
+def needs_onboarding():
+    """True si debe mostrarse el asistente de primer arranque."""
+    if not os.path.isfile(CONFIG_PATH):
+        return True
+    try:
+        with open(CONFIG_PATH, encoding='utf-8') as handle:
+            stored = json.load(handle)
+        if not isinstance(stored, dict):
+            return True
+        if 'onboarding_completed' not in stored:
+            return False
+        return not bool(stored.get('onboarding_completed'))
+    except (OSError, json.JSONDecodeError):
+        return True
+
+
+def set_onboarding_completed(value=True):
+    """Marca el asistente de configuración como completado u omitido."""
+    save({'onboarding_completed': bool(value)})
+
+
+def get_onboarding_completed():
+    """True si el usuario ya completó u omitió el asistente."""
+    return not needs_onboarding()
+
+
+def needs_player_shortcuts_hint():
+    """True si debe mostrarse el overlay de atajos la primera vez en el reproductor."""
+    if not os.path.isfile(CONFIG_PATH):
+        return True
+    try:
+        with open(CONFIG_PATH, encoding='utf-8') as handle:
+            stored = json.load(handle)
+        if not isinstance(stored, dict):
+            return True
+        if 'player_shortcuts_hint_shown' not in stored:
+            return False
+        return not bool(stored.get('player_shortcuts_hint_shown'))
+    except (OSError, json.JSONDecodeError):
+        return True
+
+
+def set_player_shortcuts_hint_shown(value=True):
+    """Marca el overlay de atajos del reproductor como ya visto."""
+    save({'player_shortcuts_hint_shown': bool(value)})
+
+
+def should_show_vlc_subtitle_style_warn():
+    """True si aún no se mostró el aviso de subtítulos sin estilo freetype."""
+    return not bool(load().get('vlc_subtitle_style_warn_shown', False))
+
+
+def set_vlc_subtitle_style_warn_shown(value=True):
+    """Marca el aviso de subtítulos VLC como ya mostrado."""
+    save({'vlc_subtitle_style_warn_shown': bool(value)})
+
+
+def get_usage_profile():
+    """Obtiene el perfil de uso seleccionado."""
+    from usage_profiles import normalize_usage_profile
+    return normalize_usage_profile(load().get('usage_profile', 'custom'))
+
+
+def set_usage_profile(profile_id):
+    """Guarda el id del perfil de uso."""
+    from usage_profiles import normalize_usage_profile
+    save({'usage_profile': normalize_usage_profile(profile_id)})
 
 
 def capture_geometry(window):

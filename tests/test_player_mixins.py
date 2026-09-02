@@ -18,6 +18,8 @@ def test_player_uses_iptv_overlay_and_controls_mixins():
         '_play_iptv_url',
         '_watch_iptv_start',
         '_show_channel_unavailable',
+        '_show_iptv_progress_overlay',
+        '_hide_iptv_progress_overlay',
         'hide_controls_and_menu',
         'toggle_play',
         'save_iptv_resume',
@@ -115,6 +117,22 @@ def test_youtube_title_text_uses_handler_title():
     assert Dummy()._youtube_title_text() == 'Mi vídeo'
 
 
+def test_video_overlay_title_uses_iptv_channel_name():
+    """Prueba video superposición title uses IPTV canal name."""
+    class Dummy(YoutubeTitleOverlayMixin):
+        """Clase que representa dummy."""
+        _playing_youtube = False
+        _media_started = True
+        current_channel = 0
+        channels = [('Canal 24 HD', 'http://x')]
+
+        def _widget_exists(self, widget):
+            return False
+
+    assert Dummy()._video_overlay_title() == 'Canal 24 HD'
+    assert Dummy()._video_overlay_motion_allowed() is True
+
+
 def test_hide_controls_keeps_bar_when_popup_open():
     """Prueba hide controls keeps bar when popup open."""
     class Dummy(PlayerControlsMixin):
@@ -133,3 +151,50 @@ def test_hide_controls_keeps_bar_when_popup_open():
     dummy = Dummy()
     dummy.hide_controls_and_menu()
     assert dummy.timer_resets == 1
+
+
+def test_iptv_progress_overlay_show_and_hide():
+    """El aviso de reconexión se crea y se oculta al recuperar."""
+    import tkinter as tk
+
+    class Dummy(ChannelNoticeMixin):
+        def __init__(self, root):
+            self.window = root
+            self.player_frame = tk.Frame(root, bg='#111111')
+            self.player_frame.pack(fill=tk.BOTH, expand=True)
+            self.video_frame = tk.Frame(self.player_frame, bg='#000000')
+            self.video_frame.pack(fill=tk.BOTH, expand=True)
+            self._playing_youtube = False
+            self._iptv_failed = False
+            self._player_status_var = tk.StringVar(value='')
+
+        def _widget_exists(self, widget):
+            if widget is None:
+                return False
+            try:
+                return bool(widget.winfo_exists())
+            except tk.TclError:
+                return False
+
+        def set_player_status(self, text, **kwargs):
+            self._player_status_var.set(text)
+
+        def clear_player_status(self, match=None):
+            current = self._player_status_var.get()
+            if match and match not in current:
+                return
+            self._player_status_var.set('')
+
+    root = tk.Tk()
+    root.withdraw()
+    root.geometry('640x360')
+    dummy = Dummy(root)
+    dummy._show_iptv_progress_overlay('Reconectando…', 'Probando de nuevo.')
+    root.update_idletasks()
+    assert dummy._iptv_progress_title.startswith('Reconectando')
+    assert dummy._player_status_var.get().startswith('Reconectando')
+    assert dummy._widget_exists(dummy._iptv_progress_top)
+    dummy._hide_iptv_progress_overlay()
+    assert dummy._iptv_progress_title is None
+    assert dummy._player_status_var.get() == ''
+    root.destroy()

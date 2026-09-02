@@ -69,6 +69,7 @@ class M3UProcessor:
         
         # Inicializar el icono de la bandeja del sistema
         self.icono_bandeja = IconoBandeja(self.root)
+        self.root.after(400, self._maybe_show_onboarding)
         self.root.after(1800, self._schedule_app_update_check)
     
     def create_menu(self):
@@ -123,6 +124,7 @@ class M3UProcessor:
         ayuda_menu = tk.Menu(menubar, tearoff=0)
         ayuda_menu.add_command(label="Atajos de teclado", command=lambda: show_keyboard_shortcuts(self.root))
         ayuda_menu.add_command(label="Documentación", command=lambda: show_documentation(self.root))
+        ayuda_menu.add_command(label="Asistente de configuración", command=self.open_onboarding_wizard)
         ayuda_menu.add_separator()
         ayuda_menu.add_command(label="Buscar actualizaciones", command=self.check_app_updates_now)
         menubar.add_cascade(label="Ayuda", menu=ayuda_menu)
@@ -657,6 +659,45 @@ class M3UProcessor:
         from preferences import show_preferences
         player = getattr(self, 'video_player', None)
         show_preferences(self.root, on_apply=self.apply_preferences, video_player=player)
+
+    def open_onboarding_wizard(self):
+        """Abre el asistente de configuración inicial."""
+        from onboarding import show_onboarding_wizard
+        show_onboarding_wizard(
+            self.root,
+            on_open_preferences=self.open_preferences_cookies,
+            on_finish=self._on_onboarding_finish,
+            force=True,
+        )
+
+    def _maybe_show_onboarding(self):
+        """Muestra el asistente la primera vez que se usa la aplicación."""
+        if not app_config.needs_onboarding():
+            return
+        from onboarding import show_onboarding_wizard
+        show_onboarding_wizard(
+            self.root,
+            on_open_preferences=self.open_preferences_cookies,
+            on_finish=self._on_onboarding_finish,
+        )
+
+    def open_preferences_cookies(self):
+        """Abre preferencias en la pestaña Cookies."""
+        from preferences import show_preferences
+        player = getattr(self, 'video_player', None)
+        show_preferences(
+            self.root,
+            on_apply=self.apply_preferences,
+            video_player=player,
+            initial_tab='cookies',
+        )
+
+    def _on_onboarding_finish(self, skipped=False):
+        """Actualiza la barra de estado tras cerrar el asistente."""
+        if skipped:
+            self.status_var.set('Asistente omitido · Listo para usar la aplicación')
+        else:
+            self.status_var.set('Configuración inicial completada · Listo')
 
     def apply_preferences(self):
         """Aplica preferences."""

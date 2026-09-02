@@ -18,6 +18,7 @@ from iptv_buffer import (
     iptv_bytes_progress,
     iptv_cache_ms,
     iptv_deadman_should_fail,
+    iptv_overlay_message,
     iptv_rebuffer_decision,
     iptv_soft_rebuffer_note,
     iptv_soft_rebuffer_should_bump,
@@ -39,6 +40,22 @@ from youtube_player import _GrowingTSHandler
 
 class IptvPlaybackMixin:
     """Clase que representa iptvplaybackmixin."""
+    def _iptv_show_overlay(self, event):
+        """Uso interno: aviso breve sobre el vídeo (reconexión, buffer, etc.)."""
+        show = getattr(self, '_show_iptv_progress_overlay', None)
+        if not callable(show):
+            return
+        title, detail = iptv_overlay_message(event)
+        show(title, detail)
+
+    def _iptv_hide_overlay_if_playing(self):
+        """Uso interno: quita el aviso cuando ya hay imagen o audio decodificado."""
+        if not self._iptv_has_real_media():
+            return
+        hide = getattr(self, '_hide_iptv_progress_overlay', None)
+        if callable(hide):
+            hide()
+
     def _play_iptv_url(self, name, url):
         """Uso interno: play IPTV URL."""
         url = (url or '').strip()
@@ -73,6 +90,7 @@ class IptvPlaybackMixin:
         self._iptv_check_gen = getattr(self, '_iptv_check_gen', 0) + 1
         check_gen = self._iptv_check_gen
         self._start_vlc_remote(name, url, kind)
+        self._iptv_show_overlay('connecting')
         self.window.after(800, lambda: self._watch_iptv_start(check_gen, name, url, kind, 0))
         self.window.after(12000, lambda: self._iptv_deadman(check_gen, name, 12))
         self.window.after(2500, lambda: self._check_iptv_stream(check_gen))
@@ -193,6 +211,7 @@ class IptvPlaybackMixin:
             return
         if self._iptv_has_real_media():
             self._media_started = True
+            self._iptv_hide_overlay_if_playing()
             apply = getattr(self, '_apply_pending_iptv_resume', None)
             if apply:
                 apply()
@@ -258,6 +277,7 @@ class IptvPlaybackMixin:
         self._iptv_bytes_prev = max(bytes_prev, bytes_now)
         if action == 'ready':
             self._media_started = True
+            self._iptv_hide_overlay_if_playing()
             apply = getattr(self, '_apply_pending_iptv_resume', None)
             if apply:
                 apply()
@@ -265,6 +285,7 @@ class IptvPlaybackMixin:
         if action == 'retry_ts':
             self._iptv_did_ts_retry = True
             print("[IPTV] El contenedor cortó al abrir; reintento como MPEG-TS")
+            self._iptv_show_overlay('retry_ts')
             self._iptv_check_gen = check_gen + 1
             retry_gen = self._iptv_check_gen
             self._iptv_bytes_prev = 0
@@ -276,6 +297,8 @@ class IptvPlaybackMixin:
         if action == 'fail':
             self._iptv_report_unavailable(name)
             return
+        if ticks >= 1:
+            self._iptv_show_overlay('connecting')
         self.window.after(2000, lambda: self._watch_iptv_start(check_gen, name, url, kind, ticks + 1))
 
     def _iptv_local_options(self):
@@ -345,6 +368,7 @@ class IptvPlaybackMixin:
         bytes_prev = int(getattr(self, '_iptv_bytes_prev', 0) or 0)
         if self._iptv_has_real_media():
             self._media_started = True
+            self._iptv_hide_overlay_if_playing()
         started = bool(getattr(self, '_media_started', False))
         stall = int(getattr(self, '_iptv_rebuffer_stall', 0) or 0)
         state_name = vlc_state_name(state)
@@ -386,6 +410,7 @@ class IptvPlaybackMixin:
             name = getattr(self, '_iptv_retry_name', '') or ''
             kind = getattr(self, '_iptv_kind', 'mpegts')
             print('[IPTV] Buffer vacío; reconecto el mismo enlace')
+            self._iptv_show_overlay('reconnect')
             self._iptv_reconnects = int(getattr(self, '_iptv_reconnects', 0) or 0) + 1
             self._iptv_rebuffer_stall = 0
             self._iptv_bytes_prev = 0
@@ -406,9 +431,12 @@ class IptvPlaybackMixin:
                 extra_ms=self._iptv_cache_extra(),
             )
             print(f'[IPTV] buffer corto en alta calidad; subo caché a {cache}ms')
+            self._iptv_show_overlay('buffer_bump')
             self._iptv_rebuffer_stall = 0
             self._iptv_bytes_prev = 0
             self._start_vlc_remote(name, url, kind)
+        elif action == 'wait' and started and state_name == 'Buffering':
+            self._iptv_show_overlay('buffering')
         if self._widget_exists(getattr(self, 'window', None)):
             self.window.after(2000, lambda: self._check_iptv_stream(check_gen))
 
@@ -461,6 +489,9 @@ class IptvPlaybackMixin:
         if not ffmpeg:
             print("[IPTV] ffmpeg no está instalado")
             print(f"[IPTV] No se pudo abrir el canal '{name}'")
+            set_status = getattr(self, 'set_player_status', None)
+            if callable(set_status):
+                set_status('Sin ffmpeg · no se puede retransmitir el canal', timeout_ms=12000)
             return
         self._stop_iptv_relay()
         tmpdir = tempfile.mkdtemp(prefix='kidneys_iptv_')

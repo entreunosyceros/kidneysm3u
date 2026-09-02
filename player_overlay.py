@@ -2,6 +2,7 @@
 
 import sys
 import tkinter as tk
+from tkinter import ttk
 
 from display_text import plain_display_text
 from ui_theme import get_colors, get_font
@@ -12,20 +13,41 @@ YOUTUBE_TITLE_BAR_H = 44
 
 class YoutubeTitleOverlayMixin:
     """Clase que representa youtubetitleoverlaymixin."""
+    def _video_overlay_title(self):
+        """Texto del canal o vídeo para la barra superpuesta al mover el ratón."""
+        if getattr(self, '_playing_youtube', False):
+            handler = getattr(self, 'youtube_handler', None)
+            title = ''
+            if handler:
+                title = (getattr(handler, '_loading_title_text', None) or '').strip()
+            if (not title or title == 'YouTube') and self.current_channel is not None:
+                try:
+                    title = self.channels[self.current_channel][0]
+                except (IndexError, TypeError):
+                    title = ''
+            return plain_display_text(title, '')
+        if self.current_channel is not None and getattr(self, '_media_started', False):
+            try:
+                return plain_display_text(self.channels[self.current_channel][0], '')
+            except (IndexError, TypeError):
+                return ''
+        return ''
+
     def _youtube_title_text(self):
         """Uso interno: youtube title text."""
-        if not getattr(self, '_playing_youtube', False):
-            return ''
-        handler = getattr(self, 'youtube_handler', None)
-        title = ''
-        if handler:
-            title = (getattr(handler, '_loading_title_text', None) or '').strip()
-        if (not title or title == 'YouTube') and self.current_channel is not None:
-            try:
-                title = self.channels[self.current_channel][0]
-            except (IndexError, TypeError):
-                title = ''
-        return plain_display_text(title, '')
+        return self._video_overlay_title()
+
+    def _video_overlay_motion_allowed(self):
+        """True si debe mostrarse el título al mover el ratón sobre el vídeo."""
+        if getattr(self, '_iptv_failed', False):
+            return False
+        if getattr(self, '_playing_youtube', False):
+            return True
+        return (
+            self.current_channel is not None
+            and getattr(self, '_media_started', False)
+            and not getattr(self, '_playing_youtube', False)
+        )
 
     def _cancel_youtube_title_hide_job(self):
         """Uso interno: cancel youtube title hide job."""
@@ -88,7 +110,7 @@ class YoutubeTitleOverlayMixin:
 
     def _show_youtube_title_overlay(self):
         """Uso interno: show youtube title superposición."""
-        title = self._youtube_title_text()
+        title = self._video_overlay_title()
         if not title or not self._widget_exists(self.window):
             self._hide_youtube_title_overlay()
             return
@@ -162,11 +184,11 @@ class YoutubeTitleOverlayMixin:
 
     def _on_youtube_video_motion(self, event=None):
         """Callback interno para youtube video motion."""
-        if not getattr(self, '_playing_youtube', False):
-            return
-        if getattr(self, '_iptv_failed', False):
+        if not self._video_overlay_motion_allowed():
             return
         if self._widget_exists(getattr(self, '_yt_replay_frame', None)):
+            return
+        if not self._video_overlay_title():
             return
         self._show_youtube_title_overlay()
         self._schedule_youtube_title_hide()
@@ -268,8 +290,207 @@ class ChannelNoticeMixin:
             except tk.TclError:
                 pass
 
+    def _iptv_progress_target_area(self):
+        """Uso interno: área del reproductor para centrar el aviso."""
+        area = getattr(self, 'player_frame', None)
+        if self._widget_exists(area):
+            return area
+        return getattr(self, 'video_frame', None)
+
+    def _position_iptv_progress_overlay(self, event=None):
+        """Uso interno: coloca el aviso de reconexión sobre el vídeo."""
+        top = getattr(self, '_iptv_progress_top', None)
+        if not self._widget_exists(top) or not self._widget_exists(self.window):
+            return
+        area = self._iptv_progress_target_area()
+        if not self._widget_exists(area):
+            return
+        try:
+            area.update_idletasks()
+            x = area.winfo_rootx()
+            y = area.winfo_rooty()
+            width = max(160, area.winfo_width())
+            height = max(120, area.winfo_height())
+            controls = getattr(self, 'controls_frame', None)
+            if self._widget_exists(controls) and controls.winfo_ismapped():
+                height = max(120, height - controls.winfo_height() - 8)
+            top.geometry(f'{int(width)}x{int(height)}+{int(x)}+{int(y)}')
+            card = getattr(top, '_progress_card', None)
+            if self._widget_exists(card):
+                from ui_layout import wraplength_for
+                wrap = wraplength_for(width, padding=72, min_wrap=160, max_wrap=480)
+                for label in getattr(card, '_progress_labels', ()) or ():
+                    try:
+                        label.configure(wraplength=wrap)
+                    except tk.TclError:
+                        pass
+            top.lift()
+            try:
+                top.attributes('-topmost', True)
+            except tk.TclError:
+                pass
+        except tk.TclError:
+            pass
+        panel = getattr(self, '_iptv_progress_frame', None)
+        if self._widget_exists(panel):
+            try:
+                panel.lift()
+            except tk.TclError:
+                pass
+
+    def _hide_iptv_progress_overlay(self):
+        """Quita el aviso breve de reconexión o buffer IPTV."""
+        self._iptv_progress_title = None
+        bar = getattr(self, '_iptv_progress_bar', None)
+        if bar is not None:
+            try:
+                bar.stop()
+            except tk.TclError:
+                pass
+        self._iptv_progress_bar = None
+        top = getattr(self, '_iptv_progress_top', None)
+        self._iptv_progress_top = None
+        if top is not None:
+            try:
+                top.destroy()
+            except tk.TclError:
+                pass
+        frame = getattr(self, '_iptv_progress_frame', None)
+        self._iptv_progress_frame = None
+        if frame is not None:
+            try:
+                frame.destroy()
+            except tk.TclError:
+                pass
+        clear_status = getattr(self, 'clear_player_status', None)
+        if callable(clear_status):
+            clear_status('Reconectando')
+            clear_status('Conectando')
+            clear_status('Bufferizando')
+            clear_status('Ampliando buffer')
+            clear_status('Reintentando')
+
+    def _fill_iptv_progress_card(self, parent, title, detail, colors):
+        """Uso interno: tarjeta centrada con mensaje de reconexión."""
+        card = tk.Frame(
+            parent,
+            bg=colors['surface'],
+            highlightbackground=colors['border'],
+            highlightthickness=1,
+            padx=24,
+            pady=18,
+        )
+        card.place(relx=0.5, rely=0.5, anchor='center')
+        title_label = tk.Label(
+            card,
+            text=title,
+            font=get_font(15, 'bold'),
+            bg=colors['surface'],
+            fg=colors['text'],
+            wraplength=420,
+            justify='center',
+        )
+        title_label.pack()
+        labels = [title_label]
+        if detail:
+            detail_label = tk.Label(
+                card,
+                text=detail,
+                font=get_font(10),
+                bg=colors['surface'],
+                fg=colors['text_muted'],
+                wraplength=420,
+                justify='center',
+            )
+            detail_label.pack(pady=(10, 12))
+            labels.append(detail_label)
+        bar = ttk.Progressbar(card, length=280, mode='indeterminate')
+        bar.pack(fill=tk.X)
+        try:
+            bar.start(12)
+        except tk.TclError:
+            pass
+        parent._progress_card = card
+        card._progress_labels = tuple(labels)
+        return card, bar
+
+    def _show_iptv_progress_overlay(self, title, detail=''):
+        """Aviso breve encima del vídeo durante reconexión o subida de buffer."""
+        if getattr(self, '_playing_youtube', False) or getattr(self, '_iptv_failed', False):
+            return
+        if not self._widget_exists(self.window):
+            return
+        title = plain_display_text(title, 'Reconectando…')
+        detail = plain_display_text(detail, '')
+        current = getattr(self, '_iptv_progress_title', None)
+        if current == title and (
+            self._widget_exists(getattr(self, '_iptv_progress_top', None))
+            or self._widget_exists(getattr(self, '_iptv_progress_frame', None))
+        ):
+            self._position_iptv_progress_overlay()
+            return
+        self._iptv_progress_title = title
+        self._hide_iptv_progress_overlay()
+        self._iptv_progress_title = title
+        colors = get_colors()
+        video = getattr(self, 'video_frame', None)
+        parent = getattr(self, 'player_frame', None)
+        overlay_parent = parent if self._widget_exists(parent) else video
+        if self._widget_exists(overlay_parent):
+            panel = tk.Frame(overlay_parent, bg='#000000', highlightthickness=0)
+            try:
+                if self._widget_exists(video):
+                    panel.place(in_=video, relx=0, rely=0, relwidth=1, relheight=1)
+                    panel.lift(video)
+                else:
+                    panel.place(relx=0, rely=0, relwidth=1, relheight=1)
+            except tk.TclError:
+                panel.pack(fill=tk.BOTH, expand=True)
+            _, bar = self._fill_iptv_progress_card(panel, title, detail, colors)
+            self._iptv_progress_frame = panel
+            self._iptv_progress_bar = bar
+        top = tk.Toplevel(self.window)
+        top.withdraw()
+        try:
+            top.overrideredirect(True)
+        except tk.TclError:
+            pass
+        try:
+            top.attributes('-topmost', True)
+        except tk.TclError:
+            pass
+        try:
+            top.wm_attributes('-type', 'splash')
+        except tk.TclError:
+            pass
+        top.configure(bg='#000000')
+        _, bar = self._fill_iptv_progress_card(top, title, detail, colors)
+        self._iptv_progress_top = top
+        if self._iptv_progress_bar is None:
+            self._iptv_progress_bar = bar
+        self._position_iptv_progress_overlay()
+        try:
+            top.deiconify()
+            top.lift()
+            top.update_idletasks()
+        except tk.TclError:
+            pass
+        try:
+            self.window.bind('<Configure>', self._position_iptv_progress_overlay, add='+')
+            area = self._iptv_progress_target_area()
+            if self._widget_exists(area):
+                area.bind('<Configure>', self._position_iptv_progress_overlay, add='+')
+        except tk.TclError:
+            pass
+        for delay in (80, 250, 700):
+            self.window.after(delay, self._position_iptv_progress_overlay)
+        set_status = getattr(self, 'set_player_status', None)
+        if callable(set_status):
+            set_status(title, timeout_ms=15000)
+
     def _hide_channel_status(self):
         """Uso interno: hide canal status."""
+        self._hide_iptv_progress_overlay()
         self._hide_youtube_title_overlay()
         hide_replay = getattr(self, '_hide_youtube_replay_prompt', None)
         if hide_replay:
@@ -465,4 +686,7 @@ class ChannelNoticeMixin:
 
     def _iptv_report_unavailable(self, name):
         """Uso interno: IPTV report unavailable."""
+        hide = getattr(self, '_hide_iptv_progress_overlay', None)
+        if callable(hide):
+            hide()
         self._show_channel_unavailable(name)

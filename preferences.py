@@ -9,7 +9,9 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, colorchooser
 
 import app_config
+import cache_cleanup
 import subtitle_style
+import usage_profiles
 from display_text import plain_ui_line
 from ui_layout import bind_wraplength, make_vertical_scroll, setup_resizable_dialog
 from ui_theme import apply_theme, get_colors, style_window, set_window_icon
@@ -250,7 +252,7 @@ def start_yt_dlp_upgrade(parent, on_done=None, busy_widgets=None):
     threading.Thread(target=work, daemon=True, name='yt-dlp-upgrade').start()
 
 
-def show_preferences(parent, on_apply=None, video_player=None):
+def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None):
     """Muestra preferences."""
     global _PREFS_WINDOW
     root = _tk_root(parent)
@@ -289,6 +291,8 @@ def show_preferences(parent, on_apply=None, video_player=None):
     remember_var = tk.BooleanVar(value=app_config.get_remember_last_list())
     logos_var = tk.BooleanVar(value=app_config.get_show_channel_logos())
     light_var = tk.BooleanVar(value=app_config.get_light_mode())
+    light_auto_var = tk.BooleanVar(value=app_config.get_light_mode_auto())
+    light_auto_cpu_var = tk.BooleanVar(value=app_config.get_light_mode_auto_cpu())
     hw_decode_var = tk.BooleanVar(value=app_config.get_light_mode_hw_decode())
     cpu_var = tk.BooleanVar(value=app_config.get_show_cpu_monitor())
     updates_var = tk.BooleanVar(value=app_config.get_check_app_updates())
@@ -303,6 +307,8 @@ def show_preferences(parent, on_apply=None, video_player=None):
     sub_bg_op_label = tk.StringVar()
     sub_margin_label = tk.StringVar()
     sub_delay_label = tk.StringVar()
+    profile_var = tk.StringVar(value=usage_profiles.detect_usage_profile())
+    profile_desc_var = tk.StringVar(value=usage_profiles.profile_description(profile_var.get()))
 
     colors = get_colors()
     shell = ttk.Frame(window, padding=(16, 16, 12, 12))
@@ -327,6 +333,77 @@ def show_preferences(parent, on_apply=None, video_player=None):
     body.pack(fill=tk.BOTH, expand=True)
     _canvas, main, _sync_general = make_vertical_scroll(body)
 
+    profiles_frame = ttk.LabelFrame(main, text=' PERFIL DE USO ', padding=12)
+    profiles_frame.pack(fill=tk.X, pady=(0, 10))
+    profile_row = ttk.Frame(profiles_frame, style='Card.TFrame')
+    profile_row.pack(fill=tk.X)
+    for profile_id, label in usage_profiles.profile_choices():
+        ttk.Radiobutton(
+            profile_row,
+            text=label,
+            variable=profile_var,
+            value=profile_id,
+        ).pack(side=tk.LEFT, padx=(0, 12))
+    ttk.Label(
+        profiles_frame,
+        textvariable=profile_desc_var,
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(8, 0))
+
+    _applying_profile = False
+
+    def _apply_profile_to_form(profile_id):
+        """Uso interno: aplica preset al formulario."""
+        nonlocal _applying_profile
+        settings = usage_profiles.profile_settings(profile_id)
+        profile_desc_var.set(usage_profiles.profile_description(profile_id))
+        if not settings:
+            return
+        _applying_profile = True
+        try:
+            if 'iptv_buffer' in settings:
+                buffer_var.set(settings['iptv_buffer'])
+            if 'show_channel_logos' in settings:
+                logos_var.set(settings['show_channel_logos'])
+            if 'light_mode' in settings:
+                light_var.set(settings['light_mode'])
+            if 'light_mode_hw_decode' in settings:
+                hw_decode_var.set(settings['light_mode_hw_decode'])
+            if 'remember_last_list' in settings:
+                remember_var.set(settings['remember_last_list'])
+            if 'youtube_quality' in settings:
+                quality_var.set(str(settings['youtube_quality']))
+            if 'twitch_quality' in settings:
+                twitch_quality_var.set(str(settings['twitch_quality']))
+            _sync_light_opts()
+        finally:
+            _applying_profile = False
+
+    def _on_profile_selected(*_args):
+        """Uso interno: al elegir perfil."""
+        _apply_profile_to_form(profile_var.get())
+
+    profile_var.trace_add('write', _on_profile_selected)
+
+    def _mark_profile_custom(*_args):
+        """Uso interno: cambio manual pasa a personalizado."""
+        if _applying_profile:
+            return
+        if profile_var.get() != usage_profiles.PROFILE_CUSTOM:
+            profile_var.set(usage_profiles.PROFILE_CUSTOM)
+
+    for _tracked in (
+        light_var,
+        hw_decode_var,
+        logos_var,
+        buffer_var,
+        quality_var,
+        twitch_quality_var,
+        remember_var,
+    ):
+        _tracked.trace_add('write', _mark_profile_custom)
+
     cookies_body = ttk.Frame(tab_cookies)
     cookies_body.pack(fill=tk.BOTH, expand=True)
     _cookies_canvas, cookies_main, _sync_cookies = make_vertical_scroll(cookies_body)
@@ -348,34 +425,36 @@ def show_preferences(parent, on_apply=None, video_player=None):
     hw_decode_check.pack(anchor=tk.W, pady=(8, 0))
     ttk.Checkbutton(
         performance,
+        text='Modo ligero automático',
+        variable=light_auto_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W, pady=(8, 0))
+    ttk.Checkbutton(
+        performance,
+        text='Activar también si la CPU está alta (muestreo ~8 s)',
+        variable=light_auto_cpu_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W, pady=(4, 0))
+    ttk.Label(
+        performance,
+        text=(
+            f'Sin marcar «Modo ligero», se activa solo en esta sesión si la lista supera '
+            f'{app_config.get_light_mode_auto_channels()} canales o la CPU supera '
+            f'{app_config.get_light_mode_auto_cpu_percent()} % varias veces seguidas. '
+            'Apaga logos, aligera EPG y limita recargas igual que el modo ligero manual.'
+        ),
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(4, 0))
+    ttk.Checkbutton(
+        performance,
         text='Mostrar monitor de CPU (muestreo cada ~8 s)',
         variable=cpu_var,
         style='Card.TCheckbutton',
     ).pack(anchor=tk.W, pady=(8, 0))
 
-    cache_row = ttk.Frame(performance, style='Card.TFrame')
-    cache_row.pack(fill=tk.X, pady=(10, 0))
-
-    def clear_logo_cache():
-        """Limpia logo cache."""
-        import logo_cache
-        removed = logo_cache.clear_cache()
-        messagebox.showinfo(
-            'Caché de logos',
-            f'Se eliminaron {removed} miniaturas de epg_cache/.',
-            parent=window,
-        )
-
-    ttk.Button(cache_row, text=plain_ui_line('Limpiar caché de logos…'), command=clear_logo_cache).pack(side=tk.LEFT)
-    ttk.Label(
-        performance,
-        text='Desactiva logos, aligera EPG y YouTube, no restaura listas M3U enormes al abrir y reduce la caché de descargas. La línea de EPG bajo la búsqueda no se muestra.',
-        style='CardMuted.TLabel',
-        wraplength=500,
-    ).pack(anchor=tk.W, pady=(8, 0))
-
     def _sync_light_opts(*_args):
-        """Uso interno: sync light opts."""
+        """Uso interno: habilita GPU solo con modo ligero manual."""
         state = 'normal' if light_var.get() else 'disabled'
         try:
             hw_decode_check.configure(state=state)
@@ -384,6 +463,122 @@ def show_preferences(parent, on_apply=None, video_player=None):
 
     light_var.trace_add('write', _sync_light_opts)
     _sync_light_opts()
+
+    caches = ttk.LabelFrame(main, text=' CACHÉS ', padding=12)
+    caches.pack(fill=tk.X, pady=(0, 10))
+    ttk.Label(
+        caches,
+        text='Libera espacio en disco. Los tamaños se actualizan al abrir Preferencias y tras vaciar.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(0, 8))
+
+    epg_cache_size_var = tk.StringVar(value='…')
+    logos_size_var = tk.StringVar(value='…')
+    youtube_cache_size_var = tk.StringVar(value='…')
+    recordings_size_var = tk.StringVar(value='…')
+
+    def _refresh_cache_sizes():
+        """Uso interno: actualiza etiquetas de tamaño de caché."""
+        try:
+            data = cache_cleanup.stats()
+            epg_cache_size_var.set(
+                f"{cache_cleanup.format_bytes(data['epg_cache']['bytes'])}"
+                f" · {data['epg_cache']['files']} archivos"
+            )
+            logos_size_var.set(
+                f"{cache_cleanup.format_bytes(data['logos']['bytes'])}"
+                f" · {data['logos']['files']} logos"
+            )
+            youtube_cache_size_var.set(
+                f"{cache_cleanup.format_bytes(data['youtube']['bytes'])}"
+                f" · {data['youtube']['files']} archivos"
+            )
+            rec = data['old_recordings']
+            recordings_size_var.set(
+                f"{cache_cleanup.format_bytes(rec['bytes'])}"
+                f" · {rec['files']} grabaciones (+{rec['days']} días)"
+            )
+        except Exception:
+            epg_cache_size_var.set('—')
+            logos_size_var.set('—')
+            youtube_cache_size_var.set('—')
+            recordings_size_var.set('—')
+
+    def _confirm_clear(title, question, action):
+        """Uso interno: confirma y vacía una caché."""
+        if not messagebox.askyesno(title, question, parent=window):
+            return
+        try:
+            removed, freed = action()
+        except Exception as exc:
+            messagebox.showerror(title, str(exc), parent=window)
+            return
+        _refresh_cache_sizes()
+        messagebox.showinfo(
+            title,
+            f'Se eliminaron {removed} elemento(s) ({cache_cleanup.format_bytes(freed)}).',
+            parent=window,
+        )
+
+    def _cache_row(parent, label, size_var, button_text, on_clear):
+        """Uso interno: fila de caché con tamaño y botón."""
+        row = ttk.Frame(parent, style='Card.TFrame')
+        row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(row, text=label, style='Card.TLabel', width=22).pack(side=tk.LEFT, anchor=tk.W)
+        ttk.Label(row, textvariable=size_var, style='CardMuted.TLabel').pack(
+            side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8),
+        )
+        ttk.Button(row, text=button_text, command=on_clear).pack(side=tk.RIGHT)
+
+    _cache_row(
+        caches,
+        'epg_cache/',
+        epg_cache_size_var,
+        'Vaciar…',
+        lambda: _confirm_clear(
+            'Vaciar epg_cache',
+            '¿Eliminar todos los archivos de epg_cache/?',
+            cache_cleanup.clear_epg_cache,
+        ),
+    )
+    _cache_row(
+        caches,
+        'Logos de canal',
+        logos_size_var,
+        'Vaciar…',
+        lambda: _confirm_clear(
+            'Vaciar logos',
+            '¿Eliminar las miniaturas .png de logos en epg_cache/?',
+            cache_cleanup.clear_logo_cache,
+        ),
+    )
+    _cache_row(
+        caches,
+        'YouTube (kidneysm3u_yt_cache)',
+        youtube_cache_size_var,
+        'Vaciar…',
+        lambda: _confirm_clear(
+            'Vaciar caché YouTube',
+            '¿Eliminar los vídeos en caché de YouTube? La próxima reproducción volverá a descargarlos.',
+            cache_cleanup.clear_youtube_cache,
+        ),
+    )
+    _cache_row(
+        caches,
+        'Grabaciones antiguas',
+        recordings_size_var,
+        'Vaciar…',
+        lambda: _confirm_clear(
+            'Grabaciones antiguas',
+            (
+                f'¿Eliminar grabaciones .ts/.mkv de más de {cache_cleanup.OLD_RECORDINGS_DAYS} días '
+                f'en la carpeta de descargas?\n\nCarpeta: {cache_cleanup.recordings_folder() or "(sin definir)"}'
+            ),
+            cache_cleanup.clear_old_recordings,
+        ),
+    )
+    window.after_idle(_refresh_cache_sizes)
 
     appearance = ttk.LabelFrame(main, text=' APARIENCIA ', padding=12)
     appearance.pack(fill=tk.X, pady=(0, 10))
@@ -498,7 +693,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
         except tk.TclError:
             swatch.configure(bg='#FFFFFF')
 
-    def _color_row(parent, text, var):
+    def _color_row(parent, text, var, on_change=None):
         """Uso interno: color row."""
         row = ttk.Frame(parent, style='Card.TFrame')
         row.pack(fill=tk.X, pady=(0, 8))
@@ -520,10 +715,62 @@ def show_preferences(parent, on_apply=None, video_player=None):
             if chosen:
                 var.set(subtitle_style.normalize_hex_color(chosen, var.get()))
                 _paint_swatch(swatch, var)
+                if on_change:
+                    on_change()
 
         ttk.Button(row, text='Elegir', command=pick).pack(side=tk.RIGHT)
         swatch.bind('<Button-1>', lambda _e: pick())
         return swatch
+
+    def _subtitle_style_from_form():
+        """Uso interno: lee el estilo de subtítulos del formulario."""
+        try:
+            sub_size = int(sub_size_var.get())
+        except (TypeError, ValueError):
+            sub_size = 0
+        try:
+            sub_outline = int(sub_outline_var.get())
+        except (TypeError, ValueError):
+            sub_outline = 1
+        try:
+            text_pct = int(float(text_op_scale.get()))
+        except (TypeError, ValueError, tk.TclError):
+            text_pct = 100
+        try:
+            bg_pct = int(float(bg_op_scale.get()))
+        except (TypeError, ValueError, tk.TclError):
+            bg_pct = 0
+        try:
+            sub_margin = int(float(margin_scale.get()))
+        except (TypeError, ValueError, tk.TclError):
+            sub_margin = 0
+        try:
+            sub_delay = int(round(float(delay_scale.get())))
+        except (TypeError, ValueError, tk.TclError):
+            sub_delay = 0
+        return subtitle_style.normalize_subtitle_style({
+            'subtitle_size': sub_size,
+            'subtitle_color': sub_color_var.get(),
+            'subtitle_opacity': subtitle_style.percent_to_opacity(text_pct),
+            'subtitle_outline': sub_outline,
+            'subtitle_outline_color': sub_outline_color_var.get(),
+            'subtitle_bg_color': sub_bg_color_var.get(),
+            'subtitle_bg_opacity': subtitle_style.percent_to_opacity(bg_pct),
+            'subtitle_margin': sub_margin,
+            'subtitle_delay_ds': sub_delay,
+        })
+
+    def _refresh_subtitle_preview(*_args):
+        """Uso interno: actualiza la vista previa de subtítulos."""
+        canvas = getattr(window, '_subtitle_preview_canvas', None)
+        if canvas is None:
+            return
+        try:
+            if not canvas.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        subtitle_style.draw_subtitle_preview(canvas, _subtitle_style_from_form())
 
     size_row = ttk.Frame(subs, style='Card.TFrame')
     size_row.pack(fill=tk.X)
@@ -532,8 +779,10 @@ def show_preferences(parent, on_apply=None, video_player=None):
         ttk.Radiobutton(size_row, text=label, variable=sub_size_var, value=str(value)).pack(
             side=tk.LEFT, padx=(0, 8)
         )
+    sub_size_var.trace_add('write', _refresh_subtitle_preview)
 
-    _color_row(subs, 'Color del texto', sub_color_var)
+    _color_row(subs, 'Color del texto', sub_color_var, on_change=_refresh_subtitle_preview)
+    sub_color_var.trace_add('write', _refresh_subtitle_preview)
 
     text_op_row = ttk.Frame(subs, style='Card.TFrame')
     text_op_row.pack(fill=tk.X)
@@ -546,6 +795,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
             sub_text_op_label.set(f'{int(float(value))} %')
         except (TypeError, ValueError):
             pass
+        _refresh_subtitle_preview()
 
     text_op_scale = ttk.Scale(subs, from_=20, to=100, command=_on_text_op)
     text_op_scale.set(subtitle_style.opacity_percent(sub_cfg['subtitle_opacity']))
@@ -559,8 +809,11 @@ def show_preferences(parent, on_apply=None, video_player=None):
         ttk.Radiobutton(outline_row, text=label, variable=sub_outline_var, value=str(value)).pack(
             side=tk.LEFT, padx=(0, 8)
         )
-    _color_row(subs, 'Color del contorno', sub_outline_color_var)
-    _color_row(subs, 'Color de fondo', sub_bg_color_var)
+    sub_outline_var.trace_add('write', _refresh_subtitle_preview)
+    _color_row(subs, 'Color del contorno', sub_outline_color_var, on_change=_refresh_subtitle_preview)
+    _color_row(subs, 'Color de fondo', sub_bg_color_var, on_change=_refresh_subtitle_preview)
+    sub_outline_color_var.trace_add('write', _refresh_subtitle_preview)
+    sub_bg_color_var.trace_add('write', _refresh_subtitle_preview)
 
     bg_op_row = ttk.Frame(subs, style='Card.TFrame')
     bg_op_row.pack(fill=tk.X)
@@ -577,6 +830,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
             sub_bg_op_label.set('nada')
         else:
             sub_bg_op_label.set(f'{percent} %')
+        _refresh_subtitle_preview()
 
     bg_op_scale = ttk.Scale(subs, from_=0, to=100, command=_on_bg_op)
     bg_op_scale.set(subtitle_style.opacity_percent(sub_cfg['subtitle_bg_opacity']))
@@ -594,6 +848,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
             sub_margin_label.set(f'{int(float(value))} px')
         except (TypeError, ValueError):
             pass
+        _refresh_subtitle_preview()
 
     margin_scale = ttk.Scale(subs, from_=0, to=150, command=_on_margin)
     margin_scale.set(sub_cfg['subtitle_margin'])
@@ -612,11 +867,41 @@ def show_preferences(parent, on_apply=None, video_player=None):
         except (TypeError, ValueError):
             return
         sub_delay_label.set(subtitle_style.delay_label(tenths))
+        _refresh_subtitle_preview()
 
     delay_scale = ttk.Scale(subs, from_=-50, to=50, command=_on_delay)
     delay_scale.set(sub_cfg['subtitle_delay_ds'])
-    delay_scale.pack(fill=tk.X, pady=(4, 0))
+    delay_scale.pack(fill=tk.X, pady=(4, 10))
     _on_delay(delay_scale.get())
+
+    preview_block = ttk.Frame(subs, style='Card.TFrame')
+    preview_block.pack(fill=tk.X, pady=(0, 10))
+    ttk.Label(preview_block, text='Vista previa', style='Card.TLabel').pack(anchor=tk.W)
+    preview_outer = tk.Frame(
+        preview_block,
+        bg=subtitle_style.PREVIEW_CANVAS_BG,
+        highlightthickness=1,
+        highlightbackground=colors['border'],
+    )
+    preview_outer.pack(fill=tk.X, pady=(6, 0))
+    preview_canvas = tk.Canvas(
+        preview_outer,
+        height=112,
+        bg=subtitle_style.PREVIEW_CANVAS_BG,
+        highlightthickness=0,
+        bd=0,
+    )
+    preview_canvas.pack(fill=tk.X, padx=1, pady=1)
+    window._subtitle_preview_canvas = preview_canvas
+    preview_canvas.bind('<Configure>', lambda _e: _refresh_subtitle_preview())
+    ttk.Label(
+        preview_block,
+        text='Simula fondo de vídeo. Los colores se aproximan a la paleta fija de VLC.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(6, 0))
+    window.after_idle(_refresh_subtitle_preview)
+
     ttk.Label(
         subs,
         text='Solo cambia subtítulos de texto (SRT y YouTube). Los de imagen del propio canal no se pueden restilar. VLC usa una paleta fija de colores (se aproxima la más cercana). El margen inferior no lo admite VLC 3; el retraso sí al reproducir. En YouTube se recarga el vídeo al guardar; en IPTV se recarga el canal en curso al guardar.',
@@ -803,41 +1088,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
             volume = max(0, min(100, int(float(volume_scale.get()))))
         except (TypeError, ValueError, tk.TclError):
             volume = app_config.get_volume()
-        try:
-            sub_size = int(sub_size_var.get())
-        except (TypeError, ValueError):
-            sub_size = 0
-        try:
-            sub_outline = int(sub_outline_var.get())
-        except (TypeError, ValueError):
-            sub_outline = 1
-        try:
-            text_pct = int(float(text_op_scale.get()))
-        except (TypeError, ValueError, tk.TclError):
-            text_pct = 100
-        try:
-            bg_pct = int(float(bg_op_scale.get()))
-        except (TypeError, ValueError, tk.TclError):
-            bg_pct = 0
-        try:
-            sub_margin = int(float(margin_scale.get()))
-        except (TypeError, ValueError, tk.TclError):
-            sub_margin = 0
-        try:
-            sub_delay = int(round(float(delay_scale.get())))
-        except (TypeError, ValueError, tk.TclError):
-            sub_delay = 0
-        sub_payload = subtitle_style.normalize_subtitle_style({
-            'subtitle_size': sub_size,
-            'subtitle_color': sub_color_var.get(),
-            'subtitle_opacity': subtitle_style.percent_to_opacity(text_pct),
-            'subtitle_outline': sub_outline,
-            'subtitle_outline_color': sub_outline_color_var.get(),
-            'subtitle_bg_color': sub_bg_color_var.get(),
-            'subtitle_bg_opacity': subtitle_style.percent_to_opacity(bg_pct),
-            'subtitle_margin': sub_margin,
-            'subtitle_delay_ds': sub_delay,
-        })
+        sub_payload = _subtitle_style_from_form()
         payload = {
             'theme': 'dark' if theme_var.get() == 'dark' else 'light',
             'volume': volume,
@@ -846,6 +1097,8 @@ def show_preferences(parent, on_apply=None, video_player=None):
             'remember_last_list': bool(remember_var.get()),
             'show_channel_logos': bool(logos_var.get()),
             'light_mode': bool(light_var.get()),
+            'light_mode_auto': bool(light_auto_var.get()),
+            'light_mode_auto_cpu': bool(light_auto_cpu_var.get()),
             'light_mode_hw_decode': bool(hw_decode_var.get()),
             'show_cpu_monitor': bool(cpu_var.get()),
             'check_app_updates': bool(updates_var.get()),
@@ -854,6 +1107,7 @@ def show_preferences(parent, on_apply=None, video_player=None):
             'twitch_chat_auto_open': bool(twitch_chat_auto_var.get()),
             'youtube_auto_subtitles': bool(yt_auto_subs_var.get()),
             'iptv_buffer': app_config.normalize_iptv_buffer_profile(buffer_var.get()),
+            'usage_profile': usage_profiles.normalize_usage_profile(profile_var.get()),
         }
         payload.update(sub_payload)
         app_config.save(payload)
@@ -869,6 +1123,12 @@ def show_preferences(parent, on_apply=None, video_player=None):
     window.after_idle(_sync_cookies)
 
     window.after_idle(lambda: refresh_preferences_session_ui(window))
+
+    if initial_tab == 'cookies':
+        try:
+            notebook.select(tab_cookies)
+        except tk.TclError:
+            pass
 
     window.protocol('WM_DELETE_WINDOW', close)
     window.bind('<Escape>', lambda e: close())
