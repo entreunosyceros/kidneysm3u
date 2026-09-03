@@ -3,6 +3,8 @@
 import tkinter as tk
 from tkinter import ttk
 
+import pytest
+
 from channel_sidebar import ChannelSidebar
 from player_status import PlayerStatusMixin
 
@@ -22,6 +24,7 @@ class _StatusHost(PlayerStatusMixin):
             return False
 
 
+@pytest.mark.gui
 def test_sidebar_search_filters_active_group():
     """La búsqueda solo afecta al grupo activo."""
     root = tk.Tk()
@@ -40,6 +43,7 @@ def test_sidebar_search_filters_active_group():
     root.destroy()
 
 
+@pytest.mark.gui
 def test_sidebar_search_highlights_match_in_text():
     """Las coincidencias se marcan en el texto de la fila."""
     root = tk.Tk()
@@ -54,6 +58,7 @@ def test_sidebar_search_highlights_match_in_text():
     root.destroy()
 
 
+@pytest.mark.gui
 def test_player_status_bar_sets_and_clears():
     """La barra de estado muestra y limpia mensajes."""
     root = tk.Tk()

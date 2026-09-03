@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from docs_viewer import (
     html_img_to_markdown,
     image_markdown_from_line,
@@ -74,6 +76,7 @@ def test_local_doc_image_bytes_rejects_outside_root(tmp_path):
     assert local_doc_image_bytes('../' + Path(tmp_path).name + '/secret.png') is None
 
 
+@pytest.mark.gui
 def test_render_markdown_does_not_show_html_img():
     """Prueba render markdown does not show html img."""
     import tkinter as tk

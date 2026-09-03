@@ -26,7 +26,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            xvfb vlc fonts-dejavu-core libx11-6 libxext6 libxrender1
+            xvfb vlc fonts-dejavu-core python3-tk \
+            libx11-6 libxext6 libxrender1 libxft2 libxss1
 
       - name: Instalar dependencias Python
         run: |
@@ -34,7 +35,12 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: pytest
-        run: xvfb-run -a python -m pytest -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBGL_ALWAYS_INDIRECT: 1
+        run: >
+          xvfb-run -a --server-args="-screen 0 1280x720x24"
+          python -m pytest -q -m "not gui" --tb=short
 
   test-windows:
     name: pytest + build (Windows)

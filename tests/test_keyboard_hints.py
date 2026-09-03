@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 import app_config
 import keyboard
 
@@ -51,6 +53,7 @@ def test_needs_player_shortcuts_hint_legacy_config(tmp_path, monkeypatch):
         app_config._cache = previous
 
 
+@pytest.mark.gui
 def test_bind_question_mark_help_skips_invalid_sequences():
     """No debe fallar si una secuencia no es válida en Tk."""
     import tkinter as tk

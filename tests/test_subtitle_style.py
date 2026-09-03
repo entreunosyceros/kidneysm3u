@@ -1,5 +1,7 @@
 """Módulo de test subtitle style."""
 
+import pytest
+
 from subtitle_style import (
     blend_over_background,
     delay_label,
@@ -129,6 +131,7 @@ def test_preview_outline_offsets():
     assert len(preview_outline_offsets(2)) > len(preview_outline_offsets(1))
 
 
+@pytest.mark.gui
 def test_draw_subtitle_preview_on_canvas():
     """El canvas de vista previa se pinta sin error (Tk oculto)."""
     import tkinter as tk

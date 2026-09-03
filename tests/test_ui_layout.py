@@ -3,9 +3,12 @@
 import tkinter as tk
 from tkinter import ttk
 
+import pytest
+
 from ui_layout import bind_wraplength, make_vertical_scroll, walk_wraplength
 
 
+@pytest.mark.gui
 def test_walk_wraplength_updates_descendants():
     """Prueba walk wraplength updates descendants."""
     root = tk.Tk()
@@ -18,6 +21,7 @@ def test_walk_wraplength_updates_descendants():
     root.destroy()
 
 
+@pytest.mark.gui
 def test_bind_wraplength_on_configure():
     """Prueba bind wraplength on configure."""
     root = tk.Tk()
@@ -33,6 +37,7 @@ def test_bind_wraplength_on_configure():
     root.destroy()
 
 
+@pytest.mark.gui
 def test_make_vertical_scroll_syncs_inner_width():
     """Prueba make vertical scroll syncs inner width."""
     root = tk.Tk()
