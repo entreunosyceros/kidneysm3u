@@ -1,8 +1,8 @@
-"""Fixtures y stubs para la suite de tests.
+"""Pytest configuration for tests.
 
-En Windows CI (y en máquinas sin VLC), ``import vlc`` falla al cargar
-``libvlc.dll``. Varios módulos lo importan al cargar; este stub permite
-recolectar y ejecutar tests unitarios que no necesitan libVLC real.
+Mockea ``vlc`` antes de recolectar tests para no cargar ``libvlc.dll``.
+``player_iptv`` / ``video_player`` importan ``vlc`` a nivel de módulo; sin este
+stub la colección falla en Windows CI (y en PCs sin VLC instalado).
 """
 
 from __future__ import annotations
@@ -52,15 +52,8 @@ def _install_vlc_stub():
     stub.MediaStats = MediaStats
     stub.Instance = Instance
     stub.libvlc_get_version = lambda: b'stub'
+    # Antes de cualquier import de player_iptv / video_player.
     sys.modules['vlc'] = stub
 
 
-def _ensure_vlc():
-    try:
-        import vlc  # noqa: F401
-    except Exception:
-        sys.modules.pop('vlc', None)
-        _install_vlc_stub()
-
-
-_ensure_vlc()
+_install_vlc_stub()
