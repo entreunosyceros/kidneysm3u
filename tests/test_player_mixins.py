@@ -153,48 +153,105 @@ def test_hide_controls_keeps_bar_when_popup_open():
     assert dummy.timer_resets == 1
 
 
-def test_iptv_progress_overlay_show_and_hide():
-    """El aviso de reconexión se crea y se oculta al recuperar."""
-    import tkinter as tk
+def test_iptv_progress_overlay_show_and_hide(monkeypatch):
+    """El aviso de reconexión actualiza título/estado y se limpia al ocultar.
+
+    No crea Labels/Toplevel reales: en runners CI de Linux Tk puede abortar
+    (SIGABRT) al construir widgets con fuentes/X11 incompletos.
+    """
+    class _FakeWidget:
+        def destroy(self):
+            return None
+
+        def winfo_exists(self):
+            return True
+
+        def after(self, *_args, **_kwargs):
+            return None
+
+        def bind(self, *_args, **_kwargs):
+            return None
+
+        def place(self, *_args, **_kwargs):
+            return None
+
+        def pack(self, *_args, **_kwargs):
+            return None
+
+        def lift(self, *_args, **_kwargs):
+            return None
+
+        def withdraw(self):
+            return None
+
+        def overrideredirect(self, *_args, **_kwargs):
+            return None
+
+        def attributes(self, *_args, **_kwargs):
+            return None
+
+        def wm_attributes(self, *_args, **_kwargs):
+            return None
+
+        def configure(self, *_args, **_kwargs):
+            return None
+
+        def deiconify(self):
+            return None
+
+        def update_idletasks(self):
+            return None
+
+        def stop(self):
+            return None
+
+        def start(self, *_args, **_kwargs):
+            return None
 
     class Dummy(ChannelNoticeMixin):
-        def __init__(self, root):
-            self.window = root
-            self.player_frame = tk.Frame(root, bg='#111111')
-            self.player_frame.pack(fill=tk.BOTH, expand=True)
-            self.video_frame = tk.Frame(self.player_frame, bg='#000000')
-            self.video_frame.pack(fill=tk.BOTH, expand=True)
+        def __init__(self):
+            self.window = _FakeWidget()
+            self.player_frame = _FakeWidget()
+            self.video_frame = _FakeWidget()
             self._playing_youtube = False
             self._iptv_failed = False
-            self._player_status_var = tk.StringVar(value='')
+            self._player_status = ''
+            self._iptv_progress_top = None
+            self._iptv_progress_frame = None
+            self._iptv_progress_bar = None
+            self._iptv_progress_title = None
 
         def _widget_exists(self, widget):
-            if widget is None:
-                return False
-            try:
-                return bool(widget.winfo_exists())
-            except tk.TclError:
-                return False
+            return widget is not None
 
         def set_player_status(self, text, **kwargs):
-            self._player_status_var.set(text)
+            self._player_status = text
 
         def clear_player_status(self, match=None):
-            current = self._player_status_var.get()
-            if match and match not in current:
+            if match and match not in (self._player_status or ''):
                 return
-            self._player_status_var.set('')
+            self._player_status = ''
 
-    root = tk.Tk()
-    root.withdraw()
-    root.geometry('640x360')
-    dummy = Dummy(root)
+        def _fill_iptv_progress_card(self, parent, title, detail, colors):
+            return _FakeWidget(), _FakeWidget()
+
+        def _position_iptv_progress_overlay(self, event=None):
+            return None
+
+        def _iptv_progress_target_area(self):
+            return self.video_frame
+
+    import tkinter as tk
+
+    monkeypatch.setattr(tk, 'Frame', lambda *a, **k: _FakeWidget())
+    monkeypatch.setattr(tk, 'Toplevel', lambda *a, **k: _FakeWidget())
+
+    dummy = Dummy()
     dummy._show_iptv_progress_overlay('Reconectando…', 'Probando de nuevo.')
-    root.update_idletasks()
     assert dummy._iptv_progress_title.startswith('Reconectando')
-    assert dummy._player_status_var.get().startswith('Reconectando')
-    assert dummy._widget_exists(dummy._iptv_progress_top)
+    assert dummy._player_status.startswith('Reconectando')
+    assert dummy._iptv_progress_frame is not None
+    assert dummy._iptv_progress_top is not None
     dummy._hide_iptv_progress_overlay()
     assert dummy._iptv_progress_title is None
-    assert dummy._player_status_var.get() == ''
-    root.destroy()
+    assert dummy._player_status == ''
