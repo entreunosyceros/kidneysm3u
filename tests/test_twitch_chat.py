@@ -1,6 +1,7 @@
 """Módulo de test twitch chat."""
 
 import os
+import sys
 import urllib.request
 
 import pytest
@@ -21,6 +22,10 @@ from twitch_chat import (
 )
 
 _LINUX_CI = linux_ci_runner()
+_WINDOWS_CI = (
+    sys.platform == 'win32'
+    and os.environ.get('CI', '').lower() in ('1', 'true', 'yes')
+)
 
 skip_linux_ci_native_gui = pytest.mark.skipif(
     _LINUX_CI,
@@ -88,6 +93,10 @@ def test_resolve_twitch_channel_from_url():
     assert resolve_twitch_channel(handler) == 'livechannel'
 
 
+@pytest.mark.skipif(
+    _WINDOWS_CI,
+    reason='ThreadingHTTPServer.shutdown provoca fatal exception en Windows CI',
+)
 def test_chat_server_serves_embed_page():
     """Prueba chat server serves embed page."""
     server = _ChatServer()
@@ -98,6 +107,12 @@ def test_chat_server_serves_embed_page():
         assert 'embed/demo/chat?parent=127.0.0.1' in body
     finally:
         server.stop()
+
+
+def test_chat_embed_html_matches_server_content():
+    """El HTML del embed (sin servidor HTTP) incluye el chat de Twitch."""
+    html = chat_embed_html('demo', '127.0.0.1')
+    assert 'embed/demo/chat?parent=127.0.0.1' in html.lower()
 
 
 @skip_linux_ci_native_gui

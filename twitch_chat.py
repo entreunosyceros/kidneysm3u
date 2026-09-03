@@ -236,18 +236,39 @@ class _ChatServer:
     def stop(self):
         """Stop."""
         server = self.server
+        thread = self.thread
         self.server = None
+        self.thread = None
         if not server:
             return
+        # En Windows, serve_forever() puede quedarse en select() y
+        # server.shutdown() espera para siempre → fatal exception en CI.
+        # Cerrar el socket despierta select; shutdown va en hilo con tope.
         try:
-            server.shutdown()
-        except Exception:
-            pass
-        try:
-            server.server_close()
+            sock = getattr(server, 'socket', None)
+            if sock is not None:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
         except Exception:
             pass
 
+        def _shutdown():
+            try:
+                server.shutdown()
+            except Exception:
+                pass
+            try:
+                server.server_close()
+            except Exception:
+                pass
+
+        stopper = threading.Thread(target=_shutdown, daemon=True)
+        stopper.start()
+        stopper.join(timeout=2.0)
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2.0)
 
 def resolve_twitch_channel(handler):
     """Resolve twitch canal."""

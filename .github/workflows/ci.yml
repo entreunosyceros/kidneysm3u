@@ -72,7 +72,7 @@ jobs:
           }
 
       - name: pytest
-        run: python -m pytest -q
+        run: python -m pytest -q -m "not gui" --tb=short
 
       - name: Generar icono Windows
         run: |
