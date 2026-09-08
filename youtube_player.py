@@ -40,8 +40,8 @@ PLAYABLE_VIDEO_EXT = {'.mp4', '.m4v', '.mkv', '.webm', '.avi', '.mov', '.mpeg', 
 
 
 def youtube_cache_dir():
-    """Youtube cache dir."""
-    path = os.path.join(tempfile.gettempdir(), YT_CACHE_DIRNAME)
+    """Caché de vídeos YouTube en el directorio de datos del usuario."""
+    path = os.path.join(data_dir(), YT_CACHE_DIRNAME)
     try:
         os.makedirs(path, exist_ok=True)
     except OSError:

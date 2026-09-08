@@ -7,18 +7,26 @@ import threading
 from io import BytesIO
 from urllib.request import Request, urlopen
 
+from app_paths import data_dir
 from m3u_parse import IPTV_USER_AGENT
 
-CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'epg_cache')
+# Si no es None (p. ej. en tests), sustituye data_dir()/epg_cache.
+CACHE_DIR = None
 MAX_LOGO_BYTES = 400 * 1024
 MAX_FILES = 800
 LOGO_PX = 20
 
 
+def legacy_cache_dir():
+    """Antigua carpeta junto al .py (antes de usar data_dir)."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'epg_cache')
+
+
 def cache_dir():
-    """Cache dir."""
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    return CACHE_DIR
+    """Carpeta de miniaturas: data_dir/epg_cache (o CACHE_DIR en tests)."""
+    path = CACHE_DIR or os.path.join(data_dir(), 'epg_cache')
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def clear_cache():

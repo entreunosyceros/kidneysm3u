@@ -82,7 +82,7 @@ Las URLs `youtube.com/shorts/...` se reconocen al pegarlas o al elegir un Short 
 
 yt-dlp elige un stream que VLC pueda abrir (audio y vídeo juntos cuando es posible). Mientras carga, el reproductor muestra el título, la miniatura y una barra para que no parezca colgado. Extraer el stream y las playlists no bloquea la interfaz.
 
-Si el directo falla, se usa un archivo de la caché si ya es jugable (MP4, MKV, WebM, etc.) **sin remuxear** a MPEG-TS. Solo si hace falta se retransmite por un servidor local. La caché vive en el directorio temporal del sistema (`kidneysm3u_yt_cache`), se recorta a unos **500 MB** (borra lo más antiguo) y no se vacía al cerrar. Los temporales de retransmisión (`kidneys_yt_*`) sí se borran al cerrar o al cambiar de vídeo. La barra de progreso es para YouTube y VOD, no para un directo IPTV.
+Si el directo falla, se usa un archivo de la caché si ya es jugable (MP4, MKV, WebM, etc.) **sin remuxear** a MPEG-TS. Solo si hace falta se retransmite por un servidor local. La caché vive en el directorio de datos (`kidneysm3u_yt_cache`, junto a `config.json`), se recorta a unos **500 MB** (borra lo más antiguo) y no se vacía al cerrar. Los temporales de retransmisión (`kidneys_yt_*`) sí se borran al cerrar o al cambiar de vídeo. La barra de progreso es para YouTube y VOD, no para un directo IPTV.
 
 Si cierras el reproductor o cambias de vídeo, se guarda el segundo. Al volver a abrirlo (también en una lista o desde **Historial**) continúa desde ahí, salvo que estuvieras al principio o casi al final. No se reproduce solo al restaurar la sesión. Los últimos vídeos de YouTube aparecen en la misma ventana de **Historial** que el IPTV.
 

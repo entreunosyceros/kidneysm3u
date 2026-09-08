@@ -42,6 +42,7 @@ python3 -m pytest
 | `kick_cookies.txt` | Cookies de Kick | Se escribe con **Kick → Reexportar cookies**. Ayuda con VOD restringidos o **403** de Cloudflare. El menú **Kick** muestra **Sesión Kick: OK / caducada**. **No va al git** (`.gitignore`). |
 | `.venv/` | Entorno Python | `run_app.py` lo recrea ([instalación](instalacion.md)) |
 | `epg_cache/` | Miniaturas de logos EPG / `tvg-logo` | Se crea al pintar logos; no va al git |
+| `kidneysm3u_yt_cache/` | Vídeos YouTube descargados a disco (fallback) | Solo si se usa la caché local; no va al git |
 
 ## Monitor de CPU
 

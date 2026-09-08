@@ -1,4 +1,5 @@
 epg_cache/
+kidneysm3u_yt_cache/
 .venv/
 __pycache__/
 .pytest_cache/

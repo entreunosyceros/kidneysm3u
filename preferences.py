@@ -293,6 +293,12 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
                 existing.lift()
                 existing.focus_force()
                 refresh_preferences_session_ui()
+                refresh_caches = getattr(existing, '_refresh_cache_sizes', None)
+                if callable(refresh_caches):
+                    try:
+                        refresh_caches()
+                    except Exception:
+                        pass
                 return existing
         except tk.TclError:
             pass
@@ -500,7 +506,11 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     caches.pack(fill=tk.X, pady=(0, 10))
     ttk.Label(
         caches,
-        text='Libera espacio en disco. Los tamaños se actualizan al abrir Preferencias y tras vaciar.',
+        text=(
+            'Libera espacio en disco y memoria. Los tamaños se actualizan al abrir '
+            'Preferencias y tras vaciar. YouTube en disco solo crece si se descarga '
+            'a caché (no al reproducir el stream directo).'
+        ),
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(0, 8))
@@ -509,6 +519,8 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     logos_size_var = tk.StringVar(value='…')
     youtube_cache_size_var = tk.StringVar(value='…')
     recordings_size_var = tk.StringVar(value='…')
+    search_mem_size_var = tk.StringVar(value='…')
+    ydl_mem_size_var = tk.StringVar(value='…')
 
     def _refresh_cache_sizes():
         """Uso interno: actualiza etiquetas de tamaño de caché."""
@@ -531,13 +543,27 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
                 f"{cache_cleanup.format_bytes(rec['bytes'])}"
                 f" · {rec['files']} grabaciones (+{rec['days']} días)"
             )
+            search = data.get('search_memory') or {}
+            search_mem_size_var.set(
+                f"{int(search.get('alive') or 0)} vigentes"
+                f" · {int(search.get('entries') or 0)} entradas"
+            )
+            ydl = data.get('ydl_memory') or {}
+            ydl_mem_size_var.set(
+                f"{int(ydl.get('alive') or 0)} vigentes"
+                f" · {int(ydl.get('entries') or 0)} entradas"
+            )
         except Exception:
             epg_cache_size_var.set('—')
             logos_size_var.set('—')
             youtube_cache_size_var.set('—')
             recordings_size_var.set('—')
+            search_mem_size_var.set('—')
+            ydl_mem_size_var.set('—')
 
-    def _confirm_clear(title, question, action):
+    window._refresh_cache_sizes = _refresh_cache_sizes
+
+    def _confirm_clear(title, question, action, bytes_freed=True):
         """Uso interno: confirma y vacía una caché."""
         if not messagebox.askyesno(title, question, parent=window):
             return
@@ -547,21 +573,34 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
             messagebox.showerror(title, str(exc), parent=window)
             return
         _refresh_cache_sizes()
-        messagebox.showinfo(
-            title,
-            f'Se eliminaron {removed} elemento(s) ({cache_cleanup.format_bytes(freed)}).',
-            parent=window,
-        )
+        if bytes_freed:
+            detail = f'Se eliminaron {removed} elemento(s) ({cache_cleanup.format_bytes(freed)}).'
+        else:
+            detail = f'Se liberaron {removed} entrada(s) en memoria.'
+        messagebox.showinfo(title, detail, parent=window)
 
-    def _cache_row(parent, label, size_var, button_text, on_clear):
+    def _cache_row(parent, label, size_var, button_text, on_clear, path_hint=None):
         """Uso interno: fila de caché con tamaño y botón."""
-        row = ttk.Frame(parent, style='Card.TFrame')
-        row.pack(fill=tk.X, pady=(0, 6))
+        block = ttk.Frame(parent, style='Card.TFrame')
+        block.pack(fill=tk.X, pady=(0, 6))
+        row = ttk.Frame(block, style='Card.TFrame')
+        row.pack(fill=tk.X)
         ttk.Label(row, text=label, style='Card.TLabel', width=22).pack(side=tk.LEFT, anchor=tk.W)
         ttk.Label(row, textvariable=size_var, style='CardMuted.TLabel').pack(
             side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8),
         )
         ttk.Button(row, text=button_text, command=on_clear).pack(side=tk.RIGHT)
+        if path_hint:
+            ttk.Label(
+                block,
+                text=path_hint,
+                style='CardMuted.TLabel',
+                wraplength=500,
+            ).pack(anchor=tk.W, pady=(2, 0))
+
+    epg_path = cache_cleanup.epg_cache_dir() or ''
+    yt_path = cache_cleanup.youtube_cache_dir() or ''
+    rec_path = cache_cleanup.recordings_folder() or '(sin definir)'
 
     _cache_row(
         caches,
@@ -573,6 +612,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
             '¿Eliminar todos los archivos de epg_cache/?',
             cache_cleanup.clear_epg_cache,
         ),
+        path_hint=epg_path,
     )
     _cache_row(
         caches,
@@ -584,10 +624,11 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
             '¿Eliminar las miniaturas .png de logos en epg_cache/?',
             cache_cleanup.clear_logo_cache,
         ),
+        path_hint=epg_path,
     )
     _cache_row(
         caches,
-        'YouTube (kidneysm3u_yt_cache)',
+        'YouTube (disco)',
         youtube_cache_size_var,
         'Vaciar…',
         lambda: _confirm_clear(
@@ -595,6 +636,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
             '¿Eliminar los vídeos en caché de YouTube? La próxima reproducción volverá a descargarlos.',
             cache_cleanup.clear_youtube_cache,
         ),
+        path_hint=yt_path,
     )
     _cache_row(
         caches,
@@ -605,11 +647,37 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
             'Grabaciones antiguas',
             (
                 f'¿Eliminar grabaciones .ts/.mkv de más de {cache_cleanup.OLD_RECORDINGS_DAYS} días '
-                f'en la carpeta de descargas?\n\nCarpeta: {cache_cleanup.recordings_folder() or "(sin definir)"}'
+                f'en la carpeta de descargas?\n\nCarpeta: {rec_path}'
             ),
             cache_cleanup.clear_old_recordings,
         ),
+        path_hint=rec_path,
     )
+    _cache_row(
+        caches,
+        'Búsquedas (memoria)',
+        search_mem_size_var,
+        'Vaciar…',
+        lambda: _confirm_clear(
+            'Vaciar búsquedas',
+            '¿Vaciar la caché en memoria de búsquedas (YouTube/Twitch/Kick)?',
+            cache_cleanup.clear_search_memory,
+            bytes_freed=False,
+        ),
+    )
+    _cache_row(
+        caches,
+        'Metadatos yt-dlp',
+        ydl_mem_size_var,
+        'Vaciar…',
+        lambda: _confirm_clear(
+            'Vaciar metadatos',
+            '¿Vaciar la caché en memoria de metadatos yt-dlp (YouTube/Twitch/Kick)?',
+            cache_cleanup.clear_ydl_memory,
+            bytes_freed=False,
+        ),
+    )
+    _refresh_cache_sizes()
     window.after_idle(_refresh_cache_sizes)
 
     appearance = ttk.LabelFrame(main, text=' APARIENCIA ', padding=12)
