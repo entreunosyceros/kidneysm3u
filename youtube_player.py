@@ -807,10 +807,14 @@ class YouTubeHandler:
         if url:
             player = getattr(self, 'video_player', None)
             if player is not None:
+                play = getattr(player, 'play_youtube_url', None)
+                if play:
+                    play(url)
+                    return
                 player._yt_standalone = not getattr(player, 'is_sequential_playback', False)
-            self.play_youtube_url(url)
+            self.play_youtube_url(url, force_pulse=True, show_progress=True)
 
-    def play_youtube_url(self, url, force_pulse=False, show_progress=False, is_sequential=False, title=None, resume_s=None):
+    def play_youtube_url(self, url, force_pulse=False, show_progress=True, is_sequential=False, title=None, resume_s=None):
         """Reproduce un vídeo de YouTube dentro del reproductor integrado."""
         save_resume = getattr(self.video_player, 'save_youtube_resume', None)
         if save_resume:

@@ -2400,7 +2400,7 @@ class VideoPlayer(
             self.play_kick_url(url)
             return
         if app_config._is_youtube_url(url):
-            self.youtube_handler.prompt_youtube_url(url)
+            self.play_youtube_url(url)
             return
         self.load_m3u_url(url)
 

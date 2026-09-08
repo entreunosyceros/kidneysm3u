@@ -527,7 +527,7 @@ class M3UProcessor:
         elif is_kick_url(url):
             player.play_kick_url(url)
         elif app_config._is_youtube_url(url):
-            player.youtube_handler.prompt_youtube_url(url)
+            player.play_youtube_url(url)
         else:
             player.load_m3u_url(url)
         self._refresh_recent_menu()
