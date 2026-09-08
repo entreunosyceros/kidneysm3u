@@ -56,6 +56,8 @@ def _gql_headers():
     headers = {
         'Client-ID': TWITCH_GQL_CLIENT_ID,
         'Content-Type': 'application/json',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        'Client-Language': 'es-ES',
         'User-Agent': (
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) '
             'Gecko/20100101 Firefox/125.0'
@@ -92,6 +94,8 @@ def _search_payload(query, target_index, limit):
             'includeIsDJ': True,
             'options': {
                 'targets': [{'index': target_index, 'limit': limit}],
+                # Preferir contenido en español cuando Twitch lo filtre.
+                'languages': ['ES'],
                 'shouldSkipDiscoveryControl': False,
             },
         },
@@ -222,7 +226,7 @@ def search_twitch(query, limit=15):
     if not text:
         return []
     limit = max(5, min(int(limit or 15), 30))
-    cache_key = f'twitch:search:{limit}:{text.lower()}'
+    cache_key = f'twitch:search:es:{limit}:{text.lower()}'
     cached = get_cached(cache_key)
     if cached is not None:
         return cached

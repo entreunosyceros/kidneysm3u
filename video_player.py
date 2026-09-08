@@ -159,9 +159,34 @@ class Tooltip:
                 pass
 
 
-def should_offer_youtube_replay(playing_youtube, standalone, sequential, queue_pending):
-    """True solo si acaba un vídeo de YouTube suelto, no una cola, playlist o secuencia."""
-    return bool(playing_youtube and standalone and not sequential and not queue_pending)
+def should_offer_youtube_replay(playing_youtube, standalone, sequential, queue_pending, near_end=True):
+    """True solo si acaba de verdad un vídeo de YouTube suelto (no cola/playlist/corte a mitad)."""
+    return bool(
+        playing_youtube
+        and standalone
+        and not sequential
+        and not queue_pending
+        and near_end
+    )
+
+
+YT_MID_RECONNECT_MAX = 3
+
+
+def should_reconnect_youtube_midplay(playing_youtube, elapsed_s, duration_s, reconnects, max_reconnects=YT_MID_RECONNECT_MAX):
+    """True si VLC dijo Ended pero el vídeo aún no debería haber terminado."""
+    if not playing_youtube:
+        return False
+    try:
+        reconnects = int(reconnects or 0)
+        max_reconnects = int(max_reconnects or 0)
+        elapsed_s = float(elapsed_s or 0)
+        duration_s = float(duration_s or 0)
+    except (TypeError, ValueError):
+        return False
+    if reconnects >= max_reconnects or duration_s <= 0 or elapsed_s < 5:
+        return False
+    return not app_config._yt_resume_near_end(elapsed_s, duration_s)
 
 
 class VideoPlayer(
@@ -242,6 +267,8 @@ class VideoPlayer(
         self._media_started = False
         self._yt_standalone = True
         self._yt_end_handled = False
+        self._yt_mid_reconnects = 0
+        self._yt_mid_reconnecting = False
         self._media_end_gen = 0
         self._yt_replay_frame = None
         self._iptv_relay_procs = []
@@ -3721,6 +3748,8 @@ class VideoPlayer(
             self._hide_channel_status()
             self._media_started = False
             self._yt_end_handled = True
+            if not getattr(self, '_yt_mid_reconnecting', False):
+                self._yt_mid_reconnects = 0
             self._ensure_vlc_style_instance()
             yt_handler = getattr(self, 'youtube_handler', None)
             if yt_handler and getattr(self, '_playing_youtube', False):
@@ -5272,11 +5301,51 @@ class VideoPlayer(
         ).pack(side=tk.LEFT)
         self._yt_replay_frame = panel
 
+    def _reconnect_youtube_at(self, resume_s):
+        """Reextrae el stream de YouTube y reanuda tras un corte prematuro."""
+        handler = getattr(self, 'youtube_handler', None)
+        url = (getattr(handler, '_current_url', '') or '') if handler else ''
+        if not handler or not url:
+            self._yt_mid_reconnects = 0
+            if should_offer_youtube_replay(
+                getattr(self, '_playing_youtube', False),
+                getattr(self, '_yt_standalone', False),
+                False,
+                bool(app_config.youtube_queue()),
+                near_end=True,
+            ):
+                self._show_youtube_replay_prompt()
+            return
+        try:
+            resume_s = max(0.0, float(resume_s or 0))
+        except (TypeError, ValueError):
+            resume_s = 0.0
+        attempt = int(getattr(self, '_yt_mid_reconnects', 0) or 0)
+        print(f'[YouTube] Corte prematuro; reconexión {attempt}/{YT_MID_RECONNECT_MAX} desde {resume_s:.0f}s')
+        set_status = getattr(self, 'set_player_status', None)
+        if callable(set_status):
+            set_status(f'Reconectando YouTube… ({attempt}/{YT_MID_RECONNECT_MAX})', timeout_ms=8000)
+        kwargs = dict(getattr(handler, '_play_kwargs', {}) or {})
+        title = getattr(handler, '_loading_title_text', None)
+        self._yt_mid_reconnecting = True
+        try:
+            handler.play_youtube_url(
+                url,
+                force_pulse=kwargs.get('force_pulse', True),
+                show_progress=kwargs.get('show_progress', True),
+                is_sequential=kwargs.get('is_sequential', False),
+                title=title,
+                resume_s=resume_s,
+            )
+        finally:
+            self._yt_mid_reconnecting = False
+
     def _replay_current_youtube(self):
         """Uso interno: replay current youtube."""
         self._hide_youtube_replay_prompt()
+        self._yt_mid_reconnects = 0
         handler = getattr(self, 'youtube_handler', None)
-        url = getattr(handler, '_current_url', '') or '' if handler else ''
+        url = (getattr(handler, '_current_url', '') or '') if handler else ''
         if not handler or not url:
             return
         self._yt_standalone = True
@@ -5317,6 +5386,42 @@ class VideoPlayer(
             if state != vlc.State.Ended:
                 return
             self._yt_end_handled = True
+
+            elapsed_ms = self._playback_elapsed_ms()
+            duration_ms = self._media_length_ms()
+            elapsed_s = elapsed_ms / 1000.0
+            duration_s = duration_ms / 1000.0 if duration_ms > 0 else 0.0
+            near_end = (
+                app_config._yt_resume_near_end(elapsed_s, duration_s)
+                if duration_s > 0
+                else True
+            )
+
+            if should_reconnect_youtube_midplay(
+                getattr(self, '_playing_youtube', False),
+                elapsed_s,
+                duration_s,
+                getattr(self, '_yt_mid_reconnects', 0),
+            ):
+                video_id = self._current_youtube_id()
+                handler = getattr(self, 'youtube_handler', None)
+                if video_id:
+                    title = ''
+                    if handler:
+                        title = getattr(handler, '_loading_title_text', None) or ''
+                    app_config.remember_youtube_position(
+                        video_id,
+                        elapsed_s,
+                        duration_s,
+                        title=title,
+                        url=getattr(handler, '_current_url', None) if handler else None,
+                    )
+                self._yt_mid_reconnects = int(getattr(self, '_yt_mid_reconnects', 0) or 0) + 1
+                resume_at = max(0.0, elapsed_s - 1.5)
+                self.window.after(400, lambda s=resume_at: self._reconnect_youtube_at(s))
+                return
+
+            self._yt_mid_reconnects = 0
             self.clear_youtube_resume()
 
             if getattr(self, '_playing_youtube', False) and app_config.youtube_queue():
@@ -5372,6 +5477,7 @@ class VideoPlayer(
                 getattr(self, '_yt_standalone', False),
                 False,
                 bool(app_config.youtube_queue()),
+                near_end=near_end,
             ):
                 self._show_youtube_replay_prompt()
         except Exception as exc:

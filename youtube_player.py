@@ -673,6 +673,10 @@ def _jar_has_live_youtube_login(cookies):
 class _GrowingTSHandler(BaseHTTPRequestHandler):
     """Sirve un MPEG-TS que ffmpeg sigue escribiendo."""
 
+    # Sin datos nuevos: si el productor sigue vivo no cortar (antes 45s → EOF falso a mitad).
+    IDLE_WHILE_PRODUCER_S = 600.0
+    IDLE_AFTER_DONE_S = 3.0
+
     def log_message(self, format, *args):
         """Log message."""
         return
@@ -707,7 +711,7 @@ class _GrowingTSHandler(BaseHTTPRequestHandler):
         self.end_headers()
         idle = 0.0
         try:
-            while idle < 45:
+            while True:
                 try:
                     size = os.path.getsize(path) if os.path.exists(path) else 0
                 except OSError:
@@ -721,9 +725,13 @@ class _GrowingTSHandler(BaseHTTPRequestHandler):
                         pos += len(data)
                         idle = 0.0
                         continue
-                procs = getattr(self.server, 'yt_procs', [])
-                finished = procs and all(p.poll() is not None for p in procs)
+                procs = getattr(self.server, 'yt_procs', []) or []
+                finished = bool(procs) and all(p.poll() is not None for p in procs)
+                # Productor vivo (o aún no registrado): no cortar por un stall corto.
                 if finished and size <= pos:
+                    if idle >= self.IDLE_AFTER_DONE_S:
+                        break
+                elif idle >= self.IDLE_WHILE_PRODUCER_S:
                     break
                 time.sleep(0.05)
                 idle += 0.05
@@ -1146,12 +1154,29 @@ class YouTubeHandler:
             bg=colors['surface'],
             highlightbackground=colors['border'],
             highlightthickness=1,
-            padx=22,
-            pady=18,
+            padx=16,
+            pady=14,
         )
         card.place(relx=0.5, rely=0.5, anchor='center')
 
-        thumb_wrap = tk.Frame(card, bg=colors['surface_alt'], width=440, height=248)
+        try:
+            frame_w = max(1, int(video_frame.winfo_width() or 0))
+            frame_h = max(1, int(video_frame.winfo_height() or 0))
+        except tk.TclError:
+            frame_w, frame_h = 800, 450
+        if frame_w < 80:
+            frame_w = 800
+        if frame_h < 80:
+            frame_h = 450
+        avail_h = max(120, frame_h - 170)
+        avail_w = max(200, frame_w - 48)
+        thumb_w = max(200, int(avail_w * 0.94))
+        thumb_h = int(thumb_w * 9 / 16)
+        if thumb_h > avail_h:
+            thumb_h = avail_h
+            thumb_w = max(200, int(thumb_h * 16 / 9))
+
+        thumb_wrap = tk.Frame(card, bg=colors['surface_alt'], width=thumb_w, height=thumb_h)
         thumb_wrap.pack()
         thumb_wrap.pack_propagate(False)
         self._loading_thumb_wrap = thumb_wrap
@@ -1166,7 +1191,10 @@ class YouTubeHandler:
         thumb.pack(fill=tk.BOTH, expand=True)
         self._loading_thumb_label = thumb
         cached = self._thumb_photos.get(video_id) if video_id else None
-        if cached:
+        if cached and video_id in getattr(self, '_thumb_pil', {}):
+            # Se reescalará al tamaño del wrap en idle
+            pass
+        elif cached:
             thumb.configure(image=cached, text='')
             thumb.image = cached
 
@@ -1176,10 +1204,10 @@ class YouTubeHandler:
             font=get_font(13, 'bold'),
             bg=colors['surface'],
             fg=colors['text'],
-            wraplength=420,
+            wraplength=max(280, thumb_w - 20),
             justify='center',
         )
-        title_label.pack(pady=(14, 6))
+        title_label.pack(pady=(12, 6), fill=tk.X)
         self._loading_title_label = title_label
 
         status_label = tk.Label(
@@ -1188,15 +1216,15 @@ class YouTubeHandler:
             font=get_font(10),
             bg=colors['surface'],
             fg=colors['text_muted'],
-            wraplength=420,
+            wraplength=max(280, thumb_w - 20),
             justify='center',
         )
-        status_label.pack(pady=(0, 10))
+        status_label.pack(pady=(0, 10), fill=tk.X)
         self._loading_status_label = status_label
 
         bar_wrap = ttk.Frame(card)
         bar_wrap.pack(fill=tk.X)
-        bar = ttk.Progressbar(bar_wrap, mode='indeterminate', length=280)
+        bar = ttk.Progressbar(bar_wrap, mode='indeterminate', length=min(360, max(200, thumb_w // 2)))
         bar.pack()
         bar.start(12)
         self._loading_bar = bar
@@ -1292,13 +1320,14 @@ class YouTubeHandler:
                 'Gecko/20100101 Firefox/125.0'
             ),
         }
-        for name in ('hqdefault.jpg', 'mqdefault.jpg', 'default.jpg'):
+        for name in ('maxresdefault.jpg', 'sddefault.jpg', 'hqdefault.jpg', 'mqdefault.jpg', 'default.jpg'):
             url = f'https://i.ytimg.com/vi/{video_id}/{name}'
             try:
                 req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, timeout=6) as resp:
                     data = resp.read()
-                if data:
+                # maxresdefault a veces es un placeholder 120x90
+                if data and len(data) > 2000:
                     return data
             except Exception:
                 continue
@@ -1315,18 +1344,18 @@ class YouTubeHandler:
         except Exception:
             return
         width, height = img.size
+        if width < 80 or height < 45:
+            return
         target_h = int(width * 9 / 16)
         if height > target_h + 8:
             top = (height - target_h) // 2
             img = img.crop((0, top, width, top + target_h))
-        img = img.resize((440, 248), Image.Resampling.LANCZOS)
+        # Guardar a resolución de origen; el overlay la escala al área de carga
         self._thumb_pil[video_id] = img.copy()
-        photo = ImageTk.PhotoImage(img)
-        self._thumb_photos[video_id] = photo
         self._rescale_loading_thumb()
 
     def _rescale_loading_thumb(self):
-        """Uso interno: rescale loading miniatura."""
+        """Escala la miniatura para llenar el marco de la pantalla de carga."""
         video_id = getattr(self, '_loading_video_id', None)
         img = getattr(self, '_thumb_pil', {}).get(video_id)
         wrap = getattr(self, '_loading_thumb_wrap', None)
@@ -1335,14 +1364,24 @@ class YouTubeHandler:
             return
         try:
             from PIL import Image, ImageTk
-            tw = max(80, int(wrap.winfo_width() or 440))
-            th = max(45, int(wrap.winfo_height() or 248))
-            if tw < 20 or th < 20:
+            wrap.update_idletasks()
+            tw = max(80, int(wrap.winfo_width() or 0))
+            th = max(45, int(wrap.winfo_height() or 0))
+            if tw < 40 or th < 40:
                 return
-            scaled = img.resize((tw, th), Image.Resampling.LANCZOS)
+            # Cubrir el marco (cover) sin deformar; recortar sobrante 16:9
+            src_w, src_h = img.size
+            scale = max(tw / src_w, th / src_h)
+            new_w = max(1, int(src_w * scale))
+            new_h = max(1, int(src_h * scale))
+            scaled = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            left = max(0, (new_w - tw) // 2)
+            top = max(0, (new_h - th) // 2)
+            scaled = scaled.crop((left, top, left + tw, top + th))
             photo = ImageTk.PhotoImage(scaled)
             label.configure(image=photo, text='')
             label.image = photo
+            self._thumb_photos[video_id] = photo
         except Exception:
             pass
 

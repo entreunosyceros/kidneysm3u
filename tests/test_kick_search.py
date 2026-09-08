@@ -24,6 +24,14 @@ def test_parse_channel_item_live():
     assert parsed['followers'] == 1200
 
 
+def test_kick_api_headers_prefer_spanish():
+    """Las peticiones a Kick piden español cuando esté disponible."""
+    from kick_player import _kick_api_headers
+
+    headers = _kick_api_headers()
+    assert 'es' in headers.get('Accept-Language', '').lower()
+
+
 def test_parse_channel_item_offline():
     """Canal offline desde api/search."""
     item = {

@@ -58,6 +58,17 @@ def test_twitch_search_label():
     assert 'VOD' in twitch_search_label(vod)
 
 
+def test_twitch_search_prefers_spanish_locale():
+    """Cabeceras y opciones de búsqueda en español."""
+    from twitch_search import _gql_headers, _search_payload
+
+    headers = _gql_headers()
+    assert 'es' in headers.get('Accept-Language', '').lower()
+    assert headers.get('Client-Language', '').lower().startswith('es')
+    options = _search_payload('demo', 'CHANNEL', 10)[0]['variables']['options']
+    assert options.get('languages') == ['ES']
+
+
 def test_search_twitch_uses_ttl_cache(monkeypatch):
     """La segunda búsqueda idéntica no vuelve a llamar a GraphQL."""
     from ttl_cache import invalidate

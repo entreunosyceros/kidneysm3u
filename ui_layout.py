@@ -118,27 +118,45 @@ def wraplength_for(width, padding=28, min_wrap=120, max_wrap=720):
     return max(min_wrap, min(int(width) - padding, max_wrap))
 
 
-def bind_loading_card(overlay, card, labels, thumb_wrap=None, max_thumb=(440, 248)):
-    """Ajusta wraplength y miniatura del overlay de carga al tamaño del vídeo."""
+def bind_loading_card(overlay, card, labels, thumb_wrap=None, max_thumb=None):
+    """Ajusta wraplength y miniatura del overlay de carga al tamaño del vídeo.
+
+    Sin max_thumb, la miniatura usa casi todo el ancho del área de vídeo (16:9),
+    dejando margen para título, estado y barra de progreso.
+    """
 
     def sync(_event=None):
         """Sync."""
         try:
             width = max(1, int(overlay.winfo_width()))
+            height = max(1, int(overlay.winfo_height()))
         except tk.TclError:
             return
-        wrap = wraplength_for(width, padding=44, min_wrap=120, max_wrap=max_thumb[0])
+        label_wrap = wraplength_for(
+            width, padding=48, min_wrap=160, max_wrap=min(width - 64, 960),
+        )
         for label in labels:
             if label is None:
                 continue
             try:
                 if int(label.cget('wraplength') or 0) > 0:
-                    label.configure(wraplength=wrap)
+                    label.configure(wraplength=label_wrap)
             except tk.TclError:
                 pass
         if thumb_wrap is not None:
-            tw = max(160, min(wrap, max_thumb[0]))
-            th = max(90, min(int(tw * 9 / 16), max_thumb[1]))
+            # Título + estado + barra ≈ 140–180 px según fuente
+            avail_h = max(120, height - 170)
+            avail_w = max(200, width - 48)
+            tw = int(avail_w * 0.94)
+            th = int(tw * 9 / 16)
+            if th > avail_h:
+                th = avail_h
+                tw = int(th * 16 / 9)
+            if max_thumb:
+                tw = min(tw, int(max_thumb[0]))
+                th = min(th, int(max_thumb[1]))
+            tw = max(200, tw)
+            th = max(112, th)
             try:
                 thumb_wrap.configure(width=tw, height=th)
             except tk.TclError:

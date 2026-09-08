@@ -165,12 +165,26 @@ def _ensure_spanish_relative_time():
     _YT_RELATIVE_TIME_PATCHED = True
 
 
+def _youtube_results_url(query, sp):
+    """URL de resultados con región e idioma en español."""
+    query_q = quote_plus(query or '')
+    sp_q = quote(sp or 'EgIQAQ==', safe='')
+    return (
+        f'https://www.youtube.com/results?search_query={query_q}'
+        f'&sp={sp_q}&hl=es&gl=ES'
+    )
+
+
 def _search_ydl_opts(**extra):
-    """Fechas aproximadas sin traducir los títulos al inglés."""
+    """Búsqueda en español: títulos/UI en es cuando existan; fechas relativas en español."""
     _ensure_spanish_relative_time()
+    # yt-dlp avisa siempre con lang≠en; en búsqueda es esperado e inofensivo.
+    extra.setdefault('no_warnings', True)
     return youtube_ydl_opts(
         extractor_args={
             'youtubetab': {'approximate_date': ['']},
+            # Sin esto yt-dlp fuerza hl=en y traduce títulos al inglés.
+            'youtube': {'lang': ['es']},
         },
         **extra,
     )
@@ -319,11 +333,7 @@ def _search_youtube_shorts(query, max_results, extra_query='', search_sp=None, c
             slugs.append(word_slug)
     search_text = (query + extra_query).strip()
     sp = search_sp or 'EgIQCQ=='
-    search_url = (
-        f'https://www.youtube.com/results?search_query={quote_plus(search_text)}'
-        f'&sp={quote(sp, safe="")}'
-    )
-    sources.append((search_url, False))
+    sources.append((_youtube_results_url(search_text, sp), False))
     for slug in slugs:
         sources.append((f'https://www.youtube.com/hashtag/{quote(slug)}/shorts', True))
 
@@ -414,10 +424,7 @@ def _search_matching_channel(query):
     if direct:
         return direct
     sp = youtube_search_sp(result_type='channel') or 'EgIQAg=='
-    search_url = (
-        f'https://www.youtube.com/results?search_query={quote_plus(query)}'
-        f'&sp={quote(sp, safe="")}'
-    )
+    search_url = _youtube_results_url(query, sp)
     ydl_opts = _search_ydl_opts(
         extract_flat=True,
         skip_download=True,
@@ -1075,14 +1082,10 @@ class YouTubeSearchDialog:
                         playlistend=fetch_end,
                     )
 
-                    query_q = quote_plus(search_query)
                     sp = search_sp or 'EgIQAQ=='
-                    search_url = (
-                        f"https://www.youtube.com/results?search_query={query_q}"
-                        f"&sp={quote(sp, safe='')}"
-                    )
+                    search_url = _youtube_results_url(search_query, sp)
                     cache_key = (
-                        f'yt:search:{tipo}:{sort_label}:{sp}:{max_results}:'
+                        f'yt:search:es:{tipo}:{sort_label}:{sp}:{max_results}:'
                         f'{search_query.strip().lower()}'
                     )
                     cached_info = get_cached(cache_key)
@@ -1946,7 +1949,7 @@ class YouTubeSearchDialog:
 
     def _fetch_playlist_videos(self, playlist_url):
         """Uso interno: fetch lista de reproducción videos."""
-        ydl_opts = youtube_ydl_opts(
+        ydl_opts = _search_ydl_opts(
             extract_flat=True,
             skip_download=True,
             force_generic_extractor=False,

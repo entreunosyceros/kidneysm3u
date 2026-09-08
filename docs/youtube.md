@@ -56,7 +56,7 @@ Si arrancas el Python del sistema (sin `.venv`), Ubuntu puede bloquear `pip` (PE
 
 También puedes filtrar por fecha, duración (no aplica a Shorts) y número de resultados. **Ordenar por Fecha** muestra primero lo más reciente: si buscas un canal (`@nombre` o el nombre exacto), abre su pestaña de vídeos o Shorts; si no, ordena los resultados de búsqueda. Debajo del campo aparecen las **5 últimas búsquedas** (con tipo y filtros): un clic en cualquiera las vuelve a lanzar. Si no cabe todo, la ventana tiene **barra de desplazamiento** vertical (la rueda del ratón también).
 
-- Doble clic o **Reproducir** añade el vídeo a la lista lateral y lo pone en marcha (cierra la búsqueda). Al terminar un vídeo suelto, el reproductor pregunta si quieres **volver a verlo**. Si hay cola, una playlist o **Reproducir desde aquí**, pasa al siguiente y no pregunta.
+- Doble clic o **Reproducir** añade el vídeo a la lista lateral y lo pone en marcha (cierra la búsqueda). Al terminar de verdad un vídeo suelto, el reproductor pregunta si quieres **volver a verlo**. Si el enlace se corta antes del final, reintenta reanudar desde ese punto. Si hay cola, una playlist o **Reproducir desde aquí**, pasa al siguiente y no pregunta.
 - **Añadir a la cola** (o clic derecho) lo deja en la **cola de YouTube**, una lista aparte (**Youtube → Cola de YouTube**): siguiente, quitar, subir/bajar. No se mezcla con la lista IPTV. Puedes marcar varios con Ctrl o Mayús. `Ctrl+Enter` hace lo mismo.
 - **Añadir a favoritos**: pulsa **☆** al inicio de la fila (pasa a **★**; otro clic lo quita), el botón de abajo, clic derecho o `Ctrl+S`. Quedan en ★ Favoritos del reproductor.
 - Una **lista**: **Cargar lista** sustituye la barra lateral; **Añadir lista a la cola** mete esos vídeos en la cola.

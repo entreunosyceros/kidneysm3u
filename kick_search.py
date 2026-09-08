@@ -131,7 +131,7 @@ def search_kick(query, limit=20):
     if not text:
         return []
     limit = max(5, min(int(limit or 20), 40))
-    cache_key = f'kick:search:{limit}:{text.lower()}'
+    cache_key = f'kick:search:es:{limit}:{text.lower()}'
     cached = get_cached(cache_key)
     if cached is not None:
         return cached

@@ -242,6 +242,20 @@ def test_youtube_ydl_opts_without_global_lang():
     assert 'extractor_args' not in opts or 'lang' not in (opts.get('extractor_args') or {}).get('youtube', {})
 
 
+def test_youtube_search_opts_prefer_spanish():
+    """Las búsquedas piden idioma español a yt-dlp y a la URL de results."""
+    from youtube_search import _search_ydl_opts, _youtube_results_url
+
+    opts = _search_ydl_opts(silent=True)
+    youtube_args = (opts.get('extractor_args') or {}).get('youtube') or {}
+    assert youtube_args.get('lang') == ['es']
+    assert opts.get('no_warnings') is True
+    url = _youtube_results_url('noticias', 'EgIQAQ==')
+    assert 'hl=es' in url
+    assert 'gl=ES' in url
+    assert 'search_query=noticias' in url
+
+
 def test_pick_preferred_youtube_sub_returns_first_item():
     """Prueba pick preferred youtube subtítulo returns first item."""
     from youtube_subs import collect_youtube_subs, pick_preferred_youtube_sub
@@ -597,12 +611,27 @@ def test_sort_search_entries_newest_first_when_fecha():
 
 def test_should_offer_youtube_replay_only_for_standalone():
     """Prueba should offer youtube replay only for standalone."""
-    from video_player import should_offer_youtube_replay
+    from video_player import should_offer_youtube_replay, should_reconnect_youtube_midplay
 
     assert should_offer_youtube_replay(True, True, False, False) is True
     assert should_offer_youtube_replay(True, True, True, False) is False
     assert should_offer_youtube_replay(True, True, False, True) is False
     assert should_offer_youtube_replay(True, False, False, False) is False
     assert should_offer_youtube_replay(False, True, False, False) is False
+    assert should_offer_youtube_replay(True, True, False, False, near_end=False) is False
+
+    assert should_reconnect_youtube_midplay(True, 600, 2100, 0) is True
+    assert should_reconnect_youtube_midplay(True, 2080, 2100, 0) is False
+    assert should_reconnect_youtube_midplay(True, 600, 2100, 3) is False
+    assert should_reconnect_youtube_midplay(False, 600, 2100, 0) is False
+    assert should_reconnect_youtube_midplay(True, 3, 2100, 0) is False
+
+
+def test_growing_ts_idle_limits():
+    """El relevo MPEG-TS no debe cortar a los 45s si el productor sigue vivo."""
+    from youtube_player import _GrowingTSHandler
+
+    assert _GrowingTSHandler.IDLE_WHILE_PRODUCER_S >= 300
+    assert _GrowingTSHandler.IDLE_AFTER_DONE_S <= 10
 
 
