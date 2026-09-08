@@ -58,8 +58,36 @@ def test_twitch_search_label():
     assert 'VOD' in twitch_search_label(vod)
 
 
+def test_search_twitch_uses_ttl_cache(monkeypatch):
+    """La segunda búsqueda idéntica no vuelve a llamar a GraphQL."""
+    from ttl_cache import invalidate
+    invalidate()
+    calls = {'n': 0}
+
+    def fake_post(payload):
+        calls['n'] += 1
+        index = payload[0]['variables']['options']['targets'][0]['index']
+        if index == 'CHANNEL':
+            return [{
+                'data': {
+                    'searchFor': {
+                        'channels': {'edges': []},
+                        'relatedLiveChannels': {'edges': []},
+                    },
+                },
+            }]
+        return [{'data': {'searchFor': {'videos': {'edges': []}}}}]
+
+    monkeypatch.setattr('twitch_search._gql_post', fake_post)
+    assert search_twitch('cache-demo', limit=10) == []
+    assert search_twitch('cache-demo', limit=10) == []
+    assert calls['n'] == 2  # CHANNEL + VOD once; second search hits cache
+
+
 def test_search_twitch_merged(monkeypatch):
     """Prueba search twitch merged."""
+    from ttl_cache import invalidate
+    invalidate()
     channel_payload = [{
         'data': {
             'searchFor': {

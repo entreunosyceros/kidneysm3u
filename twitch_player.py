@@ -695,11 +695,15 @@ def pick_twitch_stream(info, max_height=None):
     }
 
 
-def extract_twitch_stream(url, max_height=None):
+def extract_twitch_stream(url, max_height=None, use_cache=True):
     """Extrae URL jugable y metadatos con yt-dlp."""
     import yt_dlp
+    from ydl_cache import extract_info_cached, invalidate_cached_info
 
     format_sel = twitch_format_selector(max_height)
+    cache_tag = f'twitch:play:{format_sel}'
+    if not use_cache:
+        invalidate_cached_info(url)
     browser = preferred_twitch_browser()
     attempts = []
     if os.path.exists(twitch_cookies_file_path()):
@@ -719,7 +723,9 @@ def extract_twitch_stream(url, max_height=None):
     for ydl_opts in attempts:
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+                info = extract_info_cached(
+                    ydl, url, download=False, tag=cache_tag, use_cache=use_cache,
+                )
                 stream = pick_twitch_stream(info, max_height=max_height)
                 if stream and stream.get('url'):
                     stream['headers'] = _headers_for_vlc(stream.get('headers'), url)
@@ -1339,7 +1345,7 @@ class TwitchHandler:
             err = None
             stream = None
             try:
-                stream = extract_twitch_stream(url)
+                stream = extract_twitch_stream(url, use_cache=False)
             except Exception as exc:
                 err = exc
 

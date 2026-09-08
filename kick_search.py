@@ -1,32 +1,30 @@
-"""Búsqueda de canales, directos y VODs de Twitch vía GraphQL (sin navegador)."""
+"""Búsqueda de canales Kick (directos y offline) + VODs del coincidente exacto."""
 
-import json
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 from urllib import error as urlerror
+from urllib import parse as urlparse
 from urllib import request as urlrequest
+import json
 
 import app_config
 from display_text import plain_display_text, plain_ui_line
-from twitch_browse import open_twitch_channel_browser
-from twitch_player import (
-    _cookie_header_from_twitch_file,
-    normalize_twitch_channel_input,
-    twitch_auth_blocked,
-    twitch_auth_help,
+from kick_browse import open_kick_channel_browser
+from kick_player import (
+    _kick_api_headers,
+    fetch_kick_channel_vods,
+    normalize_kick_channel_input,
+    probe_kick_channel_live,
 )
-from ui_theme import center_window, get_colors, set_window_icon, style_listbox, style_window
+from ui_theme import set_window_icon, style_listbox, style_window
 from ui_layout import bind_wraplength, setup_resizable_dialog
 
-TWITCH_GQL_URL = 'https://gql.twitch.tv/gql'
-TWITCH_GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
-SEARCH_RESULTS_HASH = 'f6c2575aee4418e8a616e03364d8bcdbf0b10a5c87b59f523569dacc963e8da5'
-SEARCH_OPERATION = 'SearchResultsPage_SearchResults'
+KICK_SEARCH_URL = 'https://kick.com/api/search'
 
 
 def _format_duration(seconds):
-    """Uso interno: format duration."""
+    """Formatea duración."""
     try:
         seconds = int(seconds or 0)
     except (TypeError, ValueError):
@@ -37,7 +35,7 @@ def _format_duration(seconds):
 
 
 def _format_viewers(count):
-    """Uso interno: format viewers."""
+    """Formatea espectadores."""
     try:
         count = int(count or 0)
     except (TypeError, ValueError):
@@ -51,26 +49,11 @@ def _format_viewers(count):
     return f'{count} espectadores'
 
 
-def _gql_headers():
-    """Uso interno: gql headers."""
-    headers = {
-        'Client-ID': TWITCH_GQL_CLIENT_ID,
-        'Content-Type': 'application/json',
-        'User-Agent': (
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) '
-            'Gecko/20100101 Firefox/125.0'
-        ),
-    }
-    cookie = _cookie_header_from_twitch_file()
-    if cookie:
-        headers['Cookie'] = cookie
-    return headers
-
-
-def _gql_post(payload):
-    """Uso interno: gql post."""
-    body = json.dumps(payload).encode('utf-8')
-    req = urlrequest.Request(TWITCH_GQL_URL, data=body, headers=_gql_headers(), method='POST')
+def _search_get(query):
+    """GET api/search de Kick."""
+    params = urlparse.urlencode({'searched_word': plain_display_text(query, '').strip()})
+    url = f'{KICK_SEARCH_URL}?{params}'
+    req = urlrequest.Request(url, headers=_kick_api_headers(), method='GET')
     try:
         with urlrequest.urlopen(req, timeout=20) as resp:
             return json.loads(resp.read().decode('utf-8'))
@@ -78,134 +61,60 @@ def _gql_post(payload):
         detail = exc.read().decode('utf-8', errors='replace')
         raise RuntimeError(f'HTTP {exc.code}: {detail[:240]}') from exc
     except urlerror.URLError as exc:
-        raise RuntimeError(f'No se pudo contactar con Twitch: {exc.reason}') from exc
+        raise RuntimeError(f'No se pudo contactar con Kick: {exc.reason}') from exc
 
 
-def _search_payload(query, target_index, limit):
-    """Uso interno: search payload."""
-    limit = max(5, min(int(limit or 15), 30))
-    return [{
-        'operationName': SEARCH_OPERATION,
-        'variables': {
-            'platform': 'web',
-            'query': plain_display_text(query, '').strip(),
-            'includeIsDJ': True,
-            'options': {
-                'targets': [{'index': target_index, 'limit': limit}],
-                'shouldSkipDiscoveryControl': False,
-            },
-        },
-        'extensions': {
-            'persistedQuery': {
-                'version': 1,
-                'sha256Hash': SEARCH_RESULTS_HASH,
-            },
-        },
-    }]
-
-
-def _search_block(payload):
-    """Uso interno: search block."""
-    raw = _gql_post(payload)
-    if isinstance(raw, list):
-        block = raw[0] if raw else {}
-    else:
-        block = raw or {}
-    data = (block.get('data') or {}).get('searchFor')
-    if not data:
-        errors = block.get('errors') or []
-        if errors:
-            messages = '; '.join(str(item.get('message') or item) for item in errors[:3])
-            raise RuntimeError(messages or 'Búsqueda de Twitch fallida')
-        return {}
-    return data
-
-
-def _channel_stream_title(item):
-    """Uso interno: canal stream title."""
-    stream = item.get('stream') or {}
-    settings = item.get('broadcastSettings') or {}
-    return plain_display_text(
-        settings.get('title') or stream.get('title') or item.get('displayName') or item.get('login') or '',
-        '',
-    )
-
-
-def _parse_live_channel(item):
-    """Uso interno: parse live canal."""
-    login = plain_display_text(item.get('login') or '', '').strip()
-    if not login:
+def _parse_channel_item(item):
+    """Normaliza un canal de la API de búsqueda."""
+    if not item or not isinstance(item, dict):
         return None
-    stream = item.get('stream') or {}
-    if not stream:
+    slug = plain_display_text(item.get('slug') or '', '').strip().lower()
+    if not slug:
         return None
-    title = _channel_stream_title(item)
-    return {
-        'kind': 'live',
-        'login': login,
-        'title': title or login,
-        'url': f'https://www.twitch.tv/{login}',
-        'viewers': int(stream.get('viewersCount') or 0),
-    }
-
-
-def _parse_offline_channel(item):
-    """Uso interno: parse offline canal."""
-    login = plain_display_text(item.get('login') or '', '').strip()
-    if not login:
-        return None
-    if item.get('stream'):
-        return None
-    display = plain_display_text(item.get('displayName') or login, login)
-    followers = ((item.get('followers') or {}).get('totalCount'))
+    user = item.get('user') or {}
+    display = plain_display_text(user.get('username') or slug, slug)
+    followers = item.get('followersCount')
+    if followers is None:
+        followers = item.get('followers_count')
+    try:
+        followers = int(followers or 0)
+    except (TypeError, ValueError):
+        followers = 0
+    if item.get('isLive'):
+        return {
+            'kind': 'live',
+            'login': slug,
+            'title': display,
+            'url': f'https://kick.com/{slug}',
+            'viewers': 0,
+            'followers': followers,
+        }
     return {
         'kind': 'channel',
-        'login': login,
+        'login': slug,
         'title': display,
-        'url': f'https://www.twitch.tv/{login}',
-        'followers': int(followers or 0),
+        'url': f'https://kick.com/{slug}',
+        'followers': followers,
     }
 
 
-def _parse_related_live(item):
-    """Uso interno: parse related live."""
-    stream = item.get('stream') or {}
-    broadcaster = stream.get('broadcaster') or {}
-    login = plain_display_text(broadcaster.get('login') or '', '').strip()
-    if not login:
+def _parse_vod_item(item, channel_slug):
+    """Normaliza un VOD ya parseado por fetch_kick_channel_vods."""
+    if not item:
         return None
-    settings = broadcaster.get('broadcastSettings') or {}
-    title = plain_display_text(settings.get('title') or broadcaster.get('displayName') or login, login)
-    return {
-        'kind': 'live',
-        'login': login,
-        'title': title,
-        'url': f'https://www.twitch.tv/{login}',
-        'viewers': int(stream.get('viewersCount') or 0),
-    }
-
-
-def _parse_vod(item):
-    """Uso interno: parse vod."""
-    vod_id = str(item.get('id') or '').strip()
-    if not vod_id:
-        return None
-    owner = item.get('owner') or {}
-    login = plain_display_text(owner.get('login') or '', '').strip()
-    title = plain_display_text(item.get('title') or '', f'VOD {vod_id}')
+    slug = plain_display_text(channel_slug or '', '').strip().lower()
     return {
         'kind': 'vod',
-        'login': login,
-        'title': title,
-        'url': f'https://www.twitch.tv/videos/{vod_id}',
-        'duration': item.get('lengthSeconds'),
-        'view_count': int(item.get('viewCount') or 0),
+        'login': slug,
+        'title': plain_display_text(item.get('title') or '', 'VOD'),
+        'url': item.get('url') or '',
+        'duration': item.get('duration'),
     }
 
 
 def _merge_result(results, seen, item):
-    """Uso interno: merge result."""
-    if not item:
+    """Añade resultado sin duplicar por (kind, url)."""
+    if not item or not item.get('url'):
         return
     key = (item.get('kind'), item.get('url'))
     if key in seen:
@@ -214,51 +123,69 @@ def _merge_result(results, seen, item):
     results.append(item)
 
 
-def search_twitch(query, limit=15):
-    """Busca canales, directos y VODs. Devuelve lista normalizada."""
+def search_kick(query, limit=20):
+    """Busca canales (live/offline) y VODs del slug exacto. Devuelve lista normalizada."""
     from ttl_cache import get_cached, put_cached
 
     text = plain_display_text(query, '').strip()
     if not text:
         return []
-    limit = max(5, min(int(limit or 15), 30))
-    cache_key = f'twitch:search:{limit}:{text.lower()}'
+    limit = max(5, min(int(limit or 20), 40))
+    cache_key = f'kick:search:{limit}:{text.lower()}'
     cached = get_cached(cache_key)
     if cached is not None:
         return cached
+    data = _search_get(text) or {}
     results = []
     seen = set()
+    for raw in (data.get('channels') or [])[:limit]:
+        _merge_result(results, seen, _parse_channel_item(raw))
 
-    channel_data = _search_block(_search_payload(text, 'CHANNEL', limit))
-    for edge in ((channel_data.get('channels') or {}).get('edges') or []):
-        item = edge.get('item') or {}
-        live = _parse_live_channel(item)
-        if live:
-            _merge_result(results, seen, live)
-        else:
-            _merge_result(results, seen, _parse_offline_channel(item))
-    for edge in ((channel_data.get('relatedLiveChannels') or {}).get('edges') or []):
-        _merge_result(results, seen, _parse_related_live(edge.get('item') or {}))
-
-    video_data = _search_block(_search_payload(text, 'VOD', limit))
-    for edge in ((video_data.get('videos') or {}).get('edges') or []):
-        _merge_result(results, seen, _parse_vod(edge.get('item') or {}))
+    exact = normalize_kick_channel_input(text)
+    if exact:
+        live = None
+        try:
+            live = probe_kick_channel_live(exact)
+        except Exception:
+            live = None
+        if live and live.get('live'):
+            enriched = {
+                'kind': 'live',
+                'login': exact,
+                'title': live.get('title') or exact,
+                'url': live.get('url') or f'https://kick.com/{exact}',
+                'viewers': int(live.get('viewers') or 0),
+            }
+            # Preferir el enriquecido al genérico de búsqueda
+            for index, item in enumerate(results):
+                if item.get('kind') == 'live' and item.get('login') == exact:
+                    results[index] = enriched
+                    break
+            else:
+                _merge_result(results, seen, enriched)
+        try:
+            videos, channel_name = fetch_kick_channel_vods(exact, limit=min(10, limit))
+            slug = plain_display_text(channel_name or exact, exact).lower()
+            for video in videos:
+                _merge_result(results, seen, _parse_vod_item(video, slug))
+        except Exception as exc:
+            print(f'[Kick] Búsqueda: no se listaron VOD de {exact}: {exc}')
 
     live_items = [item for item in results if item.get('kind') == 'live']
     channel_items = [item for item in results if item.get('kind') == 'channel']
     vod_items = [item for item in results if item.get('kind') == 'vod']
     live_items.sort(key=lambda item: int(item.get('viewers') or 0), reverse=True)
-    channel_items.sort(key=lambda item: item.get('title') or item.get('login') or '')
+    channel_items.sort(key=lambda item: int(item.get('followers') or 0), reverse=True)
     merged = live_items + channel_items + vod_items
     put_cached(cache_key, merged, ttl=180)
     return merged
 
 
-def twitch_search_label(item):
-    """Twitch search label."""
+def kick_search_label(item):
+    """Etiqueta legible para un resultado de búsqueda."""
     item = item or {}
     kind = item.get('kind')
-    title = plain_display_text(item.get('title') or '', 'Twitch')
+    title = plain_display_text(item.get('title') or '', 'Kick')
     login = plain_display_text(item.get('login') or '', '')
     if kind == 'live':
         viewers = _format_viewers(item.get('viewers'))
@@ -280,11 +207,11 @@ def twitch_search_label(item):
     return title
 
 
-def open_twitch_search(player):
-    """Abre twitch search."""
+def open_kick_search(player):
+    """Abre el diálogo de búsqueda Kick."""
     if not getattr(player, 'window', None):
         return None
-    existing = getattr(player, '_twitch_search', None)
+    existing = getattr(player, '_kick_search', None)
     if existing is not None:
         try:
             if existing.window.winfo_exists():
@@ -294,21 +221,22 @@ def open_twitch_search(player):
                 return existing
         except tk.TclError:
             pass
-    dialog = TwitchSearchDialog(player)
-    player._twitch_search = dialog
+    dialog = KickSearchDialog(player)
+    player._kick_search = dialog
     return dialog
 
 
-class TwitchSearchDialog:
-    """Clase que representa twitchsearchdialog."""
+class KickSearchDialog:
+    """Diálogo Buscar en Kick."""
+
     def __init__(self, player):
-        """Inicializa TwitchSearchDialog."""
+        """Inicializa KickSearchDialog."""
         self.player = player
         self._results = []
         self._search_gen = 0
 
         window = tk.Toplevel(player.window)
-        window.title('Buscar en Twitch')
+        window.title('Buscar en Kick')
         setup_resizable_dialog(window, 820, 620, 640, 480)
         style_window(window)
         set_window_icon(window)
@@ -318,10 +246,13 @@ class TwitchSearchDialog:
         shell = ttk.Frame(window, padding=(16, 14, 16, 12))
         shell.pack(fill=tk.BOTH, expand=True)
         bind_wraplength(shell, padding=40)
-        ttk.Label(shell, text='Buscar en Twitch', style='PageTitle.TLabel').pack(anchor=tk.W)
+        ttk.Label(shell, text='Buscar en Kick', style='PageTitle.TLabel').pack(anchor=tk.W)
         ttk.Label(
             shell,
-            text='Canales en directo, canales offline y VODs recientes. Doble clic para reproducir en el reproductor.',
+            text=(
+                'Canales en directo, canales offline y, si el término coincide con un slug, '
+                'VOD recientes de ese canal. Doble clic para reproducir.'
+            ),
             style='Muted.TLabel',
             wraplength=760,
         ).pack(anchor=tk.W, pady=(0, 10))
@@ -374,16 +305,16 @@ class TwitchSearchDialog:
         self.search_entry.focus_set()
 
     def close(self):
-        """Close."""
-        if getattr(self.player, '_twitch_search', None) is self:
-            self.player._twitch_search = None
+        """Cierra el diálogo."""
+        if getattr(self.player, '_kick_search', None) is self:
+            self.player._kick_search = None
         try:
             self.window.destroy()
         except tk.TclError:
             pass
 
     def _set_loading(self, active, message=''):
-        """Uso interno: set loading."""
+        """Muestra u oculta la barra de progreso."""
         if message:
             self.status_var.set(plain_ui_line(message))
         if active:
@@ -397,10 +328,10 @@ class TwitchSearchDialog:
                 pass
 
     def search(self):
-        """Search."""
+        """Lanza la búsqueda en segundo plano."""
         query = (self.search_var.get() or '').strip()
         if not query:
-            messagebox.showinfo('Twitch', 'Introduce un término de búsqueda.', parent=self.window)
+            messagebox.showinfo('Kick', 'Introduce un término de búsqueda.', parent=self.window)
             return
         self._search_gen += 1
         gen = self._search_gen
@@ -416,7 +347,7 @@ class TwitchSearchDialog:
             err = None
             items = []
             try:
-                items = search_twitch(query, limit=20)
+                items = search_kick(query, limit=20)
             except Exception as exc:
                 err = exc
 
@@ -426,22 +357,16 @@ class TwitchSearchDialog:
                     return
                 self._set_loading(False)
                 if err:
-                    handler = getattr(self.player, 'twitch_handler', None)
-                    if handler:
-                        handler.mark_session_from_error(err)
-                    if twitch_auth_blocked(err):
-                        messagebox.showerror('Twitch', twitch_auth_help(), parent=self.window)
-                    else:
-                        messagebox.showerror(
-                            'Twitch',
-                            f'No se pudo completar la búsqueda.\n\n{err}',
-                            parent=self.window,
-                        )
+                    messagebox.showerror(
+                        'Kick',
+                        f'No se pudo completar la búsqueda.\n\n{err}',
+                        parent=self.window,
+                    )
                     self.status_var.set('Error en la búsqueda.')
                     return
                 self._results = items
                 for item in items:
-                    self.listbox.insert(tk.END, twitch_search_label(item))
+                    self.listbox.insert(tk.END, kick_search_label(item))
                 if not items:
                     self.status_var.set(f'Sin resultados para «{query}».')
                     return
@@ -468,7 +393,7 @@ class TwitchSearchDialog:
         threading.Thread(target=work, daemon=True).start()
 
     def _selected_item(self):
-        """Uso interno: selected item."""
+        """Resultado seleccionado o None."""
         try:
             index = self.listbox.curselection()[0]
         except IndexError:
@@ -478,24 +403,24 @@ class TwitchSearchDialog:
         return self._results[index]
 
     def _play_selected(self, _event=None):
-        """Uso interno: play selected."""
+        """Reproduce el resultado seleccionado."""
         item = self._selected_item()
         if not item:
-            messagebox.showinfo('Twitch', 'Selecciona un resultado.', parent=self.window)
+            messagebox.showinfo('Kick', 'Selecciona un resultado.', parent=self.window)
             return
-        play = getattr(self.player, 'play_twitch_url', None)
+        play = getattr(self.player, 'play_kick_url', None)
         if not play:
             return
-        play(item['url'], title=item.get('title') or item.get('login') or 'Twitch')
+        play(item['url'], title=item.get('title') or item.get('login') or 'Kick')
 
     def _open_channel_vods(self):
-        """Uso interno: open canal vods."""
+        """Abre VODs del canal del resultado seleccionado."""
         item = self._selected_item()
         if not item:
-            messagebox.showinfo('Twitch', 'Selecciona un canal o directo.', parent=self.window)
+            messagebox.showinfo('Kick', 'Selecciona un canal o directo.', parent=self.window)
             return
-        login = normalize_twitch_channel_input(item.get('login') or item.get('url'))
+        login = normalize_kick_channel_input(item.get('login') or item.get('url'))
         if not login:
-            messagebox.showinfo('Twitch', 'Este resultado no tiene canal asociado.', parent=self.window)
+            messagebox.showinfo('Kick', 'Este resultado no tiene canal asociado.', parent=self.window)
             return
-        open_twitch_channel_browser(self.player, login)
+        open_kick_channel_browser(self.player, login)

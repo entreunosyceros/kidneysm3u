@@ -59,7 +59,6 @@ from channel_sidebar import ChannelSidebar
 import epg
 import logo_cache
 from epg_grid import show_epg_grid
-from iptv_history import show_iptv_history
 from youtube_queue import show_youtube_queue
 from player_controls import PlayerControlsMixin
 from player_iptv import IptvPlaybackMixin
@@ -667,6 +666,14 @@ class VideoPlayer(
         kick_menu = tk.Menu(self.menubar, tearoff=0)
         kick_menu.add_command(label="Cargar URL de Kick", command=self.kick_handler.prompt_kick_url)
         kick_menu.add_command(
+            label=plain_ui_line("VODs del canal…"),
+            command=self.open_kick_channel_browser,
+        )
+        kick_menu.add_command(
+            label=plain_ui_line("Buscar…"),
+            command=self.open_kick_search,
+        )
+        kick_menu.add_command(
             label=plain_ui_line("Añadir a favoritos"),
             command=self.add_kick_to_favorites,
         )
@@ -679,6 +686,8 @@ class VideoPlayer(
         kick_menu.add_command(label="Reexportar cookies", command=self.reexport_kick_cookies)
         self._kick_menu = kick_menu
         favoritos_menu = tk.Menu(self.menubar, tearoff=0)
+        favoritos_menu.add_command(label=plain_ui_line("Biblioteca…"), command=self.open_library)
+        favoritos_menu.add_separator()
         favoritos_menu.add_command(label="Mostrar Favoritos", command=self.show_favorites)
         favoritos_menu.add_command(label="Añadir a Favoritos", command=self.add_to_favorites)
         favoritos_menu.add_command(label="Eliminar de Favoritos", command=self.remove_from_favorites)
@@ -3196,8 +3205,14 @@ class VideoPlayer(
         self._prefetch_visible_logos()
 
     def open_iptv_history(self):
-        """Abre IPTV historial."""
-        show_iptv_history(self)
+        """Abre la biblioteca filtrada al historial (todas las fuentes)."""
+        self.open_library(section='history')
+
+    def open_library(self, section='all', source='all'):
+        """Abre la biblioteca unificada de favoritos e historial."""
+        from library import open_library
+        self.ensure_window()
+        open_library(self, section=section, source=source)
 
     def _refresh_history_ui(self):
         """Uso interno: refresh historial interfaz."""
@@ -3205,6 +3220,12 @@ class VideoPlayer(
         if win is not None:
             try:
                 win.refresh()
+            except tk.TclError:
+                pass
+        library = getattr(self, '_library_window', None)
+        if library is not None:
+            try:
+                library.refresh()
             except tk.TclError:
                 pass
         self._fill_twitch_recent_menu()
@@ -3312,6 +3333,10 @@ class VideoPlayer(
         kick_watching = app_config.kick_continue_watching()
         kick_recent = app_config.kick_history()
         menu.add_command(label=plain_ui_line("Ver historial…"), command=self.open_iptv_history)
+        menu.add_command(
+            label=plain_ui_line("Biblioteca…"),
+            command=self.open_library,
+        )
         if watching:
             menu.add_separator()
             menu.add_command(label="Seguir viendo", state='disabled')
@@ -4086,8 +4111,26 @@ class VideoPlayer(
             return f'{hours}:{minutes:02d}:{seconds:02d}'
         return f'{minutes:02d}:{seconds:02d}'
 
+    def _progress_tick_ms(self, state, active):
+        """Intervalo del bucle de progreso según estado (ahorra CPU en idle/live)."""
+        try:
+            progress_visible = bool(self.progress_frame.winfo_ismapped())
+        except tk.TclError:
+            progress_visible = False
+        if not active:
+            return 1000
+        if state == vlc.State.Paused:
+            return 750
+        if state == vlc.State.Buffering:
+            return 400
+        if not progress_visible:
+            # Directos IPTV/Twitch/Kick sin barra de seek
+            return 900
+        return 250
+
     def update_time(self):
         """Actualiza el tiempo de reproducción y la barra de progreso."""
+        interval = 1000
         try:
             if self.player:
                 state = self.player.get_state()
@@ -4190,9 +4233,10 @@ class VideoPlayer(
                         self.save_twitch_resume()
                     if active and now - getattr(self, '_last_kick_resume_save', 0) >= 20:
                         self.save_kick_resume()
+                interval = self._progress_tick_ms(state, active)
         except Exception as e:
             print(f"Error actualizando tiempo: {e}")
-        self.update_time_job = self.window.after(250, self.update_time)
+        self.update_time_job = self.window.after(interval, self.update_time)
 
     def adjust_video_settings(self):
         """Ajusta la configuración del video para optimizar la reproducción"""
@@ -4201,6 +4245,18 @@ class VideoPlayer(
             self.player.video_set_deinterlace("") 
             self.player.audio_set_volume(self.volume)
             apply_spu_delay(self.player)
+
+    def _sidebar_filter_delay_ms(self):
+        """Debounce del filtro lateral según tamaño de lista."""
+        try:
+            count = len(self.channels or [])
+        except Exception:
+            count = 0
+        if count >= 2500:
+            return 280
+        if count >= 800:
+            return 200
+        return 100
 
     def filter_channels(self, *args):
         """Filtra canales."""
@@ -4212,7 +4268,7 @@ class VideoPlayer(
                 self.window.after_cancel(job)
             except tk.TclError:
                 pass
-        self._filter_job = self.window.after(80, self._apply_channel_filter)
+        self._filter_job = self.window.after(self._sidebar_filter_delay_ms(), self._apply_channel_filter)
 
     def _apply_channel_filter(self):
         """Filtra la vista lateral del grupo activo (sin recortar la lista completa)."""
@@ -4545,6 +4601,18 @@ class VideoPlayer(
         from twitch_search import open_twitch_search
         self.ensure_window()
         open_twitch_search(self)
+
+    def open_kick_channel_browser(self):
+        """Abre el explorador de VODs de Kick."""
+        from kick_browse import open_kick_channel_browser
+        self.ensure_window()
+        open_kick_channel_browser(self)
+
+    def open_kick_search(self):
+        """Abre la búsqueda de Kick."""
+        from kick_search import open_kick_search
+        self.ensure_window()
+        open_kick_search(self)
 
     def cargar_videos_playlist(self, canales):
         """Carga los vídeos de una playlist de YouTube como canales en el listado."""

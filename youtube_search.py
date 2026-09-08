@@ -985,15 +985,30 @@ class YouTubeSearchDialog:
                     max_results = 10
                 max_results = min(max(max_results, 1), 100)
                 if tipo == "Shorts":
-                    channel_url = None
-                    if _UI_SORT.get(sort_label) == 'date':
-                        channel_url = _search_matching_channel(query)
-                    shorts, keep_order = _search_youtube_shorts(
-                        query,
-                        max_results,
-                        search_sp=search_sp,
-                        channel_url=channel_url,
+                    from ttl_cache import get_cached, put_cached
+
+                    shorts_key = (
+                        f'yt:shorts:{max_results}:{sort_label}:'
+                        f'{self.date_var.get()}:{query.strip().lower()}'
                     )
+                    cached_shorts = get_cached(shorts_key)
+                    if cached_shorts is not None:
+                        shorts, keep_order = cached_shorts.get('shorts') or [], cached_shorts.get('keep_order')
+                    else:
+                        channel_url = None
+                        if _UI_SORT.get(sort_label) == 'date':
+                            channel_url = _search_matching_channel(query)
+                        shorts, keep_order = _search_youtube_shorts(
+                            query,
+                            max_results,
+                            search_sp=search_sp,
+                            channel_url=channel_url,
+                        )
+                        put_cached(
+                            shorts_key,
+                            {'shorts': shorts, 'keep_order': keep_order},
+                            ttl=180,
+                        )
                     if not keep_order:
                         shorts = sort_search_entries(shorts, sort_label)
 
@@ -1050,6 +1065,8 @@ class YouTubeSearchDialog:
                             print(f'[YouTube] No se pudo leer el canal ({err})')
 
                 if info is None:
+                    from ttl_cache import get_cached, put_cached
+
                     ydl_opts = _search_ydl_opts(
                         extract_flat=True,
                         skip_download=True,
@@ -1064,39 +1081,49 @@ class YouTubeSearchDialog:
                         f"https://www.youtube.com/results?search_query={query_q}"
                         f"&sp={quote(sp, safe='')}"
                     )
+                    cache_key = (
+                        f'yt:search:{tipo}:{sort_label}:{sp}:{max_results}:'
+                        f'{search_query.strip().lower()}'
+                    )
+                    cached_info = get_cached(cache_key)
+                    if cached_info is not None:
+                        info = cached_info
+                    else:
 
-                    def extract_search(opts):
-                        """Extrae search."""
-                        with yt_dlp.YoutubeDL(opts) as ydl:
-                            return ydl.extract_info(search_url, download=False)
+                        def extract_search(opts):
+                            """Extrae search."""
+                            with yt_dlp.YoutubeDL(opts) as ydl:
+                                return ydl.extract_info(search_url, download=False)
 
-                    try:
-                        info = extract_search(ydl_opts)
-                    except Exception as err:
-                        if '413' not in str(err):
-                            raise
-                        slim_youtube_cookies_file()
-                        retry_opts = _search_ydl_opts(
-                            extract_flat=True,
-                            skip_download=True,
-                            force_generic_extractor=False,
-                            noplaylist=False,
-                            playlistend=fetch_end,
-                        )
                         try:
-                            info = extract_search(retry_opts)
-                        except Exception as err2:
-                            if '413' not in str(err2):
+                            info = extract_search(ydl_opts)
+                        except Exception as err:
+                            if '413' not in str(err):
                                 raise
-                            print('[YouTube] Búsqueda 413: reintentando sin cookies.txt hinchado')
-                            info = extract_search(_search_ydl_opts(
+                            slim_youtube_cookies_file()
+                            retry_opts = _search_ydl_opts(
                                 extract_flat=True,
                                 skip_download=True,
                                 force_generic_extractor=False,
                                 noplaylist=False,
                                 playlistend=fetch_end,
-                                use_cookiefile=False,
-                            ))
+                            )
+                            try:
+                                info = extract_search(retry_opts)
+                            except Exception as err2:
+                                if '413' not in str(err2):
+                                    raise
+                                print('[YouTube] Búsqueda 413: reintentando sin cookies.txt hinchado')
+                                info = extract_search(_search_ydl_opts(
+                                    extract_flat=True,
+                                    skip_download=True,
+                                    force_generic_extractor=False,
+                                    noplaylist=False,
+                                    playlistend=fetch_end,
+                                    use_cookiefile=False,
+                                ))
+                        if info is not None:
+                            put_cached(cache_key, info, ttl=180)
 
                 results_count = 0
                 found_playlist = False

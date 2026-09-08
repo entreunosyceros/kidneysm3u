@@ -42,6 +42,11 @@ hiddenimports = [
     'light_mode_auto',
     'cache_cleanup',
     'kick_player',
+    'kick_browse',
+    'kick_search',
+    'ydl_cache',
+    'ttl_cache',
+    'library',
 ]
 
 for pkg in ('tkinterdnd2', 'pystray', 'curl_cffi'):

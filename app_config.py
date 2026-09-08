@@ -85,7 +85,7 @@ _DEFAULTS = {
     'light_mode': False,
     'light_mode_hw_decode': True,
     'light_mode_auto': True,
-    'light_mode_auto_channels': 1500,
+    'light_mode_auto_channels': 1000,
     'light_mode_auto_cpu': True,
     'light_mode_auto_cpu_percent': 85,
     'show_cpu_monitor': False,
@@ -95,7 +95,7 @@ _DEFAULTS = {
     'usage_profile': 'custom',
 }
 
-LIGHT_MODE_SESSION_MAX = 1500
+LIGHT_MODE_SESSION_MAX = 1000
 LIGHT_MODE_YT_CACHE_BYTES = 150 * 1024 * 1024
 LIGHT_MODE_YT_QUALITY_CAP = 720
 LIGHT_MODE_EPG_TICK_MS = 5 * 60 * 1000
@@ -1375,6 +1375,20 @@ def clear_twitch_history():
     save()
 
 
+def remove_twitch_history(url):
+    """Quita una URL del historial de Twitch."""
+    url = str(url or '').strip()
+    if not url:
+        return
+    data = load()
+    items = [
+        entry for entry in (_clean_twitch_history_entry(raw) for raw in data.get('twitch_history') or [])
+        if entry and entry['url'] != url
+    ]
+    data['twitch_history'] = items
+    save()
+
+
 def _is_kick_url(url):
     """Uso interno: is kick URL."""
     text = (url or '').lower()
@@ -1591,6 +1605,20 @@ def clear_kick_history():
     if not data.get('kick_history'):
         return
     data['kick_history'] = []
+    save()
+
+
+def remove_kick_history(url):
+    """Quita una URL del historial de Kick."""
+    url = str(url or '').strip()
+    if not url:
+        return
+    data = load()
+    items = [
+        entry for entry in (_clean_kick_history_entry(raw) for raw in data.get('kick_history') or [])
+        if entry and entry['url'] != url
+    ]
+    data['kick_history'] = items
     save()
 
 

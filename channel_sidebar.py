@@ -7,7 +7,8 @@ from tkinter import ttk
 from display_text import plain_display_text, truncate_ui_text
 from ui_theme import get_colors, get_font
 
-VIRTUAL_MIN = 2500
+VIRTUAL_MIN = 1200
+VIRTUAL_MIN_WHEN_FILTERED = 600
 CHUNK = 200
 ROW_HEIGHT = 26
 UNGROUPED = 'Sin grupo'
@@ -498,7 +499,8 @@ class ChannelSidebar:
             pass
         self._view_indices = self._resolve_view_indices()
         count = self._view_count()
-        if count >= VIRTUAL_MIN:
+        threshold = VIRTUAL_MIN_WHEN_FILTERED if (self._search_term or '').strip() else VIRTUAL_MIN
+        if count >= threshold:
             self.mode = 'virtual'
             self._refresh_zap_numbers()
             self._use_virtual_scroll()

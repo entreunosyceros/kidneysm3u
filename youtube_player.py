@@ -1998,6 +1998,8 @@ class YouTubeHandler:
 
     def _extract_subtitle_info(self, youtube_url):
         """Segunda extracción si android/ios no devolvió subtítulos."""
+        from ydl_cache import extract_info_cached
+
         client_sets = (
             {'youtube': {'player_client': ['android', 'ios']}},
             {'youtube': {'player_client': ['tv', 'web']}},
@@ -2007,23 +2009,31 @@ class YouTubeHandler:
         browser = preferred_youtube_browser()
         if browser:
             for clients in client_sets[1:]:
-                attempts.append(youtube_ydl_opts(
-                    cookie_browser=browser,
-                    use_cookiefile=False,
+                attempts.append((
+                    f"yt:subs:{clients['youtube']['player_client']}:browser",
+                    youtube_ydl_opts(
+                        cookie_browser=browser,
+                        use_cookiefile=False,
+                        skip_download=True,
+                        extractor_args=clients,
+                        silent=True,
+                    ),
+                ))
+        for clients in client_sets:
+            attempts.append((
+                f"yt:subs:{clients['youtube']['player_client']}",
+                youtube_ydl_opts(
                     skip_download=True,
                     extractor_args=clients,
                     silent=True,
-                ))
-        for clients in client_sets:
-            attempts.append(youtube_ydl_opts(
-                skip_download=True,
-                extractor_args=clients,
-                silent=True,
+                ),
             ))
-        for ydl_opts in attempts:
+        for cache_tag, ydl_opts in attempts:
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(youtube_url, download=False)
+                    info = extract_info_cached(
+                        ydl, youtube_url, download=False, tag=cache_tag, use_cache=True,
+                    )
                     subs = collect_youtube_subs(info)
                     if subs:
                         self._write_subs_from_info(ydl, info, subs)
@@ -2045,41 +2055,54 @@ class YouTubeHandler:
 
     def get_best_vlc_url(self, youtube_url):
         """Obtiene una URL de stream que VLC pueda reproducir dentro de la ventana."""
+        from ydl_cache import extract_info_cached
+
         max_height = app_config.effective_youtube_quality()
         format_sel = youtube_format_selector(max_height)
         attempts = [
             # Sin cookies: android/ios suelen dar URLs que VLC abre sin PO Token
-            youtube_ydl_opts(
-                use_cookiefile=False,
-                skip_download=True,
-                extractor_args={'youtube': {'player_client': ['android', 'ios']}},
-                format=format_sel,
-                silent=True,
+            (
+                f'yt:play:{format_sel}:android,ios',
+                youtube_ydl_opts(
+                    use_cookiefile=False,
+                    skip_download=True,
+                    extractor_args={'youtube': {'player_client': ['android', 'ios']}},
+                    format=format_sel,
+                    silent=True,
+                ),
             ),
         ]
         browser = preferred_youtube_browser()
         cookie_clients = {'youtube': {'player_client': ['tv', 'web']}}
         if browser:
-            attempts.append(youtube_ydl_opts(
-                cookie_browser=browser,
-                use_cookiefile=False,
+            attempts.append((
+                f'yt:play:{format_sel}:tv,web:browser',
+                youtube_ydl_opts(
+                    cookie_browser=browser,
+                    use_cookiefile=False,
+                    skip_download=True,
+                    extractor_args=cookie_clients,
+                    format=format_sel,
+                    silent=True,
+                ),
+            ))
+        attempts.append((
+            f'yt:play:{format_sel}:tv,web',
+            youtube_ydl_opts(
                 skip_download=True,
                 extractor_args=cookie_clients,
                 format=format_sel,
                 silent=True,
-            ))
-        attempts.append(youtube_ydl_opts(
-            skip_download=True,
-            extractor_args=cookie_clients,
-            format=format_sel,
-            silent=True,
+            ),
         ))
 
         last_error = None
-        for ydl_opts in attempts:
+        for cache_tag, ydl_opts in attempts:
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(youtube_url, download=False)
+                    info = extract_info_cached(
+                        ydl, youtube_url, download=False, tag=cache_tag, use_cache=True,
+                    )
                     stream = self._pick_playable_stream(info, max_height=max_height)
                     if stream:
                         stream['headers'] = self._headers_for_vlc(stream.get('headers'))

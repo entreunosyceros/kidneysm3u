@@ -259,6 +259,38 @@ def fetch_kick_latest_vod(channel):
     }
 
 
+def probe_kick_channel_live(channel):
+    """Comprueba si un canal emite en directo vía API v2. Devuelve live/url/title/channel."""
+    import requests
+
+    channel = normalize_kick_channel_input(channel)
+    url = f'https://kick.com/{channel}' if channel else ''
+    if not channel:
+        return {'live': False, 'channel': '', 'url': '', 'title': ''}
+    api_url = f'https://kick.com/api/v2/channels/{channel}'
+    try:
+        response = requests.get(api_url, headers=_kick_api_headers(), timeout=20)
+        response.raise_for_status()
+        data = response.json() or {}
+    except Exception as exc:
+        print(f'[Kick] No se pudo comprobar directo de {channel}: {exc}')
+        return {'live': False, 'channel': channel, 'url': url, 'title': ''}
+    slug = plain_display_text(data.get('slug') or channel, channel).strip().lower() or channel
+    livestream = data.get('livestream')
+    if not isinstance(livestream, dict) or not livestream.get('is_live'):
+        return {'live': False, 'channel': slug, 'url': f'https://kick.com/{slug}', 'title': ''}
+    title = plain_display_text(livestream.get('session_title') or '', '')
+    user = data.get('user') or {}
+    display = plain_display_text(user.get('username') or slug, slug)
+    return {
+        'live': True,
+        'channel': slug,
+        'url': f'https://kick.com/{slug}',
+        'title': title or display,
+        'viewers': int(livestream.get('viewer_count') or livestream.get('viewers') or 0),
+    }
+
+
 def is_kick_offline_error(exc):
     """Indica si el canal no está en directo."""
     text = str(exc or '').lower()
@@ -585,11 +617,15 @@ def _headers_for_vlc(headers, page_url):
     return merged
 
 
-def extract_kick_stream(url, max_height=None):
+def extract_kick_stream(url, max_height=None, use_cache=True):
     """Extrae URL jugable y metadatos con yt-dlp."""
     import yt_dlp
+    from ydl_cache import extract_info_cached, invalidate_cached_info
 
     format_sel = kick_format_selector(max_height)
+    cache_tag = f'kick:play:{format_sel}'
+    if not use_cache:
+        invalidate_cached_info(url)
     browser = preferred_kick_browser()
     attempts = []
     if os.path.exists(kick_cookies_file_path()):
@@ -609,7 +645,9 @@ def extract_kick_stream(url, max_height=None):
     for ydl_opts in attempts:
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+                info = extract_info_cached(
+                    ydl, url, download=False, tag=cache_tag, use_cache=use_cache,
+                )
                 stream = pick_kick_stream(info, max_height=max_height)
                 if stream and stream.get('url'):
                     stream['headers'] = _headers_for_vlc(stream.get('headers'), url)
@@ -1169,7 +1207,7 @@ class KickHandler:
             err = None
             stream = None
             try:
-                stream = extract_kick_stream(url)
+                stream = extract_kick_stream(url, use_cache=False)
             except Exception as exc:
                 err = exc
 

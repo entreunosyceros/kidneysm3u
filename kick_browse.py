@@ -1,0 +1,283 @@
+"""Explorar VODs recientes de un canal de Kick."""
+
+import threading
+import tkinter as tk
+from tkinter import messagebox, ttk
+
+import app_config
+from display_text import plain_display_text, plain_ui_line
+from kick_player import (
+    fetch_kick_channel_vods,
+    normalize_kick_channel_input,
+    probe_kick_channel_live,
+)
+from ui_clipboard import ask_string
+from ui_theme import set_window_icon, style_listbox, style_window
+from ui_layout import bind_wraplength, setup_resizable_dialog
+
+
+def _format_duration(seconds):
+    """Formatea duración de VOD."""
+    try:
+        seconds = int(seconds or 0)
+    except (TypeError, ValueError):
+        return ''
+    if seconds <= 0:
+        return ''
+    return app_config.format_iptv_clock(seconds)
+
+
+def _vod_line(item):
+    """Línea de lista para un VOD."""
+    title = plain_display_text(item.get('title') or 'Kick', 'Kick')
+    duration = _format_duration(item.get('duration'))
+    if duration:
+        return plain_ui_line(f'{title}  ·  {duration}')
+    return title
+
+
+def open_kick_channel_browser(player, channel=None):
+    """Abre el explorador de VODs de un canal Kick."""
+    if not getattr(player, 'window', None):
+        return None
+    if channel is None:
+        channel = ask_string(
+            player.window,
+            'VODs de un canal',
+            'Nombre del canal de Kick (p. ej. xqc) o URL del canal:',
+        )
+    channel = normalize_kick_channel_input(channel)
+    if not channel:
+        return None
+    existing = getattr(player, '_kick_channel_browser', None)
+    if existing is not None:
+        try:
+            if existing.window.winfo_exists():
+                existing.load_channel(channel)
+                existing.window.deiconify()
+                existing.window.lift()
+                return existing
+        except tk.TclError:
+            pass
+    browser = KickChannelBrowser(player, channel)
+    player._kick_channel_browser = browser
+    return browser
+
+
+class KickChannelBrowser:
+    """Diálogo de VODs recientes + aviso de directo para un canal Kick."""
+
+    def __init__(self, player, channel):
+        """Inicializa KickChannelBrowser."""
+        self.player = player
+        self.channel = channel
+        self._videos = []
+        self._live = None
+        self._load_gen = 0
+
+        window = tk.Toplevel(player.window)
+        window.title(f'Kick · {channel}')
+        setup_resizable_dialog(window, 760, 560, 560, 420)
+        style_window(window)
+        set_window_icon(window)
+        window.transient(player.window)
+        self.window = window
+
+        top = ttk.Frame(window, padding=(12, 10, 12, 6))
+        top.pack(fill=tk.X)
+        bind_wraplength(window, padding=40)
+        ttk.Label(top, text='VODs del canal', style='PageTitle.TLabel').pack(side=tk.LEFT)
+        ttk.Button(top, text='Cerrar', command=self.close).pack(side=tk.RIGHT)
+        ttk.Button(top, text='Actualizar', command=self._reload).pack(side=tk.RIGHT, padx=(0, 8))
+
+        self.channel_var = tk.StringVar(value=channel)
+        search_row = ttk.Frame(window, padding=(12, 0, 12, 8))
+        search_row.pack(fill=tk.X)
+        self._search_row = search_row
+        ttk.Label(search_row, text='Canal', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 8))
+        entry = ttk.Entry(search_row, textvariable=self.channel_var)
+        entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        ttk.Button(search_row, text='Buscar', command=self._search).pack(side=tk.LEFT)
+        entry.bind('<Return>', lambda _e: self._search())
+
+        self.live_frame = ttk.Frame(window, padding=(12, 0, 12, 8))
+        self.live_frame.pack(fill=tk.X)
+        self.live_frame.pack_forget()
+        self.live_label = ttk.Label(self.live_frame, style='Card.TLabel', wraplength=700)
+        self.live_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        self.live_button = ttk.Button(
+            self.live_frame,
+            text='Ver directo',
+            style='Accent.TButton',
+            command=self._play_live,
+        )
+        self.live_button.pack(side=tk.RIGHT)
+
+        self.status_var = tk.StringVar(value=plain_ui_line('Cargando…'))
+        ttk.Label(
+            window,
+            textvariable=self.status_var,
+            style='Muted.TLabel',
+            wraplength=700,
+        ).pack(anchor=tk.W, padx=12, pady=(0, 8))
+
+        body = ttk.Frame(window, padding=(12, 0, 12, 12))
+        body.pack(fill=tk.BOTH, expand=True)
+        list_frame = ttk.Frame(body)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL)
+        self.listbox = tk.Listbox(
+            list_frame,
+            activestyle='none',
+            highlightthickness=0,
+            yscrollcommand=scroll.set,
+        )
+        style_listbox(self.listbox)
+        scroll.config(command=self.listbox.yview)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.listbox.bind('<Double-Button-1>', self._play_selected)
+        self.listbox.bind('<Return>', self._play_selected)
+
+        buttons = ttk.Frame(window, padding=(12, 0, 12, 12))
+        buttons.pack(fill=tk.X)
+        ttk.Button(
+            buttons,
+            text='Reproducir VOD',
+            style='Accent.TButton',
+            command=self._play_selected,
+        ).pack(side=tk.LEFT)
+
+        window.protocol('WM_DELETE_WINDOW', self.close)
+        self.load_channel(channel)
+
+    def close(self):
+        """Cierra el diálogo."""
+        if getattr(self.player, '_kick_channel_browser', None) is self:
+            self.player._kick_channel_browser = None
+        try:
+            self.window.destroy()
+        except tk.TclError:
+            pass
+
+    def _set_status(self, text):
+        """Actualiza el texto de estado."""
+        self.status_var.set(plain_ui_line(text))
+
+    def _search(self):
+        """Cambia de canal desde el campo de texto."""
+        channel = normalize_kick_channel_input(self.channel_var.get())
+        if not channel:
+            messagebox.showinfo('Kick', 'Introduce un nombre de canal válido.', parent=self.window)
+            return
+        self.load_channel(channel)
+
+    def _reload(self):
+        """Recarga el canal actual."""
+        self.load_channel(self.channel)
+
+    def load_channel(self, channel):
+        """Carga directo + VODs del canal en segundo plano."""
+        channel = normalize_kick_channel_input(channel)
+        if not channel:
+            return
+        self.channel = channel
+        self.channel_var.set(channel)
+        self._load_gen += 1
+        gen = self._load_gen
+        self._set_status(f'Cargando VODs de {channel}…')
+        self.live_frame.pack_forget()
+        self._live = None
+        try:
+            self.listbox.delete(0, tk.END)
+        except tk.TclError:
+            pass
+        try:
+            self.window.title(f'Kick · {channel}')
+        except tk.TclError:
+            pass
+
+        def work():
+            """Work."""
+            err = None
+            live = None
+            videos = []
+            channel_name = channel
+            try:
+                live = probe_kick_channel_live(channel)
+                videos, channel_name = fetch_kick_channel_vods(channel, limit=30)
+            except Exception as exc:
+                err = exc
+
+            def done():
+                """Done."""
+                if gen != self._load_gen:
+                    return
+                if err:
+                    messagebox.showerror(
+                        'Kick',
+                        f'No se pudieron cargar los VOD del canal.\n\n{err}',
+                        parent=self.window,
+                    )
+                    self._set_status('Error al cargar el canal.')
+                    return
+                self._live = live
+                self._videos = videos
+                display_name = plain_display_text(channel_name or channel, channel)
+                if live and live.get('live'):
+                    title = plain_display_text(live.get('title') or display_name, display_name)
+                    self.live_label.configure(
+                        text=plain_ui_line(
+                            f'En directo ahora: {title} ({display_name})'
+                        ),
+                    )
+                    self.live_frame.pack(fill=tk.X, padx=12, pady=(0, 8), after=self._search_row)
+                else:
+                    self.live_frame.pack_forget()
+                try:
+                    self.listbox.delete(0, tk.END)
+                except tk.TclError:
+                    return
+                for item in videos:
+                    self.listbox.insert(tk.END, _vod_line(item))
+                if videos:
+                    self._set_status(
+                        f'{len(videos)} VOD recientes de {display_name}. '
+                        'Doble clic para reproducir.'
+                    )
+                elif live and live.get('live'):
+                    self._set_status(
+                        f'{display_name} está en directo; no hay VOD recientes listados.'
+                    )
+                else:
+                    self._set_status(f'No hay VOD recientes visibles para {display_name}.')
+
+            try:
+                self.window.after(0, done)
+            except tk.TclError:
+                pass
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _play_live(self):
+        """Reproduce el directo del canal."""
+        live = self._live or {}
+        url = live.get('url') or f'https://kick.com/{self.channel}'
+        title = plain_display_text(live.get('title') or self.channel, self.channel)
+        play = getattr(self.player, 'play_kick_url', None)
+        if play:
+            play(url, title=title)
+
+    def _play_selected(self, _event=None):
+        """Reproduce el VOD seleccionado."""
+        try:
+            index = self.listbox.curselection()[0]
+        except IndexError:
+            messagebox.showinfo('Kick', 'Selecciona un VOD de la lista.', parent=self.window)
+            return
+        if index < 0 or index >= len(self._videos):
+            return
+        item = self._videos[index]
+        play = getattr(self.player, 'play_kick_url', None)
+        if play:
+            play(item['url'], title=item.get('title') or 'Kick')
