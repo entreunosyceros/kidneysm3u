@@ -17,12 +17,14 @@ body:
       options:
         - Reproductor IPTV (VLC, buffer, reconexión)
         - YouTube (búsqueda, reproducción, cookies, cola)
+        - Twitch (directos, VOD, chat, búsqueda)
+        - Kick (directos, VOD, búsqueda, cookies)
         - Listas M3U (carga, filtro, grupos)
         - Guía EPG / logos
         - Descargas (Archivo → Descargar)
-        - Favoritos / historial / sesión
+        - Favoritos / historial / biblioteca / sesión
         - Interfaz, tema o bandeja del sistema
-        - Instalación o arranque (`run_app.py`, `.deb`)
+        - Instalación o arranque (`run_app.py`, `.deb`, Windows)
         - Otro
     validations:
       required: true

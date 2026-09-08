@@ -6,7 +6,7 @@
 ![VLC](https://img.shields.io/badge/VLC-Embedded-orange?logo=vlc)
 
 
-Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar listas M3U/M3U8, IPTV y YouTube (vídeos, Shorts, listas y canales).
+Aplicación de escritorio en Python/Tkinter para filtrar, reproducir y gestionar listas M3U/M3U8 e IPTV, además de **YouTube**, **Twitch** y **Kick** (directos, VOD y búsqueda), con VLC embebido y yt-dlp.
 
 > [!WARNING]
 > Este programa no incluye enlaces a ningún canal. Sí puede apuntar a listas públicas y legales que se encuentren en internet.
@@ -25,31 +25,40 @@ Si no existe `.venv`, se crea solo e instala lo de `requirements.txt`. La primer
 | --- | --- |
 | [Índice](docs/README.md) | Mapa de toda la documentación |
 | [Instalación](docs/instalacion.md) | Requisitos, Ubuntu, Windows, entorno virtual y actualizar el programa |
-| [Uso](docs/uso.md) | Cómo empezar: cargar una lista, reproducir y preferencias |
+| [Uso](docs/uso.md) | Empezar: M3U, preferencias, YouTube, **Twitch**, **Kick** y biblioteca |
 | [Listas M3U](docs/listas-m3u.md) | Carga, filtro y ordenación de listas |
 | [YouTube](docs/youtube.md) | Búsqueda, Shorts, playlists, cookies, yt-dlp y descargas |
-| [Reproductor](docs/reproductor.md) | Controles, atajos, PiP, grabación, lista lateral y bandeja |
+| [Reproductor](docs/reproductor.md) | Controles, atajos, PiP, grabación, lista lateral, favoritos y bandeja |
 | [Notas](docs/notas.md) | Detalles técnicos, tests, monitor de CPU y problemas conocidos |
 
 Cada página enlaza al resto y vuelve a este inicio. En el programa: **Ayuda → Documentación** (se lee en la propia ventana).
 
 ## Qué puedes hacer
 
+### IPTV y listas
 - Cargar y filtrar listas M3U/M3U8 locales o por URL (archivos grandes incluidos).
 - Reproducir IPTV y ficheros directos con VLC embebido (zap por número de la lista).
-- Buscar y reproducir YouTube: vídeos, **Shorts**, listas y canales.
 - Ver la guía EPG en parrilla (ahora + unas horas), con logos de canal y recarga automática.
-- Historial de canales IPTV y seguir viendo películas/VOD desde el segundo guardado.
-- Ventana PiP y reproductor siempre encima.
-- Ajustar el buffer de los canales IPTV (rápido, equilibrado o estable).
-- Gestionar la lista lateral (favoritos, exportar/importar, limpiar, reproducir desde aquí).
-- Grabar el canal o vídeo en reproducción a un fichero local (hace falta [ffmpeg](https://ffmpeg.org/download.html)).
-- Descargar vídeos o solo audio (también hace falta ffmpeg).
-- Ordenar listas M3U desde la interfaz.
-- Ajustar tema, volumen, descargas, cookies, calidad de YouTube, buffer IPTV, estilo de subtítulos y avisos de versión nueva en **Preferencias**.
-- Comprobar si hay una versión nueva (**Ayuda → Buscar actualizaciones**) e instalar el `.exe` o el `.deb` desde GitHub Releases.
+- Ajustar el buffer IPTV (rápido, equilibrado o estable) y grabar el stream en curso (`ffmpeg`).
 
-Más detalle en las páginas de [uso](docs/uso.md), [listas M3U](docs/listas-m3u.md) y [YouTube](docs/youtube.md).
+### YouTube, Twitch y Kick
+- **YouTube** — buscar y reproducir vídeos, Shorts, listas y canales; cola; subtítulos; cookies y actualización de yt-dlp.
+- **Twitch** — URL de directo/VOD/clip, búsqueda, VODs del canal, chat en vivo, favoritos, recientes y reanudación de VOD.
+- **Kick** — URL de directo/VOD/clip, búsqueda, VODs del canal, favoritos, recientes, cookies y ayuda con Cloudflare (`curl-cffi`).
+
+### Biblioteca y sesión
+- **Favoritos → Biblioteca…** — favoritos e historial de IPTV, YouTube, Twitch y Kick en un solo sitio, con filtros por sección y fuente.
+- Historial y «seguir viendo» (VOD) desde el menú **Reproducir → Historial**.
+- Exportar e importar favoritos; recordar la última lista lateral (sin autoplay).
+
+### Más
+- Ventana PiP y reproductor siempre encima.
+- Descargar vídeos o solo audio (`ffmpeg`).
+- Ordenar listas M3U desde la interfaz.
+- Preferencias: tema, volumen, descargas, cookies (YouTube/Twitch/Kick), calidad por plataforma, buffer IPTV, subtítulos, modo ligero y avisos de versión.
+- Comprobar actualizaciones (**Ayuda → Buscar actualizaciones**) e instalar el `.exe` o el `.deb` desde GitHub Releases.
+
+Guía rápida: [uso](docs/uso.md). Detalle de listas: [listas M3U](docs/listas-m3u.md). YouTube a fondo: [YouTube](docs/youtube.md).
 
 ## Contribuir
 

@@ -15,13 +15,15 @@ body:
       options:
         - Reproductor IPTV (buffer, PiP, grabación)
         - YouTube (búsqueda, cola, calidad, subtítulos)
+        - Twitch (directos, VOD, chat, búsqueda)
+        - Kick (directos, VOD, búsqueda)
         - Listas M3U (filtro, grupos, listas grandes)
         - Guía EPG / logos
         - Descargas
-        - Favoritos / historial / sesión
+        - Favoritos / historial / biblioteca / sesión
         - Interfaz, tema y accesibilidad
         - Documentación
-        - Instalación / empaquetado `.deb`
+        - Instalación / empaquetado `.deb` / Windows
         - Otro
     validations:
       required: true

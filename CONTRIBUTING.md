@@ -1,6 +1,6 @@
 # Guía de contribución
 
-¡Gracias por interesarte en **[Kidneysm3u](https://github.com/sapoclay/kidneysm3u)**! Este proyecto es una aplicación de escritorio en **Python** y **Tkinter** para listas M3U/IPTV y YouTube, publicada bajo [MIT](LICENSE). Cualquier mejora bien planteada es bienvenida.
+¡Gracias por interesarte en **[Kidneysm3u](https://github.com/sapoclay/kidneysm3u)**! Este proyecto es una aplicación de escritorio en **Python** y **Tkinter** para listas M3U/IPTV, YouTube, Twitch y Kick, publicada bajo [MIT](LICENSE). Cualquier mejora bien planteada es bienvenida.
 
 ## Antes de empezar
 
@@ -73,11 +73,15 @@ El tag puede ser `Versión1.2.3` (o `v1.2.3` / `1.2.3`); el programa extrae el n
 | Ruta | Contenido |
 |------|-----------|
 | `main.py` | Ventana principal: filtro M3U, menús, lanzamiento del reproductor |
-| `video_player.py` | Reproductor (lista lateral, menús, carga M3U/YouTube) |
+| `video_player.py` | Reproductor (lista lateral, menús, carga M3U/YouTube/Twitch/Kick) |
 | `player_iptv.py`, `iptv_buffer.py` | Apertura VLC, caché y reconexión IPTV |
 | `subtitle_style.py` | Estilo de subtítulos de texto (VLC freetype) |
 | `player_controls.py`, `player_pip.py`, `player_overlay.py` | Barra, PiP, avisos en pantalla |
 | `youtube_player.py`, `youtube_search.py` | Reproducción y búsqueda de YouTube (yt-dlp) |
+| `twitch_player.py`, `twitch_search.py`, `twitch_browse.py`, `twitch_chat.py` | Twitch: stream, búsqueda, VODs del canal y chat |
+| `kick_player.py`, `kick_search.py`, `kick_browse.py` | Kick: stream, búsqueda y VODs del canal |
+| `library.py` | Biblioteca unificada (favoritos + historial con filtros) |
+| `ydl_cache.py`, `ttl_cache.py` | Cachés cortas de metadatos yt-dlp y de búsquedas |
 | `m3u_parse.py`, `epg.py` | Parseo M3U y guía XMLTV |
 | `descargas.py` | Ventana **Archivo → Descargar** |
 | `app_config.py` | Preferencias y sesión (`config.json`) |
@@ -95,18 +99,18 @@ Más detalle en [docs/notas.md](docs/notas.md).
 - Sigue el estilo del código existente (nombres, imports, nivel de comentarios).
 - Cambios **mínimos y enfocados**: no mezcles varias funcionalidades en un mismo PR.
 - Los textos visibles para el usuario van en **español**.
-- No incluyas secretos, `cookies.txt`, `twitch_cookies.txt`, `config.json`, listas M3U con usuario/contraseña ni capturas con tokens.
-- No registres URLs completas de IPTV, EPG o YouTube (pueden llevar credenciales).
+- No incluyas secretos, `cookies.txt`, `twitch_cookies.txt`, `kick_cookies.txt`, `config.json`, listas M3U con usuario/contraseña ni capturas con tokens.
+- No registres URLs completas de IPTV, EPG, YouTube, Twitch o Kick (pueden llevar credenciales).
 - No inventes rutas Xtream: una URL de guía o de lista se usa tal cual.
 - No uses `--no-hw-dec` en VLC: en 3.0.20 puede hacer que `vlc.Instance()` falle.
-- Los datos de usuario (`config.json`, `cookies.txt`, `twitch_cookies.txt`, `favoritos.json`, `enlaces.json`, `epg_cache/`) no van al git.
+- Los datos de usuario (`config.json`, `cookies.txt`, `twitch_cookies.txt`, `kick_cookies.txt`, `favoritos.json`, `enlaces.json`, `epg_cache/`) no van al git.
 
 ## Pull requests
 
 1. Crea una rama descriptiva desde `main` (por ejemplo `fix/iptv-buffer` o `feat/download-history`).
 2. Describe **qué** cambias y **por qué**.
 3. Indica cómo lo has probado (pasos manuales, `pytest`, capturas si aplica).
-4. Si tocas IPTV, YouTube o EPG, no pegues URLs reales con credenciales en el PR.
+4. Si tocas IPTV, YouTube, Twitch, Kick o EPG, no pegues URLs reales con credenciales en el PR.
 5. Actualiza `docs/` o el README solo si el cambio lo requiere.
 
 Usa la [plantilla de pull request](.github/pull_request_template.md) al abrir el PR.
