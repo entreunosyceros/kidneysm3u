@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import tkinter as tk
 from tkinter import messagebox
+from session_prompt import offer_reexport_cookies
 
 import app_config
 from app_paths import data_dir
@@ -760,6 +761,13 @@ def _headers_for_vlc(headers, page_url):
 
 class TwitchHandler:
     """Clase que representa twitchhandler."""
+
+    @property
+    def mb(self):
+        """Diálogos ligados a la ventana del reproductor."""
+        from ui_dialogs import dialogs_for
+        return dialogs_for(self.video_player)
+
     def __init__(self, video_player):
         """Inicializa TwitchHandler."""
         self.video_player = video_player
@@ -833,6 +841,19 @@ class TwitchHandler:
         if chat:
             chat.close(notify_ui=notify_ui)
 
+    def offer_reexport_from_auth_error(self, parent=None):
+        """Diálogo de sesión caducada con opción de reexportar."""
+        root = parent
+        if root is None:
+            vp = getattr(self, 'video_player', None)
+            root = getattr(vp, 'window', None) if vp else None
+        return offer_reexport_cookies(
+            root,
+            'Sesión Twitch',
+            twitch_auth_help(),
+            self.reexport_twitch_cookies,
+        )
+
     def mark_session_from_error(self, exc):
         """Mark session from error."""
         if not twitch_auth_blocked(exc):
@@ -852,12 +873,12 @@ class TwitchHandler:
         self.notify_session()
         info = self.session_view()
         if path and info.get('ok'):
-            messagebox.showinfo(
+            self.mb.showinfo(
                 'Cookies de Twitch',
                 'Cookies reexportadas. Sesión Twitch: OK.',
             )
         elif path:
-            messagebox.showwarning(
+            self.mb.showwarning(
                 'Cookies de Twitch',
                 'Se escribieron cookies, pero no hay login vigente.\n'
                 'Abre twitch.tv en Firefox, inicia sesión y vuelve a reexportar.',
@@ -871,14 +892,14 @@ class TwitchHandler:
             if silent:
                 print(f"[Twitch] {message}")
             else:
-                messagebox.showerror('Error', message)
+                self.mb.showerror('Error', message)
 
         def _warn(message):
             """Uso interno: warn."""
             if silent:
                 print(f"[Twitch] {message}")
             else:
-                messagebox.showwarning('Cookies de Twitch', message)
+                self.mb.showwarning('Cookies de Twitch', message)
 
         try:
             from http.cookiejar import MozillaCookieJar
@@ -958,7 +979,7 @@ class TwitchHandler:
         """Reproduce twitch URL."""
         url = normalize_twitch_url(url)
         if not is_twitch_url(url):
-            messagebox.showerror('Twitch', 'La URL no parece ser de Twitch.')
+            self.mb.showerror('Twitch', 'La URL no parece ser de Twitch.')
             return
 
         player = self.video_player
@@ -1033,13 +1054,13 @@ class TwitchHandler:
                     if err:
                         self.mark_session_from_error(err)
                     detail = str(err or 'No se pudo obtener el stream.')
-                    extra = ''
                     if err and twitch_auth_blocked(err):
-                        extra = f'\n\n{twitch_auth_help()}'
-                    messagebox.showerror(
-                        'Twitch',
-                        f'No se pudo reproducir la emisión.\n\n{detail}{extra}',
-                    )
+                        self.offer_reexport_from_auth_error()
+                    else:
+                        self.mb.showerror(
+                            'Twitch',
+                            f'No se pudo reproducir la emisión.\n\n{detail}',
+                        )
                     webbrowser.open(url)
                     return
                 if is_channel and stream.get('is_live'):
@@ -1062,7 +1083,7 @@ class TwitchHandler:
         message = '\n'.join(lines)
         vod_url = latest.get('url') if latest else None
         if vod_url:
-            choice = messagebox.askyesnocancel(
+            choice = self.mb.askyesnocancel(
                 'Twitch — canal offline',
                 message + '\n\n'
                 'Sí = reproducir el último VOD\n'
@@ -1074,7 +1095,7 @@ class TwitchHandler:
             elif choice is False:
                 webbrowser.open(url)
             return
-        if messagebox.askyesno(
+        if self.mb.askyesno(
             'Twitch — canal offline',
             message + '\n\n¿Abrir el canal en el navegador?',
         ):
@@ -1139,7 +1160,7 @@ class TwitchHandler:
                 self._schedule_live_check(getattr(self, '_live_watch_gen', 0))
             else:
                 self.hide_loading()
-                messagebox.showerror(
+                self.mb.showerror(
                     'Twitch',
                     'VLC no pudo abrir el stream de Twitch.\n'
                     'Prueba otra calidad en Preferencias o abre el enlace en el navegador.',
@@ -1172,7 +1193,7 @@ class TwitchHandler:
         """Añade current to favoritos."""
         url = self._current_url
         if not url or not is_twitch_url(url):
-            messagebox.showinfo('Twitch', 'Reproduce un canal o VOD de Twitch primero.')
+            self.mb.showinfo('Twitch', 'Reproduce un canal o VOD de Twitch primero.')
             return False
         fav_url = twitch_favorite_url(url)
         stream = self._current_stream or {}

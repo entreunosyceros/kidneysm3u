@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import tkinter as tk
 from tkinter import messagebox
+from session_prompt import offer_reexport_cookies
 
 import app_config
 from app_paths import data_dir
@@ -671,6 +672,12 @@ def extract_kick_stream(url, max_height=None, use_cache=True):
 class KickHandler:
     """Reproduce Kick en el reproductor integrado."""
 
+    @property
+    def mb(self):
+        """Diálogos ligados a la ventana del reproductor."""
+        from ui_dialogs import dialogs_for
+        return dialogs_for(self.video_player)
+
     def __init__(self, video_player):
         """Inicializa KickHandler."""
         self.video_player = video_player
@@ -712,6 +719,19 @@ class KickHandler:
 
         self._ui_after(apply)
 
+    def offer_reexport_from_auth_error(self, parent=None):
+        """Diálogo de sesión caducada con opción de reexportar."""
+        root = parent
+        if root is None:
+            vp = getattr(self, 'video_player', None)
+            root = getattr(vp, 'window', None) if vp else None
+        return offer_reexport_cookies(
+            root,
+            'Sesión Kick',
+            kick_auth_help(),
+            self.reexport_kick_cookies,
+        )
+
     def mark_session_from_error(self, exc):
         """Marca sesión caducada si el error lo indica."""
         if not kick_auth_blocked(exc):
@@ -731,9 +751,9 @@ class KickHandler:
         self.notify_session()
         info = self.session_view()
         if path and info.get('ok'):
-            messagebox.showinfo('Cookies de Kick', 'Cookies reexportadas. Sesión Kick: OK.')
+            self.mb.showinfo('Cookies de Kick', 'Cookies reexportadas. Sesión Kick: OK.')
         elif path:
-            messagebox.showwarning(
+            self.mb.showwarning(
                 'Cookies de Kick',
                 'Se escribieron cookies, pero puede que no haya sesión vigente.\n'
                 'Abre kick.com en Firefox, inicia sesión y vuelve a reexportar.',
@@ -747,13 +767,13 @@ class KickHandler:
             if silent:
                 print(f'[Kick] {message}')
             else:
-                messagebox.showerror('Error', message)
+                self.mb.showerror('Error', message)
 
         def _warn(message):
             if silent:
                 print(f'[Kick] {message}')
             else:
-                messagebox.showwarning('Cookies de Kick', message)
+                self.mb.showwarning('Cookies de Kick', message)
 
         try:
             from http.cookiejar import MozillaCookieJar
@@ -832,7 +852,7 @@ class KickHandler:
         """Reproduce URL Kick."""
         url = normalize_kick_url(url)
         if not is_kick_url(url):
-            messagebox.showerror('Kick', 'La URL no parece ser de Kick.')
+            self.mb.showerror('Kick', 'La URL no parece ser de Kick.')
             return
 
         player = self.video_player
@@ -912,13 +932,13 @@ class KickHandler:
                     if err:
                         self.mark_session_from_error(err)
                     detail = str(err or 'No se pudo obtener el stream.')
-                    extra = ''
                     if err and kick_auth_blocked(err):
-                        extra = f'\n\n{kick_auth_help()}'
-                    messagebox.showerror(
-                        'Kick',
-                        f'No se pudo reproducir.\n\n{detail}{extra}',
-                    )
+                        self.offer_reexport_from_auth_error()
+                    else:
+                        self.mb.showerror(
+                            'Kick',
+                            f'No se pudo reproducir.\n\n{detail}',
+                        )
                     return
                 if is_channel and stream.get('is_live'):
                     self._set_loading_status('Canal en directo — abriendo…')
@@ -940,7 +960,7 @@ class KickHandler:
         message = '\n'.join(lines)
         vod_url = latest.get('url') if latest else None
         if vod_url:
-            choice = messagebox.askyesnocancel(
+            choice = self.mb.askyesnocancel(
                 'Kick — canal offline',
                 message + '\n\n'
                 'Sí = reproducir el último VOD\n'
@@ -952,7 +972,7 @@ class KickHandler:
             elif choice is False:
                 webbrowser.open(url)
             return
-        if messagebox.askyesno(
+        if self.mb.askyesno(
             'Kick — canal offline',
             message + '\n\n¿Abrir el canal en el navegador?',
         ):
@@ -998,7 +1018,7 @@ class KickHandler:
                 self._schedule_live_check(getattr(self, '_live_watch_gen', 0))
             else:
                 self.hide_loading()
-                messagebox.showerror(
+                self.mb.showerror(
                     'Kick',
                     'VLC no pudo abrir el stream.\n'
                     'Prueba otra calidad en Preferencias o abre el enlace en el navegador.',
@@ -1025,7 +1045,7 @@ class KickHandler:
         """Añade la reproducción actual a favoritos."""
         url = self._current_url
         if not url or not is_kick_url(url):
-            messagebox.showinfo('Kick', 'Reproduce un canal o VOD de Kick primero.')
+            self.mb.showinfo('Kick', 'Reproduce un canal o VOD de Kick primero.')
             return False
         fav_url = kick_favorite_url(url)
         stream = self._current_stream or {}

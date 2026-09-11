@@ -79,6 +79,38 @@ def test_memory_cache_stats_and_clear(monkeypatch):
     assert ydl_cache.cache_stats()['entries'] == 0
 
 
+def test_clear_all_caches_and_format_lines(tmp_path, monkeypatch):
+    epg = tmp_path / 'epg_cache'
+    yt = tmp_path / 'yt'
+    epg.mkdir()
+    yt.mkdir()
+    (epg / 'a.png').write_bytes(b'x' * 40)
+    (yt / 'v.mp4').write_bytes(b'y' * 60)
+    monkeypatch.setattr(cache_cleanup, 'epg_cache_dirs', lambda: [str(epg)])
+    monkeypatch.setattr(cache_cleanup, 'epg_cache_dir', lambda: str(epg))
+    monkeypatch.setattr(cache_cleanup, 'youtube_cache_dir', lambda: str(yt))
+
+    import ttl_cache
+    import ydl_cache
+
+    ttl_cache.invalidate()
+    ydl_cache.invalidate_cached_info()
+    ttl_cache.put_cached('k', 1)
+    ydl_cache.put_cached_info('https://e/x', {'id': 'x'}, tag='t')
+
+    lines = cache_cleanup.format_stats_lines()
+    assert any('logos' in line.lower() or 'Logos' in line for line in lines)
+    assert any('YouTube' in line for line in lines)
+
+    removed, freed = cache_cleanup.clear_all_caches(include_old_recordings=False)
+    assert removed >= 2
+    assert freed >= 100
+    assert list(epg.iterdir()) == []
+    assert list(yt.iterdir()) == []
+    assert ttl_cache.cache_stats()['entries'] == 0
+    assert ydl_cache.cache_stats()['entries'] == 0
+
+
 def test_old_recordings_stats_and_clear(tmp_path, monkeypatch):
     rec = tmp_path / 'downloads'
     rec.mkdir()

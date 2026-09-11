@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 import tkinter as tk
 from tkinter import messagebox, filedialog, ttk
+from session_prompt import offer_reexport_cookies
 import app_config
 from app_paths import data_dir
 from display_text import plain_display_text, plain_ui_line
@@ -673,9 +674,10 @@ def _jar_has_live_youtube_login(cookies):
 class _GrowingTSHandler(BaseHTTPRequestHandler):
     """Sirve un MPEG-TS que ffmpeg sigue escribiendo."""
 
-    # Sin datos nuevos: si el productor sigue vivo no cortar (antes 45s → EOF falso a mitad).
-    IDLE_WHILE_PRODUCER_S = 600.0
+    # Sin datos nuevos: con productor vivo no cortar (vídeos largos pueden pausar CDN minutos).
+    IDLE_WHILE_PRODUCER_S = 7200.0
     IDLE_AFTER_DONE_S = 3.0
+    IDLE_WAITING_PRODUCER_S = 120.0
 
     def log_message(self, format, *args):
         """Log message."""
@@ -727,11 +729,14 @@ class _GrowingTSHandler(BaseHTTPRequestHandler):
                         continue
                 procs = getattr(self.server, 'yt_procs', []) or []
                 finished = bool(procs) and all(p.poll() is not None for p in procs)
-                # Productor vivo (o aún no registrado): no cortar por un stall corto.
+                producer_alive = bool(procs) and any(p.poll() is None for p in procs)
                 if finished and size <= pos:
                     if idle >= self.IDLE_AFTER_DONE_S:
                         break
-                elif idle >= self.IDLE_WHILE_PRODUCER_S:
+                elif producer_alive:
+                    if idle >= self.IDLE_WHILE_PRODUCER_S:
+                        break
+                elif idle >= self.IDLE_WAITING_PRODUCER_S:
                     break
                 time.sleep(0.05)
                 idle += 0.05
@@ -741,6 +746,13 @@ class _GrowingTSHandler(BaseHTTPRequestHandler):
 
 class YouTubeHandler:
     """Clase que representa youtubehandler."""
+
+    @property
+    def mb(self):
+        """Diálogos ligados a la ventana del reproductor."""
+        from ui_dialogs import dialogs_for
+        return dialogs_for(self.video_player)
+
     def __init__(self, video_player):
         """Inicializa YouTubeHandler."""
         self.video_player = video_player
@@ -842,7 +854,7 @@ class YouTubeHandler:
                     if load:
                         load(url, notify=False, on_done=lambda: player.play_channel(0))
                         return
-            messagebox.showerror("Error", "No se pudo extraer el ID del vídeo de YouTube")
+            self.mb.showerror("Error", "No se pudo extraer el ID del vídeo de YouTube")
             return
         self.video_player._playing_youtube = True
         self.video_player._playing_twitch = False
@@ -908,7 +920,7 @@ class YouTubeHandler:
                     return
                 if err:
                     self.mark_session_from_error(err)
-                    messagebox.showerror("Error", f"Error al procesar el vídeo: {err}")
+                    self.mb.showerror("Error", f"Error al procesar el vídeo: {err}")
                     self.open_in_browser(url)
                     return
                 if not stream:
@@ -1789,7 +1801,7 @@ class YouTubeHandler:
                 info = ydl.extract_info(playlist_url, download=False)
                 videos = info.get('entries', [])
                 if not videos:
-                    messagebox.showinfo("Info", "No se encontraron vídeos en la playlist.")
+                    self.mb.showinfo("Info", "No se encontraron vídeos en la playlist.")
                     return None
                 channels = []
                 for video in videos:
@@ -1800,9 +1812,9 @@ class YouTubeHandler:
         except Exception as e:
             self.mark_session_from_error(e)
             if youtube_auth_blocked(e):
-                messagebox.showerror("Sesión YouTube", youtube_auth_help())
+                self.offer_reexport_from_auth_error()
             else:
-                messagebox.showerror("Error", f"No se pudo obtener la playlist: {e}")
+                self.mb.showerror("Error", f"No se pudo obtener la playlist: {e}")
             return None
            
     def download_youtube_video(self, url=None):
@@ -1852,15 +1864,15 @@ class YouTubeHandler:
             download_thread.daemon = True  # El hilo terminará cuando el programa principal termine
             download_thread.start()
             
-            messagebox.showinfo("Descarga iniciada", 
+            self.mb.showinfo("Descarga iniciada", 
                                f"Iniciando descarga de '{video_title}'.\nSe te notificará cuando termine.")
                 
         except Exception as e:
             self.mark_session_from_error(e)
             if youtube_auth_blocked(e):
-                messagebox.showerror("Sesión YouTube", youtube_auth_help())
+                self.offer_reexport_from_auth_error()
             else:
-                messagebox.showerror("Error", f"No se pudo iniciar la descarga: {str(e)}")
+                self.mb.showerror("Error", f"No se pudo iniciar la descarga: {str(e)}")
             
     def _execute_download(self, url, filepath, title):
         """Ejecuta la descarga del vídeo de YouTube."""
@@ -1876,7 +1888,7 @@ class YouTubeHandler:
                 ydl.download([url])
                 
             # Notificar al usuario en el hilo principal
-            self.video_player.window.after(0, lambda: messagebox.showinfo(
+            self.video_player.window.after(0, lambda: self.mb.showinfo(
                 "Descarga completada", 
                 f"'{title}' descargado en:\n{filepath}"
             ))
@@ -1884,13 +1896,10 @@ class YouTubeHandler:
         except Exception as e:
             self.mark_session_from_error(e)
             if youtube_auth_blocked(e):
-                self.video_player.window.after(0, lambda: messagebox.showerror(
-                    "Sesión YouTube",
-                    youtube_auth_help(),
-                ))
+                self.video_player.window.after(0, self.offer_reexport_from_auth_error)
             else:
                 error_message = str(e)
-                self.video_player.window.after(0, lambda msg=error_message: messagebox.showerror(
+                self.video_player.window.after(0, lambda msg=error_message: self.mb.showerror(
                     "Error de descarga",
                     f"No se pudo descargar '{title}':\n{msg}\n\nPosibles soluciones:\n"
                     f"1. Verifica que el enlace sea accesible\n"
@@ -2291,7 +2300,7 @@ class YouTubeHandler:
         try:
             webbrowser.open_new(url)
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo abrir el navegador: {e}")
+            self.mb.showerror("Error", f"No se pudo abrir el navegador: {e}")
 
     def session_view(self):
         """Session view."""
@@ -2332,6 +2341,19 @@ class YouTubeHandler:
                     pass
         self._ui_after(apply)
 
+    def offer_reexport_from_auth_error(self, parent=None):
+        """Diálogo de sesión caducada con opción de reexportar."""
+        root = parent
+        if root is None:
+            vp = getattr(self, 'video_player', None)
+            root = getattr(vp, 'window', None) if vp else None
+        return offer_reexport_cookies(
+            root,
+            'Sesión YouTube',
+            youtube_auth_help(),
+            self.reexport_youtube_cookies,
+        )
+
     def mark_session_from_error(self, exc):
         """Mark session from error."""
         if not youtube_auth_blocked(exc):
@@ -2351,12 +2373,12 @@ class YouTubeHandler:
         self.notify_session()
         info = self.session_view()
         if path and info.get('ok'):
-            messagebox.showinfo(
+            self.mb.showinfo(
                 "Cookies de YouTube",
                 "Cookies reexportadas. Sesión YouTube: OK.",
             )
         elif path:
-            messagebox.showwarning(
+            self.mb.showwarning(
                 "Cookies de YouTube",
                 "Se escribieron cookies, pero no hay login vigente.\n"
                 "Abre YouTube en Firefox, inicia sesión y vuelve a reexportar.",
@@ -2370,14 +2392,14 @@ class YouTubeHandler:
             if silent:
                 print(f"[YouTubeHandler] {message}")
             else:
-                messagebox.showerror("Error", message)
+                self.mb.showerror("Error", message)
 
         def _warn(message):
             """Uso interno: warn."""
             if silent:
                 print(f"[YouTubeHandler] {message}")
             else:
-                messagebox.showwarning("Cookies de YouTube", message)
+                self.mb.showwarning("Cookies de YouTube", message)
 
         try:
             from http.cookiejar import MozillaCookieJar

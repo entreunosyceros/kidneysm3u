@@ -4,6 +4,7 @@ import sys
 import tkinter as tk
 from tkinter import ttk
 
+import app_config
 from display_text import plain_display_text
 from ui_theme import get_colors, get_font
 
@@ -720,3 +721,27 @@ class ChannelNoticeMixin:
         if callable(hide):
             hide()
         self._show_channel_unavailable(name)
+        if app_config.get_iptv_skip_dead():
+            delay_ms = max(500, int(app_config.get_iptv_skip_dead_delay_s() * 1000))
+            window = getattr(self, 'window', None)
+            if window is not None:
+                try:
+                    window.after(delay_ms, self._maybe_skip_dead_channel)
+                except Exception:
+                    pass
+
+    def _maybe_skip_dead_channel(self):
+        """Salta al siguiente canal si sigue fallando el actual (preferencia)."""
+        if not app_config.get_iptv_skip_dead():
+            return
+        if getattr(self, '_playing_youtube', False) or getattr(self, '_playing_twitch', False) or getattr(self, '_playing_kick', False):
+            return
+        notice = getattr(self, '_channel_notice_top', None) or getattr(self, '_notice_top', None)
+        try:
+            if notice is not None and not notice.winfo_exists():
+                return
+        except Exception:
+            pass
+        play = getattr(self, '_play_relative_channel', None)
+        if callable(play):
+            play(1)

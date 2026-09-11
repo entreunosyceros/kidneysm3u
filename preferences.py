@@ -15,6 +15,7 @@ import usage_profiles
 from display_text import plain_ui_line
 from ui_layout import bind_wraplength, make_vertical_scroll, setup_resizable_dialog
 from ui_theme import apply_theme, get_colors, style_window, set_window_icon
+from ui_toast import show_toast
 
 COOKIE_LABELS = (
     ('auto', 'Automático (el que tenga sesión)'),
@@ -322,9 +323,14 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     kick_quality_var = tk.StringVar(value=str(app_config.get_kick_quality()))
     twitch_chat_auto_var = tk.BooleanVar(value=app_config.get_twitch_chat_auto_open())
     buffer_var = tk.StringVar(value=app_config.get_iptv_buffer())
+    iptv_skip_dead_var = tk.BooleanVar(value=app_config.get_iptv_skip_dead())
+    ytdlp_startup_var = tk.BooleanVar(value=app_config.get_update_ytdlp_on_startup())
     cookie_var = tk.StringVar(value=app_config.get_cookie_browser())
     remember_var = tk.BooleanVar(value=app_config.get_remember_last_list())
     logos_var = tk.BooleanVar(value=app_config.get_show_channel_logos())
+    density_var = tk.StringVar(value=app_config.get_ui_control_density())
+    cinema_var = tk.BooleanVar(value=app_config.get_cinema_mode_idle())
+    cinema_idle_var = tk.StringVar(value=str(int(app_config.get_cinema_mode_idle_s())))
     light_var = tk.BooleanVar(value=app_config.get_light_mode())
     light_auto_var = tk.BooleanVar(value=app_config.get_light_mode_auto())
     light_auto_cpu_var = tk.BooleanVar(value=app_config.get_light_mode_auto_cpu())
@@ -354,22 +360,80 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
         shell,
         text='Tema, reproducción, subtítulos, descargas, actualizaciones y sesión de cookies',
         style='Muted.TLabel',
-    ).pack(anchor=tk.W, pady=(0, 10))
+    ).pack(anchor=tk.W, pady=(0, 8))
+
+    search_row = ttk.Frame(shell)
+    search_row.pack(fill=tk.X, pady=(0, 8))
+    ttk.Label(search_row, text='Buscar', style='Muted.TLabel').pack(side=tk.LEFT, padx=(0, 8))
+    prefs_search_var = tk.StringVar()
+    prefs_search_entry = ttk.Entry(search_row, textvariable=prefs_search_var)
+    prefs_search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     notebook = ttk.Notebook(shell)
     notebook.pack(fill=tk.BOTH, expand=True)
 
     tab_general = ttk.Frame(notebook, padding=(0, 4))
     tab_cookies = ttk.Frame(notebook, padding=(0, 4))
-    notebook.add(tab_general, text='General')
-    notebook.add(tab_cookies, text='Cookies')
+    tab_caches = ttk.Frame(notebook, padding=(0, 4))
+    tab_profile = ttk.Frame(notebook, padding=(0, 4))
+
+    def _tab_icon(kind):
+        """Icono mínimo para pestañas (sin emoji)."""
+        from PIL import Image, ImageDraw, ImageTk
+        colors = get_colors()
+        img = Image.new('RGBA', (14, 14), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        accent = colors['accent']
+        # Parse hex roughly
+        hx = accent.lstrip('#')
+        if len(hx) == 3:
+            hx = ''.join(c * 2 for c in hx)
+        try:
+            rgb = tuple(int(hx[i:i + 2], 16) for i in (0, 2, 4)) + (255,)
+        except Exception:
+            rgb = (120, 160, 200, 255)
+        if kind == 'general':
+            d.ellipse([2, 2, 12, 12], outline=rgb, width=2)
+            d.ellipse([5, 5, 9, 9], fill=rgb)
+        elif kind == 'cookies':
+            d.rectangle([1, 3, 13, 11], outline=rgb, width=2)
+            d.line([4, 7, 10, 7], fill=rgb, width=2)
+        elif kind == 'caches':
+            d.rectangle([2, 4, 12, 12], outline=rgb, width=2)
+            d.line([2, 7, 12, 7], fill=rgb, width=1)
+        else:
+            d.polygon([(7, 1), (13, 13), (1, 13)], outline=rgb)
+        return ImageTk.PhotoImage(img)
+
+    tab_icons = {
+        'general': _tab_icon('general'),
+        'cookies': _tab_icon('cookies'),
+        'caches': _tab_icon('caches'),
+        'profile': _tab_icon('profile'),
+    }
+    window._prefs_tab_icons = tab_icons
+    notebook.add(tab_general, text=' General', image=tab_icons['general'], compound='left')
+    notebook.add(tab_cookies, text=' Cookies', image=tab_icons['cookies'], compound='left')
+    notebook.add(tab_caches, text=' Cachés', image=tab_icons['caches'], compound='left')
+    notebook.add(tab_profile, text=' Perfil', image=tab_icons['profile'], compound='left')
 
     body = ttk.Frame(tab_general)
     body.pack(fill=tk.BOTH, expand=True)
     _canvas, main, _sync_general = make_vertical_scroll(body)
 
+    caches_body = ttk.Frame(tab_caches)
+    caches_body.pack(fill=tk.BOTH, expand=True)
+    _caches_canvas, caches_main, _sync_caches = make_vertical_scroll(caches_body)
+
+    profile_body = ttk.Frame(tab_profile)
+    profile_body.pack(fill=tk.BOTH, expand=True)
+    _profile_canvas, profile_main, _sync_profile = make_vertical_scroll(profile_body)
+
+    _searchable_sections = []
+
     profiles_frame = ttk.LabelFrame(main, text=' PERFIL DE USO ', padding=12)
     profiles_frame.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((profiles_frame, 'perfil de uso preset ligero iptv youtube'))
     profile_row = ttk.Frame(profiles_frame, style='Card.TFrame')
     profile_row.pack(fill=tk.X)
     for profile_id, label in usage_profiles.profile_choices():
@@ -448,6 +512,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
 
     performance = ttk.LabelFrame(main, text=' MODO LIGERO ', padding=12)
     performance.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((performance, 'modo ligero cpu gpu rendimiento'))
     ttk.Checkbutton(
         performance,
         text='Modo ligero (equipos justos o listas enormes)',
@@ -502,69 +567,47 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     light_var.trace_add('write', _sync_light_opts)
     _sync_light_opts()
 
-    caches = ttk.LabelFrame(main, text=' CACHÉS ', padding=12)
+    caches = ttk.LabelFrame(caches_main, text=' CACHÉS ', padding=12)
     caches.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((caches, 'cachés cache epg logos youtube vaciar'))
     ttk.Label(
         caches,
         text=(
-            'Libera espacio en disco y memoria. Los tamaños se actualizan al abrir '
-            'Preferencias y tras vaciar. YouTube en disco solo crece si se descarga '
-            'a caché (no al reproducir el stream directo).'
+            'Libera espacio en disco y memoria. Pulsa Actualizar para recalcular. '
+            'YouTube en disco solo crece si se descarga a caché (no al reproducir el stream directo).'
         ),
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(0, 8))
 
-    epg_cache_size_var = tk.StringVar(value='…')
-    logos_size_var = tk.StringVar(value='…')
-    youtube_cache_size_var = tk.StringVar(value='…')
-    recordings_size_var = tk.StringVar(value='…')
-    search_mem_size_var = tk.StringVar(value='…')
-    ydl_mem_size_var = tk.StringVar(value='…')
+    # Clave -> etiqueta de tamaño.
+    _cache_size_labels = {}
 
     def _refresh_cache_sizes():
-        """Uso interno: actualiza etiquetas de tamaño de caché."""
+        """Actualiza las etiquetas de tamaño de caché."""
         try:
-            data = cache_cleanup.stats()
-            epg_cache_size_var.set(
-                f"{cache_cleanup.format_bytes(data['epg_cache']['bytes'])}"
-                f" · {data['epg_cache']['files']} archivos"
-            )
-            logos_size_var.set(
-                f"{cache_cleanup.format_bytes(data['logos']['bytes'])}"
-                f" · {data['logos']['files']} logos"
-            )
-            youtube_cache_size_var.set(
-                f"{cache_cleanup.format_bytes(data['youtube']['bytes'])}"
-                f" · {data['youtube']['files']} archivos"
-            )
-            rec = data['old_recordings']
-            recordings_size_var.set(
-                f"{cache_cleanup.format_bytes(rec['bytes'])}"
-                f" · {rec['files']} grabaciones (+{rec['days']} días)"
-            )
-            search = data.get('search_memory') or {}
-            search_mem_size_var.set(
-                f"{int(search.get('alive') or 0)} vigentes"
-                f" · {int(search.get('entries') or 0)} entradas"
-            )
-            ydl = data.get('ydl_memory') or {}
-            ydl_mem_size_var.set(
-                f"{int(ydl.get('alive') or 0)} vigentes"
-                f" · {int(ydl.get('entries') or 0)} entradas"
-            )
-        except Exception:
-            epg_cache_size_var.set('—')
-            logos_size_var.set('—')
-            youtube_cache_size_var.set('—')
-            recordings_size_var.set('—')
-            search_mem_size_var.set('—')
-            ydl_mem_size_var.set('—')
+            rows = cache_cleanup.stats_display()
+        except Exception as exc:
+            print(f'[Preferencias] No se pudieron leer las cachés: {exc}')
+            for label in _cache_size_labels.values():
+                try:
+                    label.configure(text='Error al leer')
+                except tk.TclError:
+                    pass
+            return
+        for key, _title, value in rows:
+            label = _cache_size_labels.get(key)
+            if label is None:
+                continue
+            try:
+                label.configure(text=value)
+            except tk.TclError:
+                pass
 
     window._refresh_cache_sizes = _refresh_cache_sizes
 
     def _confirm_clear(title, question, action, bytes_freed=True):
-        """Uso interno: confirma y vacía una caché."""
+        """Confirma y vacía una caché."""
         if not messagebox.askyesno(title, question, parent=window):
             return
         try:
@@ -577,18 +620,18 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
             detail = f'Se eliminaron {removed} elemento(s) ({cache_cleanup.format_bytes(freed)}).'
         else:
             detail = f'Se liberaron {removed} entrada(s) en memoria.'
-        messagebox.showinfo(title, detail, parent=window)
+        show_toast(window, detail, kind='ok')
 
-    def _cache_row(parent, label, size_var, button_text, on_clear, path_hint=None):
-        """Uso interno: fila de caché con tamaño y botón."""
+    def _cache_row(parent, key, label, button_text, on_clear, path_hint=None):
+        """Fila de caché con tamaño y botón."""
         block = ttk.Frame(parent, style='Card.TFrame')
         block.pack(fill=tk.X, pady=(0, 6))
         row = ttk.Frame(block, style='Card.TFrame')
         row.pack(fill=tk.X)
         ttk.Label(row, text=label, style='Card.TLabel', width=22).pack(side=tk.LEFT, anchor=tk.W)
-        ttk.Label(row, textvariable=size_var, style='CardMuted.TLabel').pack(
-            side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8),
-        )
+        size_label = ttk.Label(row, text='Calculando…', style='CardMuted.TLabel')
+        size_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8))
+        _cache_size_labels[key] = size_label
         ttk.Button(row, text=button_text, command=on_clear).pack(side=tk.RIGHT)
         if path_hint:
             ttk.Label(
@@ -604,8 +647,8 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
 
     _cache_row(
         caches,
+        'epg',
         'epg_cache/',
-        epg_cache_size_var,
         'Vaciar…',
         lambda: _confirm_clear(
             'Vaciar epg_cache',
@@ -616,8 +659,8 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     )
     _cache_row(
         caches,
+        'logos',
         'Logos de canal',
-        logos_size_var,
         'Vaciar…',
         lambda: _confirm_clear(
             'Vaciar logos',
@@ -628,8 +671,8 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     )
     _cache_row(
         caches,
+        'youtube',
         'YouTube (disco)',
-        youtube_cache_size_var,
         'Vaciar…',
         lambda: _confirm_clear(
             'Vaciar caché YouTube',
@@ -640,8 +683,8 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     )
     _cache_row(
         caches,
+        'recordings',
         'Grabaciones antiguas',
-        recordings_size_var,
         'Vaciar…',
         lambda: _confirm_clear(
             'Grabaciones antiguas',
@@ -655,8 +698,8 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     )
     _cache_row(
         caches,
+        'search',
         'Búsquedas (memoria)',
-        search_mem_size_var,
         'Vaciar…',
         lambda: _confirm_clear(
             'Vaciar búsquedas',
@@ -667,8 +710,8 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
     )
     _cache_row(
         caches,
+        'ydl',
         'Metadatos yt-dlp',
-        ydl_mem_size_var,
         'Vaciar…',
         lambda: _confirm_clear(
             'Vaciar metadatos',
@@ -677,11 +720,44 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
             bytes_freed=False,
         ),
     )
+
+    cache_actions = ttk.Frame(caches, style='Card.TFrame')
+    cache_actions.pack(fill=tk.X, pady=(4, 0))
+
+    def _clear_all_prefs_caches():
+        """Vacía todas las cachés de disco/memoria (sin grabaciones)."""
+        if not messagebox.askyesno(
+            'Vaciar todas las cachés',
+            '¿Vaciar epg/logos, YouTube en disco y cachés en memoria?\n'
+            '(No borra grabaciones de la carpeta de descargas.)',
+            parent=window,
+        ):
+            return
+        try:
+            removed, freed = cache_cleanup.clear_all_caches(include_old_recordings=False)
+        except Exception as exc:
+            messagebox.showerror('Vaciar cachés', str(exc), parent=window)
+            return
+        _refresh_cache_sizes()
+        messagebox.showinfo(
+            'Vaciar cachés',
+            f'Se liberaron {removed} elemento(s) ({cache_cleanup.format_bytes(freed)}).',
+            parent=window,
+        )
+
+    ttk.Button(cache_actions, text='Actualizar tamaños', command=_refresh_cache_sizes).pack(
+        side=tk.LEFT,
+    )
+    ttk.Button(cache_actions, text='Vaciar todo…', command=_clear_all_prefs_caches).pack(
+        side=tk.LEFT, padx=(8, 0),
+    )
+
     _refresh_cache_sizes()
     window.after_idle(_refresh_cache_sizes)
 
     appearance = ttk.LabelFrame(main, text=' APARIENCIA ', padding=12)
     appearance.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((appearance, 'apariencia tema logos densos cómodos compacto cine solo vídeo'))
     theme_row = ttk.Frame(appearance, style='Card.TFrame')
     theme_row.pack(fill=tk.X)
     ttk.Label(theme_row, text='Tema', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 16))
@@ -699,9 +775,37 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(6, 0))
+    density_row = ttk.Frame(appearance, style='Card.TFrame')
+    density_row.pack(fill=tk.X, pady=(12, 0))
+    ttk.Label(density_row, text='Controles del reproductor', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 16))
+    ttk.Radiobutton(density_row, text='Cómodos', variable=density_var, value='comfortable').pack(side=tk.LEFT, padx=(0, 10))
+    ttk.Radiobutton(density_row, text='Densos', variable=density_var, value='compact').pack(side=tk.LEFT)
+    ttk.Label(
+        appearance,
+        text='Densos reduce el tamaño de los botones (útil en portátiles). Cómodos deja más área táctil.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(6, 0))
+    ttk.Checkbutton(
+        appearance,
+        text='Modo solo vídeo (ocultar lista y controles tras unos segundos de inactividad)',
+        variable=cinema_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W, pady=(12, 0))
+    cinema_row = ttk.Frame(appearance, style='Card.TFrame')
+    cinema_row.pack(fill=tk.X, pady=(6, 0))
+    ttk.Label(cinema_row, text='Segundos de espera', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
+    ttk.Spinbox(cinema_row, from_=2, to=30, width=4, textvariable=cinema_idle_var).pack(side=tk.LEFT)
+    ttk.Label(
+        appearance,
+        text='Desactivado por defecto. Un clic en el vídeo restaura lista y controles. No usa el movimiento del ratón (evita parpadeos con VLC).',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(6, 0))
 
     playback = ttk.LabelFrame(main, text=' REPRODUCCIÓN ', padding=12)
     playback.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((playback, 'reproducción volumen calidad youtube twitch kick buffer iptv'))
     vol_row = ttk.Frame(playback, style='Card.TFrame')
     vol_row.pack(fill=tk.X)
     ttk.Label(vol_row, text='Volumen por defecto', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
@@ -789,13 +893,20 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
+    ttk.Checkbutton(
+        playback,
+        text='Si un canal IPTV no arranca, saltar al siguiente automáticamente',
+        variable=iptv_skip_dead_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W, pady=(10, 0))
 
     subs = ttk.LabelFrame(main, text=' SUBTÍTULOS ', padding=12)
     subs.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((subs, 'subtítulos subtitles tamaño color margen retraso'))
 
     ttk.Checkbutton(
         subs,
-        text='Activar subtítulos de YouTube automáticamente (español preferido)',
+        text='Activar subtítulos de YouTube automáticamente (opcional; por defecto van desactivados)',
         variable=yt_auto_subs_var,
         style='Card.TCheckbutton',
     ).pack(anchor=tk.W, pady=(0, 8))
@@ -1025,6 +1136,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
 
     session = ttk.LabelFrame(main, text=' SESIÓN ', padding=12)
     session.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((session, 'sesión recordar lista'))
     ttk.Checkbutton(
         session,
         text='Recordar la última lista al abrir el reproductor',
@@ -1040,6 +1152,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
 
     updates = ttk.LabelFrame(main, text=' ACTUALIZACIONES ', padding=12)
     updates.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((updates, 'actualizaciones updates app'))
     ttk.Checkbutton(
         updates,
         text='Avisar si hay una versión nueva al abrir el programa',
@@ -1055,6 +1168,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
 
     downloads = ttk.LabelFrame(main, text=' DESCARGAS ', padding=12)
     downloads.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((downloads, 'descargas carpeta download'))
     dest_row = ttk.Frame(downloads, style='Card.TFrame')
     dest_row.pack(fill=tk.X)
     ttk.Entry(dest_row, textvariable=download_var).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
@@ -1079,6 +1193,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
 
     cookies_browser = ttk.LabelFrame(cookies_main, text=' NAVEGADOR DE COOKIES ', padding=12)
     cookies_browser.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((cookies_browser, 'navegador cookies firefox chrome'))
     cookie_row = ttk.Frame(cookies_browser, style='Card.TFrame')
     cookie_row.pack(fill=tk.X)
     ttk.Label(cookie_row, text='Navegador', style='Card.TLabel').pack(side=tk.LEFT, padx=(0, 12))
@@ -1101,6 +1216,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
 
     yt_cookies = ttk.LabelFrame(cookies_main, text=' YOUTUBE ', padding=12)
     yt_cookies.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((yt_cookies, 'youtube cookies sesión reexportar'))
     window._prefs_yt_session_label = ttk.Label(
         yt_cookies,
         text=plain_ui_line('Sesión YouTube: …'),
@@ -1121,6 +1237,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
 
     tw_cookies = ttk.LabelFrame(cookies_main, text=' TWITCH ', padding=12)
     tw_cookies.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((tw_cookies, 'twitch cookies sesión'))
     window._prefs_tw_session_label = ttk.Label(
         tw_cookies,
         text=plain_ui_line('Sesión Twitch: …'),
@@ -1141,6 +1258,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
 
     kick_cookies = ttk.LabelFrame(cookies_main, text=' KICK ', padding=12)
     kick_cookies.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((kick_cookies, 'kick cookies sesión'))
     window._prefs_kick_session_label = ttk.Label(
         kick_cookies,
         text=plain_ui_line('Sesión Kick: …'),
@@ -1161,6 +1279,7 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
 
     tools = ttk.LabelFrame(main, text=' YT-DLP ', padding=12)
     tools.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((tools, 'yt-dlp ytdlp actualizar extractor'))
     ytdlp_row = ttk.Frame(tools, style='Card.TFrame')
     ytdlp_row.pack(fill=tk.X)
     version_var = tk.StringVar()
@@ -1184,12 +1303,119 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
         )
     )
     update_btn.pack(side=tk.RIGHT)
+    ttk.Checkbutton(
+        tools,
+        text='Comprobar actualización de yt-dlp al arrancar (en segundo plano)',
+        variable=ytdlp_startup_var,
+        style='Card.TCheckbutton',
+    ).pack(anchor=tk.W, pady=(10, 0))
     ttk.Label(
         tools,
         text='YouTube cambia el extractor a menudo. Si deja de reproducir, buscar o descargar, actualiza yt-dlp y reinicia el programa. No sustituye a «Reexportar cookies».',
         style='CardMuted.TLabel',
         wraplength=500,
     ).pack(anchor=tk.W, pady=(8, 0))
+
+    profile = ttk.LabelFrame(profile_main, text=' PERFIL ', padding=12)
+    profile.pack(fill=tk.X, pady=(0, 10))
+    _searchable_sections.append((profile, 'perfil exportar importar zip backup'))
+    ttk.Label(
+        profile,
+        text='Copia config, favoritos y cookies a otro PC (ZIP). No incluye grabaciones ni cachés de vídeo.',
+        style='CardMuted.TLabel',
+        wraplength=500,
+    ).pack(anchor=tk.W, pady=(0, 8))
+    profile_row = ttk.Frame(profile, style='Card.TFrame')
+    profile_row.pack(fill=tk.X)
+
+    def _export_profile():
+        import profile_backup
+        path = filedialog.asksaveasfilename(
+            parent=window,
+            defaultextension='.zip',
+            filetypes=[('ZIP', '*.zip')],
+            initialfile='kidneysm3u-perfil.zip',
+        )
+        if not path:
+            return
+        try:
+            count, dest = profile_backup.export_profile_zip(path)
+        except Exception as exc:
+            messagebox.showerror('Exportar perfil', str(exc), parent=window)
+            return
+        show_toast(window, f'Perfil exportado ({count} archivos)', kind='ok')
+
+    def _import_profile():
+        import profile_backup
+        path = filedialog.askopenfilename(
+            parent=window,
+            filetypes=[('ZIP', '*.zip'), ('Todos', '*')],
+        )
+        if not path:
+            return
+        if not messagebox.askyesno(
+            'Importar perfil',
+            'Se sobrescribirán config/favoritos/cookies en esta instalación. ¿Continuar?',
+            parent=window,
+        ):
+            return
+        try:
+            written = profile_backup.import_profile_zip(path)
+        except Exception as exc:
+            messagebox.showerror('Importar perfil', str(exc), parent=window)
+            return
+        messagebox.showinfo(
+            'Importar perfil',
+            'Restaurados: ' + ', '.join(written) + '\nReinicia el programa para aplicar del todo.',
+            parent=window,
+        )
+        show_toast(window, 'Perfil importado · reinicia para aplicar', kind='ok')
+
+    ttk.Button(profile_row, text='Exportar perfil…', command=_export_profile).pack(side=tk.LEFT)
+    ttk.Button(profile_row, text='Importar perfil…', command=_import_profile).pack(side=tk.LEFT, padx=(8, 0))
+
+    def _filter_prefs_sections(*_args):
+        """Muestra solo secciones cuyo texto coincide con la búsqueda."""
+        term = (prefs_search_var.get() or '').strip().lower()
+        for frame, haystack in _searchable_sections:
+            try:
+                frame.pack_forget()
+            except tk.TclError:
+                pass
+        first_tab = None
+        for frame, haystack in _searchable_sections:
+            try:
+                title = str(frame.cget('text') or '').lower()
+            except tk.TclError:
+                title = ''
+            blob = f'{title} {haystack}'.lower()
+            if term and term not in blob:
+                continue
+            try:
+                frame.pack(fill=tk.X, pady=(0, 10))
+            except tk.TclError:
+                continue
+            if first_tab is None:
+                parent = frame
+                while parent is not None and parent is not window:
+                    if parent in (tab_general, tab_cookies, tab_caches, tab_profile):
+                        first_tab = parent
+                        break
+                    parent = getattr(parent, 'master', None)
+        try:
+            _sync_general()
+            _sync_cookies()
+            _sync_caches()
+            _sync_profile()
+        except Exception:
+            pass
+        if term and first_tab is not None:
+            try:
+                notebook.select(first_tab)
+            except tk.TclError:
+                pass
+
+    prefs_search_var.trace_add('write', _filter_prefs_sections)
 
     buttons = ttk.Frame(shell)
     buttons.pack(fill=tk.X, pady=(12, 0))
@@ -1222,6 +1448,13 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
             volume = max(0, min(100, int(float(volume_scale.get()))))
         except (TypeError, ValueError, tk.TclError):
             volume = app_config.get_volume()
+
+        def _cinema_idle_seconds():
+            try:
+                return max(2, min(30, int(float(cinema_idle_var.get() or 4))))
+            except (TypeError, ValueError):
+                return 4
+
         sub_payload = _subtitle_style_from_form()
         payload = {
             'theme': 'dark' if theme_var.get() == 'dark' else 'light',
@@ -1242,7 +1475,14 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
             'twitch_chat_auto_open': bool(twitch_chat_auto_var.get()),
             'youtube_auto_subtitles': bool(yt_auto_subs_var.get()),
             'iptv_buffer': app_config.normalize_iptv_buffer_profile(buffer_var.get()),
+            'iptv_skip_dead': bool(iptv_skip_dead_var.get()),
+            'update_ytdlp_on_startup': bool(ytdlp_startup_var.get()),
             'usage_profile': usage_profiles.normalize_usage_profile(profile_var.get()),
+            'ui_control_density': (
+                'compact' if str(density_var.get()).strip().lower() == 'compact' else 'comfortable'
+            ),
+            'cinema_mode_idle': bool(cinema_var.get()),
+            'cinema_mode_idle_s': _cinema_idle_seconds(),
         }
         payload.update(sub_payload)
         app_config.save(payload)
@@ -1250,18 +1490,32 @@ def show_preferences(parent, on_apply=None, video_player=None, initial_tab=None)
         apply_theme(root, app_config.get_theme() == 'dark')
         if on_apply:
             on_apply()
+        try:
+            show_toast(root, 'Preferencias guardadas', kind='ok', duration_ms=2200)
+        except Exception:
+            pass
 
     ttk.Button(buttons, text='Guardar', style='Accent.TButton', command=save).pack(side=tk.LEFT)
     ttk.Button(buttons, text='Cancelar', command=close).pack(side=tk.RIGHT)
 
     window.after_idle(_sync_general)
     window.after_idle(_sync_cookies)
+    window.after_idle(_sync_caches)
+    window.after_idle(_sync_profile)
 
     window.after_idle(lambda: refresh_preferences_session_ui(window))
 
-    if initial_tab == 'cookies':
+    tab_key = (initial_tab or '').strip().lower()
+    tab_map = {
+        'cookies': tab_cookies,
+        'caches': tab_caches,
+        'cachés': tab_caches,
+        'profile': tab_profile,
+        'perfil': tab_profile,
+    }
+    if tab_key in tab_map:
         try:
-            notebook.select(tab_cookies)
+            notebook.select(tab_map[tab_key])
         except tk.TclError:
             pass
 

@@ -1,11 +1,12 @@
 """Biblioteca unificada: favoritos e historial IPTV / YouTube / Twitch / Kick."""
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
 import app_config
 from display_text import plain_display_text, plain_ui_line
 from favorites_manager import favorite_name, favorite_url
+from ui_dialogs import BoundMessageBox
 from ui_layout import bind_tree_stretch, bind_wraplength, setup_resizable_dialog
 from ui_theme import get_colors, set_window_icon, style_window
 
@@ -300,6 +301,7 @@ class LibraryWindow:
         set_window_icon(window)
         window.transient(player.window)
         self.window = window
+        self._dlg = BoundMessageBox(lambda: self.window)
 
         top = ttk.Frame(window, padding=(12, 10, 12, 6))
         top.pack(fill=tk.X)
@@ -311,7 +313,8 @@ class LibraryWindow:
             window,
             text=(
                 'Favoritos e historial de IPTV, YouTube, Twitch y Kick en un solo sitio. '
-                'Filtra por sección y fuente; doble clic para reproducir.'
+                'Filtra por sección y fuente; doble clic para reproducir. '
+                'Ctrl+clic (o Mayús+clic) para seleccionar varios y quitarlos juntos.'
             ),
             style='Muted.TLabel',
             wraplength=860,
@@ -366,7 +369,7 @@ class LibraryWindow:
             body,
             columns=('title', 'source', 'bucket', 'progress'),
             show='headings',
-            selectmode='browse',
+            selectmode='extended',
         )
         self.tree.heading('title', text='Título', anchor=tk.W)
         self.tree.heading('source', text='Fuente', anchor=tk.W)
@@ -384,6 +387,10 @@ class LibraryWindow:
         self.tree.tag_configure('favorite', foreground=colors.get('accent') or colors.get('text'))
         self.tree.bind('<Double-Button-1>', self._play_selected)
         self.tree.bind('<Return>', self._play_selected)
+        self.tree.bind('<<TreeviewSelect>>', self._on_selection_changed)
+        self.tree.bind('<Delete>', lambda _e: self._remove_selected())
+        self.tree.bind('<Control-a>', self._select_all)
+        self.tree.bind('<Control-A>', self._select_all)
 
         buttons = ttk.Frame(window, padding=(12, 0, 12, 12))
         buttons.pack(fill=tk.X)
@@ -394,6 +401,11 @@ class LibraryWindow:
             command=self._play_selected,
         ).pack(side=tk.LEFT)
         ttk.Button(buttons, text='Quitar', command=self._remove_selected).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(
+            buttons,
+            text='Vaciar historial…',
+            command=self._clear_history,
+        ).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(
             buttons,
             text='Mostrar favoritos en lista',
@@ -482,26 +494,59 @@ class LibraryWindow:
             )
         if items:
             self.status_var.set(
-                plain_ui_line(f'{len(items)} elementos. Doble clic para reproducir.'),
+                plain_ui_line(
+                    f'{len(items)} elementos. Doble clic para reproducir · '
+                    'Ctrl+clic para selección múltiple.',
+                ),
             )
         else:
             self.status_var.set('No hay elementos con estos filtros.')
+        self._on_selection_changed()
 
-    def _selected_item(self):
-        """Ítem seleccionado o None."""
+    def _selected_items(self):
+        """Ítems seleccionados (puede ser varios)."""
         try:
             selection = self.tree.selection()
         except tk.TclError:
-            return None
-        if not selection:
-            return None
-        return self._entries.get(selection[0])
+            return []
+        out = []
+        for iid in selection:
+            item = self._entries.get(iid)
+            if item:
+                out.append(item)
+        return out
+
+    def _selected_item(self):
+        """Primer ítem seleccionado o None."""
+        items = self._selected_items()
+        return items[0] if items else None
+
+    def _on_selection_changed(self, _event=None):
+        """Actualiza el estado con el recuento de selección."""
+        items = self._selected_items()
+        count = len(items)
+        if count <= 0:
+            return
+        if count == 1:
+            self.status_var.set(plain_ui_line(f'Seleccionado: {library_row_label(items[0])}'))
+        else:
+            self.status_var.set(plain_ui_line(f'{count} elementos seleccionados · Quitar los borra todos'))
+
+    def _select_all(self, _event=None):
+        """Selecciona todas las filas visibles."""
+        try:
+            children = self.tree.get_children()
+            if children:
+                self.tree.selection_set(children)
+        except tk.TclError:
+            pass
+        return 'break'
 
     def _play_selected(self, _event=None):
-        """Reproduce la selección."""
+        """Reproduce la selección (el primero si hay varios)."""
         item = self._selected_item()
         if not item:
-            messagebox.showinfo('Biblioteca', 'Selecciona un elemento.', parent=self.window)
+            self._dlg.showinfo('Biblioteca', 'Selecciona un elemento.', parent=self.window)
             return
         play_library_item(self.player, item)
         refresh = getattr(self.player, '_refresh_history_ui', None)
@@ -509,25 +554,62 @@ class LibraryWindow:
             refresh()
 
     def _remove_selected(self):
-        """Quita favorito o entrada de historial."""
-        item = self._selected_item()
-        if not item:
+        """Quita uno o varios favoritos / entradas de historial."""
+        items = self._selected_items()
+        if not items:
             return
-        label = library_row_label(item)
-        if not messagebox.askyesno(
-            'Biblioteca',
-            f'¿Quitar de la biblioteca?\n\n{label}',
+        if len(items) == 1:
+            detail = library_row_label(items[0])
+            question = f'¿Quitar de la biblioteca?\n\n{detail}'
+        else:
+            question = f'¿Quitar {len(items)} elementos de la biblioteca?'
+        if not self._dlg.askyesno('Biblioteca', question, parent=self.window):
+            return
+        for item in items:
+            remove_library_item(self.player, item)
+        self.refresh()
+        refresh = getattr(self.player, '_refresh_history_ui', None)
+        if refresh:
+            refresh()
+
+    def _clear_history(self):
+        """Vacía el historial IPTV / YouTube / Twitch / Kick (no toca favoritos)."""
+        has_any = bool(
+            app_config.iptv_history()
+            or app_config.youtube_history()
+            or app_config.twitch_history()
+            or app_config.kick_history()
+        )
+        if not has_any:
+            self._dlg.showinfo('Biblioteca', 'El historial ya está vacío.', parent=self.window)
+            return
+        prompt = getattr(self.player, 'clear_iptv_history_prompt', None)
+        if callable(prompt):
+            prompt()
+            self.refresh()
+            return
+        if not self._dlg.askyesno(
+            'Vaciar historial',
+            '¿Quitar el historial de IPTV, YouTube, Twitch y Kick?\n(Los favoritos no se borran.)',
             parent=self.window,
         ):
             return
-        remove_library_item(self.player, item)
+        app_config.clear_iptv_history()
+        app_config.clear_youtube_history()
+        app_config.clear_twitch_history()
+        app_config.clear_kick_history()
         self.refresh()
         refresh = getattr(self.player, '_refresh_history_ui', None)
         if refresh:
             refresh()
 
     def _show_favorites_sidebar(self):
-        """Abre la vista de favoritos en la barra lateral."""
-        show = getattr(self.player, 'show_favorites', None)
-        if show:
-            show()
+        """Filtra la lista de esta ventana a solo favoritos."""
+        self.set_filters(section='favorites')
+        self.refresh()
+        favorites = getattr(self.player, 'favorites', None) or []
+        if not favorites:
+            self._dlg.showinfo(
+                'Favoritos',
+                'Por el momento no hay favoritos añadidos.',
+            )

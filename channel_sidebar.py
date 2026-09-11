@@ -7,8 +7,8 @@ from tkinter import ttk
 from display_text import plain_display_text, truncate_ui_text
 from ui_theme import get_colors, get_font
 
-VIRTUAL_MIN = 1200
-VIRTUAL_MIN_WHEN_FILTERED = 600
+VIRTUAL_MIN = 800
+VIRTUAL_MIN_WHEN_FILTERED = 400
 CHUNK = 200
 ROW_HEIGHT = 26
 UNGROUPED = 'Sin grupo'
@@ -282,6 +282,24 @@ class ChannelSidebar:
         if self._view_indices is not None:
             return list(self._view_indices)
         return list(range(len(self.channels)))
+
+    def visible_channel_indices(self):
+        """Índices realmente pintados (ventana virtual + margen)."""
+        all_idx = self.current_indices()
+        if getattr(self, 'mode', None) != 'virtual':
+            return all_idx[:48]
+        n = len(all_idx)
+        if n <= 0:
+            return []
+        vis = self._visible_rows()
+        start = max(0, int(getattr(self, '_virtual_start', 0) or 0) - 2)
+        end = min(n, start + vis + 4)
+        out = []
+        for row in range(start, end):
+            index = self._index_at_row(row)
+            if index is not None:
+                out.append(index)
+        return out
 
     def _row_text(self, index):
         """Uso interno: row text."""
@@ -718,8 +736,11 @@ class ChannelSidebar:
         n = self._view_count()
         vis = self._visible_rows()
         max_start = max(0, n - vis)
+        old = self._virtual_start
         self._virtual_start = max(0, min(max_start, self._virtual_start + delta))
         self._refresh_virtual()
+        if self._virtual_start != old:
+            self._notify_view_change()
 
     def _sync_virtual_scrollbar(self):
         """Uso interno: sync virtual scrollbar."""

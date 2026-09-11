@@ -277,6 +277,8 @@ def test_youtube_auto_subtitles_preference(tmp_path, monkeypatch):
     """Prueba youtube auto subtitles preference."""
     previous = _isolate_config(tmp_path, monkeypatch)
     try:
+        assert app_config.get_youtube_auto_subtitles() is False
+        app_config.set_youtube_auto_subtitles(True)
         assert app_config.get_youtube_auto_subtitles() is True
         app_config.set_youtube_auto_subtitles(False)
         assert app_config.get_youtube_auto_subtitles() is False
@@ -611,7 +613,11 @@ def test_sort_search_entries_newest_first_when_fecha():
 
 def test_should_offer_youtube_replay_only_for_standalone():
     """Prueba should offer youtube replay only for standalone."""
-    from video_player import should_offer_youtube_replay, should_reconnect_youtube_midplay
+    from video_player import (
+        should_offer_youtube_replay,
+        should_reconnect_youtube_midplay,
+        youtube_stall_should_recover,
+    )
 
     assert should_offer_youtube_replay(True, True, False, False) is True
     assert should_offer_youtube_replay(True, True, True, False) is False
@@ -622,16 +628,23 @@ def test_should_offer_youtube_replay_only_for_standalone():
 
     assert should_reconnect_youtube_midplay(True, 600, 2100, 0) is True
     assert should_reconnect_youtube_midplay(True, 2080, 2100, 0) is False
-    assert should_reconnect_youtube_midplay(True, 600, 2100, 3) is False
+    assert should_reconnect_youtube_midplay(True, 600, 2100, 6) is False
     assert should_reconnect_youtube_midplay(False, 600, 2100, 0) is False
     assert should_reconnect_youtube_midplay(True, 3, 2100, 0) is False
 
+    assert youtube_stall_should_recover(True, 'Buffering', 1800, 7200, 35, 0) is True
+    assert youtube_stall_should_recover(True, 'Error', 1800, 7200, 1, 0) is True
+    assert youtube_stall_should_recover(True, 'Buffering', 1800, 7200, 10, 0) is False
+    assert youtube_stall_should_recover(True, 'Buffering', 7190, 7200, 40, 0) is False
+    assert youtube_stall_should_recover(True, 'Paused', 1800, 7200, 40, 0) is False
+
 
 def test_growing_ts_idle_limits():
-    """El relevo MPEG-TS no debe cortar a los 45s si el productor sigue vivo."""
+    """El relevo MPEG-TS no debe cortar pronto si el productor sigue vivo."""
     from youtube_player import _GrowingTSHandler
 
-    assert _GrowingTSHandler.IDLE_WHILE_PRODUCER_S >= 300
+    assert _GrowingTSHandler.IDLE_WHILE_PRODUCER_S >= 3600
     assert _GrowingTSHandler.IDLE_AFTER_DONE_S <= 10
+    assert _GrowingTSHandler.IDLE_WAITING_PRODUCER_S <= 180
 
 

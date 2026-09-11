@@ -80,6 +80,8 @@ class M3UProcessor:
         # Menú Archivo
         archivo_menu = tk.Menu(menubar, tearoff=0)
         archivo_menu.add_command(label="Preferencias", command=self.open_preferences)
+        archivo_menu.add_command(label="Exportar perfil…", command=self.export_user_profile)
+        archivo_menu.add_command(label="Importar perfil…", command=self.import_user_profile)
         archivo_menu.add_command(label="Descargar", command=self.open_download_manager)
         archivo_menu.add_separator()
         archivo_menu.add_command(label="Salir", command=self.quit_app)
@@ -138,6 +140,21 @@ class M3UProcessor:
     def _schedule_app_update_check(self):
         """Uso interno: schedule app update check."""
         start_startup_update_check(self.root, quit_app=self.quit_app)
+        self._maybe_update_ytdlp_on_startup()
+
+    def _maybe_update_ytdlp_on_startup(self):
+        """Actualiza yt-dlp en segundo plano si la preferencia está activa."""
+        if not app_config.get_update_ytdlp_on_startup():
+            return
+        from preferences import start_yt_dlp_upgrade
+
+        def _done(ok, detail):
+            if ok and detail and detail not in ('already',):
+                self.status_var.set(plain_ui_line(f'yt-dlp actualizado a {detail} · reinicia si falla YouTube'))
+            elif ok:
+                self.status_var.set(plain_ui_line('yt-dlp ya estaba al día'))
+
+        self.root.after(2500, lambda: start_yt_dlp_upgrade(self.root, on_done=_done))
 
     def check_app_updates_now(self):
         """Check app updates now."""
@@ -236,7 +253,8 @@ class M3UProcessor:
             bg=colors['drop_bg'],
             highlightbackground=colors['drop_border'],
             highlightcolor=colors['drop_border'],
-            highlightthickness=1,
+            highlightthickness=2,
+            bd=0,
         )
         self.drop_zone.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(12, 2))
         self.drop_label = tk.Label(
@@ -244,9 +262,11 @@ class M3UProcessor:
             text='Arrastra un archivo .m3u aquí',
             bg=colors['drop_bg'],
             fg=colors['text_muted'],
-            pady=14,
+            pady=16,
+            font=('TkDefaultFont', 11),
         )
         self.drop_label.pack(fill=tk.X)
+        self._drop_highlight = False
 
         filter_card = ttk.LabelFrame(body, text=' FILTRO ', padding=16)
         filter_card.pack(fill=tk.X, pady=(0, 14))
@@ -637,12 +657,25 @@ class M3UProcessor:
         if hasattr(self, 'theme_button'):
             self.theme_button.configure(text=self._theme_button_label())
         if hasattr(self, 'drop_zone'):
-            self.drop_zone.configure(
-                bg=colors['drop_bg'],
-                highlightbackground=colors['drop_border'],
-                highlightcolor=colors['drop_border'],
-            )
-            self.drop_label.configure(bg=colors['drop_bg'], fg=colors['text_muted'])
+            if getattr(self, '_drop_highlight', False):
+                self.drop_zone.configure(
+                    bg=colors.get('surface_alt', colors['drop_bg']),
+                    highlightbackground=colors['accent'],
+                    highlightcolor=colors['accent'],
+                    highlightthickness=3,
+                )
+                self.drop_label.configure(
+                    bg=colors.get('surface_alt', colors['drop_bg']),
+                    fg=colors['accent'],
+                )
+            else:
+                self.drop_zone.configure(
+                    bg=colors['drop_bg'],
+                    highlightbackground=colors['drop_border'],
+                    highlightcolor=colors['drop_border'],
+                    highlightthickness=2,
+                )
+                self.drop_label.configure(bg=colors['drop_bg'], fg=colors['text_muted'])
 
     def toggle_tema(self):
         """Alterna tema."""
@@ -662,6 +695,52 @@ class M3UProcessor:
         from preferences import show_preferences
         player = getattr(self, 'video_player', None)
         show_preferences(self.root, on_apply=self.apply_preferences, video_player=player)
+
+    def export_user_profile(self):
+        """Exporta config/favoritos/cookies a un ZIP."""
+        import profile_backup
+        from tkinter import filedialog, messagebox
+        path = filedialog.asksaveasfilename(
+            parent=self.root,
+            defaultextension='.zip',
+            filetypes=[('ZIP', '*.zip')],
+            initialfile='kidneysm3u-perfil.zip',
+        )
+        if not path:
+            return
+        try:
+            count, dest = profile_backup.export_profile_zip(path)
+        except Exception as exc:
+            messagebox.showerror('Exportar perfil', str(exc), parent=self.root)
+            return
+        messagebox.showinfo('Exportar perfil', f'Se exportaron {count} archivo(s) a:\n{dest}', parent=self.root)
+
+    def import_user_profile(self):
+        """Importa un ZIP de perfil."""
+        import profile_backup
+        from tkinter import filedialog, messagebox
+        path = filedialog.askopenfilename(
+            parent=self.root,
+            filetypes=[('ZIP', '*.zip'), ('Todos', '*')],
+        )
+        if not path:
+            return
+        if not messagebox.askyesno(
+            'Importar perfil',
+            'Se sobrescribirán config/favoritos/cookies. ¿Continuar?',
+            parent=self.root,
+        ):
+            return
+        try:
+            written = profile_backup.import_profile_zip(path)
+        except Exception as exc:
+            messagebox.showerror('Importar perfil', str(exc), parent=self.root)
+            return
+        messagebox.showinfo(
+            'Importar perfil',
+            'Restaurados: ' + ', '.join(written) + '\nReinicia el programa para aplicar del todo.',
+            parent=self.root,
+        )
 
     def open_onboarding_wizard(self):
         """Abre el asistente de configuración inicial."""
@@ -739,8 +818,24 @@ class M3UProcessor:
     def on_drag_enter(self, event):
         """Responde al evento drag enter."""
         colors = get_colors()
-        self.drop_zone.configure(highlightbackground=colors['accent'], highlightcolor=colors['accent'])
-        self.drop_label.configure(fg=colors['accent'], text='Suelta el archivo para cargarlo')
+        self._drop_highlight = True
+        self.drop_zone.configure(
+            bg=colors.get('surface_alt', colors['drop_bg']),
+            highlightbackground=colors['accent'],
+            highlightcolor=colors['accent'],
+            highlightthickness=3,
+        )
+        self.drop_label.configure(
+            bg=colors.get('surface_alt', colors['drop_bg']),
+            fg=colors['accent'],
+            text='Suelta el archivo .m3u / .m3u8 para cargarlo',
+        )
+        # Resalta también el campo de entrada
+        try:
+            style = ttk.Style(self.root)
+            style.configure('DropTarget.TEntry', fieldbackground=colors.get('surface_alt', colors['entry_bg']))
+        except tk.TclError:
+            pass
         return event.action
 
     def on_drag_leave(self, event):
@@ -751,11 +846,18 @@ class M3UProcessor:
     def _reset_drop_zone(self):
         """Uso interno: reset drop zone."""
         colors = get_colors()
+        self._drop_highlight = False
         self.drop_zone.configure(
+            bg=colors['drop_bg'],
             highlightbackground=colors['drop_border'],
             highlightcolor=colors['drop_border'],
+            highlightthickness=2,
         )
-        self.drop_label.configure(fg=colors['text_muted'], text='Arrastra un archivo .m3u aquí')
+        self.drop_label.configure(
+            bg=colors['drop_bg'],
+            fg=colors['text_muted'],
+            text='Arrastra un archivo .m3u aquí',
+        )
 
     def handle_drop(self, event):
         """Gestiona drop."""

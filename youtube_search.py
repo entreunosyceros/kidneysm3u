@@ -1224,7 +1224,7 @@ class YouTubeSearchDialog:
                     if self.youtube_handler:
                         self.youtube_handler.mark_session_from_error(exc)
                     if youtube_auth_blocked(exc):
-                        messagebox.showerror("Sesión YouTube", youtube_auth_help())
+                        self.youtube_handler.offer_reexport_from_auth_error(self.window if hasattr(self, "window") else None)
                     elif '413' in str(exc):
                         messagebox.showerror(
                             "Error",
@@ -1732,7 +1732,7 @@ class YouTubeSearchDialog:
             if self.youtube_handler:
                 self.youtube_handler.mark_session_from_error(e)
             if youtube_auth_blocked(e):
-                messagebox.showerror("Sesión YouTube", youtube_auth_help())
+                self.youtube_handler.offer_reexport_from_auth_error(self.window if hasattr(self, "window") else None)
             else:
                 messagebox.showerror("Error", f"No se pudo iniciar la descarga: {str(e)}")
 
@@ -1767,10 +1767,7 @@ class YouTubeSearchDialog:
             if self.youtube_handler:
                 self.youtube_handler.mark_session_from_error(e)
             if youtube_auth_blocked(e):
-                self.window.after(0, lambda: messagebox.showerror(
-                    "Sesión YouTube",
-                    youtube_auth_help(),
-                ))
+                self.window.after(0, lambda: self.youtube_handler.offer_reexport_from_auth_error(getattr(self, "window", None)))
             else:
                 error_message = str(e)
                 self.window.after(0, lambda msg=error_message: messagebox.showerror(
@@ -1818,7 +1815,7 @@ class YouTubeSearchDialog:
                     if self.youtube_handler:
                         self.youtube_handler.mark_session_from_error(err)
                     if youtube_auth_blocked(err):
-                        messagebox.showerror("Sesión YouTube", youtube_auth_help())
+                        self.youtube_handler.offer_reexport_from_auth_error(self.window if hasattr(self, "window") else None)
                     else:
                         messagebox.showerror("Error", f"No se pudo obtener la playlist: {err}")
                     return
@@ -1886,7 +1883,7 @@ class YouTubeSearchDialog:
                     if self.youtube_handler:
                         self.youtube_handler.mark_session_from_error(err)
                     if youtube_auth_blocked(err):
-                        messagebox.showerror("Sesión YouTube", youtube_auth_help())
+                        self.youtube_handler.offer_reexport_from_auth_error(self.window if hasattr(self, "window") else None)
                     else:
                         messagebox.showerror("Error", f"No se pudieron leer los vídeos del canal: {err}")
                     return

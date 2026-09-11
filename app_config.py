@@ -65,11 +65,14 @@ _DEFAULTS = {
     'youtube_searches': [],
     'iptv_history': [],
     'youtube_quality': 720,
-    'youtube_auto_subtitles': True,
+    'youtube_auto_subtitles': False,
     'twitch_quality': 720,
     'kick_quality': 720,
     'twitch_chat_auto_open': False,
     'iptv_buffer': 'balanced',
+    'iptv_skip_dead': False,
+    'iptv_skip_dead_delay_s': 4,
+    'update_ytdlp_on_startup': False,
     'subtitle_size': 0,
     'subtitle_color': '#FFFFFF',
     'subtitle_opacity': 255,
@@ -93,6 +96,9 @@ _DEFAULTS = {
     'player_shortcuts_hint_shown': False,
     'vlc_subtitle_style_warn_shown': False,
     'usage_profile': 'custom',
+    'ui_control_density': 'comfortable',
+    'cinema_mode_idle': False,
+    'cinema_mode_idle_s': 4,
 }
 
 LIGHT_MODE_SESSION_MAX = 1000
@@ -542,7 +548,7 @@ def set_youtube_quality(height):
 
 def get_youtube_auto_subtitles():
     """Obtiene youtube auto subtitles."""
-    return bool(load().get('youtube_auto_subtitles', True))
+    return bool(load().get('youtube_auto_subtitles', False))
 
 
 def set_youtube_auto_subtitles(enabled):
@@ -618,6 +624,44 @@ def get_iptv_buffer():
 def set_iptv_buffer(value):
     """Establece IPTV buffer."""
     save({'iptv_buffer': normalize_iptv_buffer_profile(value)})
+
+
+def get_iptv_skip_dead():
+    """Si True, salta al siguiente canal tras un fallo de arranque IPTV."""
+    return bool(load().get('iptv_skip_dead', False))
+
+
+def set_iptv_skip_dead(enabled):
+    """Establece saltar canal muerto."""
+    save({'iptv_skip_dead': bool(enabled)})
+
+
+def get_iptv_skip_dead_delay_s():
+    """Segundos de espera antes de saltar un canal muerto."""
+    try:
+        value = float(load().get('iptv_skip_dead_delay_s', 4) or 4)
+    except (TypeError, ValueError):
+        value = 4.0
+    return max(1.0, min(30.0, value))
+
+
+def set_iptv_skip_dead_delay_s(seconds):
+    """Establece el retardo de salto de canal muerto."""
+    try:
+        value = float(seconds or 4)
+    except (TypeError, ValueError):
+        value = 4.0
+    save({'iptv_skip_dead_delay_s': max(1.0, min(30.0, value))})
+
+
+def get_update_ytdlp_on_startup():
+    """Si True, intenta actualizar yt-dlp en segundo plano al arrancar."""
+    return bool(load().get('update_ytdlp_on_startup', False))
+
+
+def set_update_ytdlp_on_startup(enabled):
+    """Establece actualizar yt-dlp al arrancar."""
+    save({'update_ytdlp_on_startup': bool(enabled)})
 
 
 def get_subtitle_style():
@@ -2025,6 +2069,37 @@ def set_usage_profile(profile_id):
     """Guarda el id del perfil de uso."""
     from usage_profiles import normalize_usage_profile
     save({'usage_profile': normalize_usage_profile(profile_id)})
+
+
+def get_ui_control_density():
+    """comfortable | compact — tamaño de botones del reproductor."""
+    value = str(load().get('ui_control_density', 'comfortable') or 'comfortable').strip().lower()
+    return value if value in ('comfortable', 'compact') else 'comfortable'
+
+
+def set_ui_control_density(value):
+    """Establece densidad de controles."""
+    key = 'compact' if str(value or '').strip().lower() == 'compact' else 'comfortable'
+    save({'ui_control_density': key})
+
+
+def get_cinema_mode_idle():
+    """Si True, oculta lista/controles tras idle en el vídeo."""
+    return bool(load().get('cinema_mode_idle', True))
+
+
+def set_cinema_mode_idle(enabled):
+    """Establece modo solo vídeo por idle."""
+    save({'cinema_mode_idle': bool(enabled)})
+
+
+def get_cinema_mode_idle_s():
+    """Segundos de idle antes del modo solo vídeo."""
+    try:
+        value = float(load().get('cinema_mode_idle_s', 4) or 4)
+    except (TypeError, ValueError):
+        value = 4.0
+    return max(2.0, min(30.0, value))
 
 
 def capture_geometry(window):

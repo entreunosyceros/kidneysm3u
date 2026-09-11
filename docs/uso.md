@@ -40,14 +40,16 @@ El filtrado no bloquea la ventana: puedes moverla o pulsar **Parar** mientras co
 | Calidad YouTube | Tope de altura: 360p, 720p, 1080p o **Mejor**. Si cambias con un vídeo en marcha, se recarga desde el segundo actual. |
 | Calidad Twitch | Tope de altura del stream Twitch (360 / 720 / 1080 / mejor). |
 | Calidad Kick | Tope de altura del stream Kick (360 / 720 / 1080 / mejor). |
-| Buffer IPTV | **Rápido**, **Equilibrado** (por defecto) o **Estable**. El siguiente canal ya usa el valor. Detalle en [listas M3U](listas-m3u.md#buffer-iptv). |
-| Subtítulos | Tamaño, color, opacidad, contorno, caja de fondo (color y transparencia), margen y retraso. Solo afecta a subtítulos de texto (SRT, YouTube). VLC aproxima los colores a su paleta. Al guardar se recarga el vídeo o el canal IPTV en curso. |
+| Buffer IPTV | **Rápido**, **Equilibrado** (por defecto) o **Estable**. El siguiente canal ya usa el valor. Opción de **saltar al siguiente** si un canal no arranca. Detalle en [listas M3U](listas-m3u.md#buffer-iptv). |
+| Perfil | **Exportar / Importar** ZIP con config, favoritos y cookies (`Archivo` o Preferencias). |
+| yt-dlp | Pestaña **General**: versión, **Actualizar yt-dlp** y opción de comprobar al arrancar. Después conviene reiniciar. |
+| Subtítulos | Tamaño, color, opacidad, contorno, caja de fondo (color y transparencia), margen y retraso. Solo afecta a subtítulos de texto (SRT, YouTube). VLC aproxima los colores a su paleta. Al guardar se recarga el vídeo o el canal IPTV en curso. Opción de activar solo YouTube automáticamente (desactivada por defecto). |
 | Recordar última lista | Restaura la lista lateral al abrir; no reproduce solo. |
 | Avisar de versiones nuevas | Al abrir, si GitHub tiene un paquete más nuevo. Casilla **Actualizaciones**. Se puede apagar. Detalle en [instalación](instalacion.md#actualizar-el-programa). |
 | Carpeta de descargas | Destino inicial de vídeos, audio y grabaciones. |
+| Cachés | Tamaños de `epg_cache/`, logos, YouTube en disco, grabaciones antiguas y cachés en memoria; botones **Vaciar…**, **Actualizar tamaños** y **Vaciar todo…**. También **Reproducir → Vaciar cachés…**. |
 | Navegador de cookies | Pestaña **Cookies**: **Automático** o **Firefox**. Automático prueba Firefox y, si puede, otros navegadores. En Windows, Chrome, Brave y Edge cifran las cookies y no se pueden leer: usa Firefox. |
 | Sesión YouTube / Twitch / Kick | Pestaña **Cookies**: **Sesión …: OK / caducada** y **Reexportar cookies** para cada servicio. Detalle en [YouTube](youtube.md#cookies). |
-| yt-dlp | Pestaña **General**: versión e **Actualizar yt-dlp**. Después hay que cerrar y abrir el programa. |
 
 Detalle del filtro y de la herramienta de ordenar: [listas M3U](listas-m3u.md).
 
@@ -65,6 +67,7 @@ En el menú **Reproducir**:
 - **Grabar / detener**, **Grabar en…**, **Grabaciones…** — copia local del stream en reproducción (hace falta `ffmpeg`). Detalle en [reproductor](reproductor.md).
 - **Ventana PiP** / **Siempre encima** — recuadro flotante o ventana del reproductor sobre las demás.
 - **Limpiar lista lateral** — vacía el listado de la izquierda (pide confirmación).
+- **Vaciar cachés…** — borra logos/epg, YouTube en disco y cachés en memoria (no las grabaciones).
 
 Doble clic en un canal para reproducirlo. Clic derecho: favoritos, descarga, eliminar o **Reproducir desde aquí** (sigue la lista hasta el final, sin repetir). En la búsqueda, **★ Añadir** o `Ctrl+S` guarda el resultado en favoritos. **Favoritos → Biblioteca…** reúne favoritos e historial de IPTV, YouTube, Twitch y Kick con filtros por sección y fuente. Para llevar favoritos a otro ordenador: **Favoritos → Exportar favoritos…** y, en el equipo nuevo, **Importar favoritos…** (detalle en [reproductor](reproductor.md)). En el reproductor, cada canal de la lista visible tiene un número: escríbelo para cambiar de canal (zap).
 

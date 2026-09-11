@@ -14,6 +14,8 @@ def test_player_uses_iptv_overlay_and_controls_mixins():
     assert issubclass(VideoPlayer, YoutubeTitleOverlayMixin)
     assert issubclass(VideoPlayer, PlayerControlsMixin)
     assert issubclass(VideoPlayer, PlayerPipMixin)
+    from player_navigation import PlayerNavigationMixin
+    assert issubclass(VideoPlayer, PlayerNavigationMixin)
     for name in (
         '_play_iptv_url',
         '_watch_iptv_start',
@@ -30,6 +32,9 @@ def test_player_uses_iptv_overlay_and_controls_mixins():
         'open_pip',
         'toggle_always_on_top',
         'update_yt_dlp',
+        'play_previous_media',
+        'play_next_media',
+        'restart_current_media',
     ):
         assert hasattr(VideoPlayer, name)
 

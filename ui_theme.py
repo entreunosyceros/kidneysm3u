@@ -162,6 +162,27 @@ def _init_fonts(root):
             pass
 
 
+def apply_control_density(style=None, density=None):
+    """Ajusta padding de Icon.TButton según comfortable/compact."""
+    if density is None:
+        try:
+            import app_config
+            density = app_config.get_ui_control_density()
+        except Exception:
+            density = 'comfortable'
+    compact = str(density or '').strip().lower() == 'compact'
+    pad = (6, 4) if compact else (10, 8)
+    font_size = 9 if compact else 10
+    if style is None:
+        style = ttk.Style()
+    try:
+        style.configure('Icon.TButton', padding=pad, font=get_font(font_size))
+        style.configure('IconRecord.TButton', padding=pad, font=get_font(font_size))
+    except tk.TclError:
+        pass
+    return 16 if compact else 20
+
+
 def apply_theme(root, dark=False):
     """Aplica el tema ttk a toda la aplicación."""
     global _DARK
@@ -235,6 +256,7 @@ def apply_theme(root, dark=False):
     _configure_button(style, 'IconRecord.TButton', colors['danger'], colors['danger_text'],
                       colors['danger'], colors['danger_hover'], colors['disabled_bg'], colors['disabled_fg'])
     style.configure('IconRecord.TButton', padding=(10, 8), font=get_font(10))
+    apply_control_density(style)
 
     style.configure(
         'TEntry',
